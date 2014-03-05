@@ -1,73 +1,57 @@
 <?php
 if ($_GET['modx'] != '') {
-//switch version and setting
-switch ($_GET['modx']) {
-    //EVO
-    case 'evo1.0.13':
-        $link = 'https://github.com/modxcms/evolution/archive/v1.0.13.zip';
-        $location = '/install/index.php';
-        break;
+	//switch version and setting
+	switch ($_GET['modx']) {
+	    //EVO
+	    case 'evo1.0.13':
+	        $link = 'https://github.com/modxcms/evolution/archive/v1.0.13.zip';
+	        $location = '/install/index.php';
+	        break;
 
-    case 'evodmi3yy1.0.13-d6.7':
-        $link = 'https://github.com/dmi3yy/modx.evo.custom/archive/master.zip';
-        $location = '/install/index.php?action=connection';
-        break;
+	    case 'evodmi3yy1.0.13-d6.7':
+	        $link = 'https://github.com/dmi3yy/modx.evo.custom/archive/master.zip';
+	        $location = '/install/index.php?action=connection';
+	        break;
 
-    case 'evojp1.0.12j-r1':
-        $link = 'http://modx.jp/?dl=evo.zip';
-        $location = '/install/index.php';
-        break;
-        
-    case 'clipper1.2.6':
-        $link = 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.6.zip';
-        $location = '/install/index.php';
-        break;   
+	    case 'evojp1.0.12j-r1':
+	        $link = 'http://modx.jp/?dl=evo.zip';
+	        $location = '/install/index.php';
+	        break;
+	        
+	    case 'clipper1.2.6':
+	        $link = 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.6.zip';
+	        $location = '/install/index.php';
+	        break;   
 
-     //REVO
-     case 'revo2.2.12-pl':
-        $link = 'https://github.com/modxcms/revolution/archive/v2.2.12-pl.zip';
-        $location = '/setup/index.php';
-        break;   
-        
-     case 'revo2.2.12-pl-ad':
-        $link = 'http://modx.com/download/direct/modx-2.2.12-pl-advanced.zip';
-        $location = '/setup/index.php';
-        break;   
-        
-     case 'revo2.2.12-pl-sdk':
-        $link = 'http://modx.com/download/direct/modx-2.2.12-pl-sdk.zip';
-        $location = '/setup/index.php';
-        break;   
-        
-     case 'revo2.3.0-pl':
-        $link = 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-020214.zip';
-        $location = '/setup/index.php';
-        break;   
-        
-     case 'revo2.3.0-ad':
-        $link = 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-advanced-020214.zip';
-        $location = '/setup/index.php';
-        break;                            
-    
-}
-//run unzip and install
-downloadFile($link ,"modx.zip");
-$zip = new ZipArchive;
-$res = $zip->open(dirname(__FILE__)."/modx.zip");
-$zip->extractTo(dirname(__FILE__).'/temp' );
-$zip->close();
-unlink(dirname(__FILE__).'/modx.zip');
+	     //REVO
+	     case 'revo2.2.12-pl':
+	        $link = 'https://github.com/modxcms/revolution/archive/v2.2.12-pl.zip';
+	        $location = '/setup/index.php';
+	        break;   
+	        
+	     case 'revo2.2.12-pl-ad':
+	        $link = 'http://modx.com/download/direct/modx-2.2.12-pl-advanced.zip';
+	        $location = '/setup/index.php';
+	        break;   
+	        
+	     case 'revo2.2.12-pl-sdk':
+	        $link = 'http://modx.com/download/direct/modx-2.2.12-pl-sdk.zip';
+	        $location = '/setup/index.php';
+	        break;   
+	        
+	     case 'revo2.3.0-pl':
+	        $link = 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-020214.zip';
+	        $location = '/setup/index.php';
+	        break;   
+	        
+	     case 'revo2.3.0-ad':
+	        $link = 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-advanced-020214.zip';
+	        $location = '/setup/index.php';
+	        break;                               
+	}
 
 
-if ($handle = opendir(dirname(__FILE__).'/temp')) {
-	while (false !== ($name = readdir($handle))) if ($name != "." && $name != "..") $dir = $name;
-	closedir($handle);
-}
-
-copyFolder(dirname(__FILE__).'/temp/'.$dir, dirname(__FILE__).'/');
-removeFolder(dirname(__FILE__).'/temp');
-
-function downloadFile ($url, $path) {
+	function downloadFile ($url, $path) {
 		$newfname = $path;
 		try {
 			$file = fopen ($url, "rb");
@@ -127,6 +111,22 @@ function downloadFile ($url, $path) {
 			mkdir($folder, $perm);
 		}
 	}
+
+	//run unzip and install
+	downloadFile($link ,"modx.zip");
+	$zip = new ZipArchive;
+	$res = $zip->open(dirname(__FILE__)."/modx.zip");
+	$zip->extractTo(dirname(__FILE__).'/temp' );
+	$zip->close();
+	unlink(dirname(__FILE__).'/modx.zip');
+
+	if ($handle = opendir(dirname(__FILE__).'/temp')) {
+		while (false !== ($name = readdir($handle))) if ($name != "." && $name != "..") $dir = $name;
+		closedir($handle);
+	}
+
+	copyFolder(dirname(__FILE__).'/temp/'.$dir, dirname(__FILE__).'/');
+	removeFolder(dirname(__FILE__).'/temp');
 	unlink('modx.zip');
 	unlink('install.php');
 	header('Location: '.$location);
