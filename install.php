@@ -161,7 +161,7 @@ echo '
 			<label><input type="radio" name="modx" value="evo1.0.13">            <span>MODX Evolution 1.0.13 (03.03.2014)</span></label><br>
 			<label><input type="radio" name="modx" value="evodmi3yy1.0.13-d6.7"> <span>MODX Evolution by Dmi3yy 1.0.13-d6.7 (07.03.2014)</span></label><br>
 			<label><input type="radio" name="modx" value="evojp1.0.12j-r1">      <span>MODX Evolution 1.0.12J-r1 (31.12.2013)</span></label><br>
-			<label><input type="radio" name="modx" value="clipper1.2.6">         <span>ClipperCMS 1.2.6 (30.11.2011)</span></label><br>
+			<label><input type="radio" name="modx" value="clipper1.2.6">         <span>ClipperCMS 1.2.6 (30.11.2013)</span></label><br>
 		</div>
 		<div class="column">
 			<h3>REVOLUTION</h3>
