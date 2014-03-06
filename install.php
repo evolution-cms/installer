@@ -5,48 +5,48 @@ if ($_GET['modx'] != '') {
 	    //EVO
 	    case 'evo1.0.13':
 	        $link = 'https://github.com/modxcms/evolution/archive/v1.0.13.zip';
-	        $location = '/install/index.php';
+	        $location = 'install/index.php';
 	        break;
 
 	    case 'evodmi3yy1.0.13-d6.7':
 	        $link = 'https://github.com/dmi3yy/modx.evo.custom/archive/master.zip';
-	        $location = '/install/index.php?action=connection';
+	        $location = 'install/index.php?action=connection';
 	        break;
 
 	    case 'evojp1.0.12j-r1':
 	        $link = 'http://modx.jp/?dl=evo.zip';
-	        $location = '/install/index.php';
+	        $location = 'install/index.php';
 	        break;
 	        
 	    case 'clipper1.2.6':
 	        $link = 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.6.zip';
-	        $location = '/install/index.php';
+	        $location = 'install/index.php';
 	        break;   
 
 	     //REVO
 	     case 'revo2.2.12-pl':
 	        $link = 'https://github.com/modxcms/revolution/archive/v2.2.12-pl.zip';
-	        $location = '/setup/index.php';
+	        $location = 'setup/index.php';
 	        break;   
 	        
 	     case 'revo2.2.12-pl-ad':
 	        $link = 'http://modx.com/download/direct/modx-2.2.12-pl-advanced.zip';
-	        $location = '/setup/index.php';
+	        $location = 'setup/index.php';
 	        break;   
 	        
 	     case 'revo2.2.12-pl-sdk':
 	        $link = 'http://modx.com/download/direct/modx-2.2.12-pl-sdk.zip';
-	        $location = '/setup/index.php';
+	        $location = 'setup/index.php';
 	        break;   
 	        
 	     case 'revo2.3.0-pl':
 	        $link = 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-020214.zip';
-	        $location = '/setup/index.php';
+	        $location = 'setup/index.php';
 	        break;   
 	        
 	     case 'revo2.3.0-ad':
 	        $link = 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-advanced-020214.zip';
-	        $location = '/setup/index.php';
+	        $location = 'setup/index.php';
 	        break;                               
 	}
 
