@@ -1,57 +1,73 @@
 <?php
-if ($_GET['modx'] != '') {
-	//switch version and setting
-	switch ($_GET['modx']) {
-	    //EVO
-	    case 'evo1.0.13':
-	        $link = 'https://github.com/modxcms/evolution/archive/v1.0.13.zip';
-	        $location = 'install/index.php';
-	        break;
+error_reporting(0);
+ini_set('display_errors', 0);
+set_time_limit(0);
+ini_set('max_execution_time',0);
+header('Content-Type: text/html; charset=utf-8');
 
-	    case 'evodmi3yy1.0.13-d6.7':
-	        $link = 'https://github.com/dmi3yy/modx.evo.custom/archive/master.zip';
-	        $location = 'install/index.php?action=connection';
-	        break;
+if(extension_loaded('xdebug')){
+    ini_set('xdebug.max_nesting_level', 100000);
+}
 
-	    case 'evojp1.0.12j-r1':
-	        $link = 'http://modx.jp/?dl=evo.zip';
-	        $location = 'install/index.php';
-	        break;
-	        
-	    case 'clipper1.2.6':
-	        $link = 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.6.zip';
-	        $location = 'install/index.php';
-	        break;   
+$InstallData = array(
+	'evo1.0.13' => array(
+		'tree' => 'Evolution',
+		'name' => 'MODX Evolution 1.0.13 (03.03.2014)',
+		'link' => 'https://github.com/modxcms/evolution/archive/v1.0.13.zip',
+	    'location' =>'install/index.php'
+	),
+	'evodmi3yy1.0.13-d6.7' => array(
+		'tree' => 'Evolution',
+		'name' => 'MODX Evolution by Dmi3yy 1.0.13-d6.7 (07.03.2014)',
+		'link' => 'https://github.com/dmi3yy/modx.evo.custom/archive/master.zip',
+	    'location' => 'install/index.php?action=connection'
+	),
+	'evojp1.0.12j-r1' => array(
+		'tree' => 'Evolution',
+		'name' => 'MODX Evolution 1.0.12J-r1 (31.12.2013)',
+	    'link' => 'http://modx.jp/?dl=evo.zip',
+	    'location' => 'install/index.php'
+	),
+	'clipper1.2.6' => array(
+		'tree' => 'Evolution',
+		'name' => 'ClipperCMS 1.2.6 (30.11.2013)',
+	    'link' => 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.6.zip',
+	    'location' => 'install/index.php'
+	),
+	'revo2.2.12-pl' => array(
+		'tree' => 'Revolution',
+		'name' => 'MODX Revolution 2.2.12-pl Standard Traditional (19.02.2014)',
+	    'link' => 'https://github.com/modxcms/revolution/archive/v2.2.12-pl.zip',
+	    'location' =>'setup/index.php'
+	),
+	'revo2.2.12-pl-ad' => array(
+		'tree' => 'Revolution',
+		'name' => 'MODX Revolution 2.2.12-pl Standard Advanced (19.02.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.2.12-pl-advanced.zip',
+	    'location' =>'setup/index.php'
+	),
+	'revo2.2.12-pl-sdk' => array(
+		'tree' => 'Revolution',
+		'name' => 'MODX Revolution 2.2.12-pl Standard SDK (19.02.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.2.12-pl-sdk.zip',
+	    'location' => 'setup/index.php'
+	),
+	'revo2.3.0-pl' => array(
+		'tree' => 'Revolution',
+		'name' => 'MODX Revolution 2.3.0 Traditional (02.02.2014)',
+	    'link' => 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-020214.zip',
+	    'location' => 'setup/index.php'
+	),
+	'revo2.3.0-ad' => array(
+		'tree' => 'Revolution',
+		'name' => 'MODX Revolution 2.3.0 Advanced (02.02.2014)',
+	    'link' => 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-advanced-020214.zip',
+	    'location' => 'setup/index.php'
+	)
+);
 
-	     //REVO
-	     case 'revo2.2.12-pl':
-	        $link = 'https://github.com/modxcms/revolution/archive/v2.2.12-pl.zip';
-	        $location = 'setup/index.php';
-	        break;   
-	        
-	     case 'revo2.2.12-pl-ad':
-	        $link = 'http://modx.com/download/direct/modx-2.2.12-pl-advanced.zip';
-	        $location = 'setup/index.php';
-	        break;   
-	        
-	     case 'revo2.2.12-pl-sdk':
-	        $link = 'http://modx.com/download/direct/modx-2.2.12-pl-sdk.zip';
-	        $location = 'setup/index.php';
-	        break;   
-	        
-	     case 'revo2.3.0-pl':
-	        $link = 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-020214.zip';
-	        $location = 'setup/index.php';
-	        break;   
-	        
-	     case 'revo2.3.0-ad':
-	        $link = 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-advanced-020214.zip';
-	        $location = 'setup/index.php';
-	        break;                               
-	}
-
-
-	function downloadFile ($url, $path) {
+class ModxInstaller{
+	static public function downloadFile ($url, $path) {
 		$newfname = $path;
 		try {
 			$file = fopen ($url, "rb");
@@ -70,12 +86,11 @@ if ($_GET['modx'] != '') {
 		if ($newf) fclose($newf);
 		return true;
 	}	
-	function removeFolder($path){
+	static public function removeFolder($path){
 		$dir = realpath($path);
 		if ( !is_dir($dir)) return;
 		$it = new RecursiveDirectoryIterator($dir);
-		$files = new RecursiveIteratorIterator($it,
-		RecursiveIteratorIterator::CHILD_FIRST);
+		$files = new RecursiveIteratorIterator($it, RecursiveIteratorIterator::CHILD_FIRST);
 		foreach($files as $file) {
 			if ($file->getFilename() === '.' || $file->getFilename() === '..') {
 				continue;
@@ -88,16 +103,16 @@ if ($_GET['modx'] != '') {
 		}
 		rmdir($dir);
 	}
-	function copyFolder($src, $dest) {
+	static public function copyFolder($src, $dest) {
 		$path = realpath($src);
 		$dest = realpath($dest);
 		$objects = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path), RecursiveIteratorIterator::SELF_FIRST);
 		foreach($objects as $name => $object)
 		{			
 			$startsAt = substr(dirname($name), strlen($path));
-			mmkDir($dest.$startsAt);
+			self::mmkDir($dest.$startsAt);
 			if ( $object->isDir() ) {
-				mmkDir($dest.substr($name, strlen($path)));
+				self::mmkDir($dest.substr($name, strlen($path)));
 			}
 
 			if(is_writable($dest.$startsAt) and $object->isFile())
@@ -106,14 +121,18 @@ if ($_GET['modx'] != '') {
 			}
 		}
 	}
-	function mmkDir($folder, $perm=0777) {
+	static public function mmkDir($folder, $perm=0777) {
 		if(!is_dir($folder)) {
 			mkdir($folder, $perm);
 		}
 	}
-
+}
+	
+if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GET['modx']])) {
+	$rowInstall = $InstallData[$_GET['modx']];
+	
 	//run unzip and install
-	downloadFile($link ,"modx.zip");
+	ModxInstaller::downloadFile($rowInstall['link'] ,"modx.zip");
 	$zip = new ZipArchive;
 	$res = $zip->open(dirname(__FILE__)."/modx.zip");
 	$zip->extractTo(dirname(__FILE__).'/temp' );
@@ -125,13 +144,17 @@ if ($_GET['modx'] != '') {
 		closedir($handle);
 	}
 
-	copyFolder(dirname(__FILE__).'/temp/'.$dir, dirname(__FILE__).'/');
-	removeFolder(dirname(__FILE__).'/temp');
-	unlink('modx.zip');
-	unlink('install.php');
-	header('Location: '.$location);
+	ModxInstaller::copyFolder(dirname(__FILE__).'/temp/'.$dir, dirname(__FILE__).'/');
+	ModxInstaller::removeFolder(dirname(__FILE__).'/temp');
+	unlink(basename(__FILE__));
+	header('Location: '.$rowInstall['location']);
 
 }else{
+$ItemGrid = array(); 
+foreach($InstallData as $ver=>$item){
+	$ItemGrid[$item['tree']][$ver] = $item;
+}
+
 //@TODO : add check installer version	
 echo '
 <!DOCTYPE html>
@@ -155,24 +178,16 @@ echo '
 </div>
 <div class="content">
 	<h2>Choose MODX version for Install</h2>
-	<form>
-		<div class="column">
-			<h3>EVOLUTION</h3>
-			<label><input type="radio" name="modx" value="evo1.0.13">            <span>MODX Evolution 1.0.13 (03.03.2014)</span></label><br>
-			<label><input type="radio" name="modx" value="evodmi3yy1.0.13-d6.7"> <span>MODX Evolution by Dmi3yy 1.0.13-d6.7 (07.03.2014)</span></label><br>
-			<label><input type="radio" name="modx" value="evojp1.0.12j-r1">      <span>MODX Evolution 1.0.12J-r1 (31.12.2013)</span></label><br>
-			<label><input type="radio" name="modx" value="clipper1.2.6">         <span>ClipperCMS 1.2.6 (30.11.2013)</span></label><br>
-		</div>
-		<div class="column">
-			<h3>REVOLUTION</h3>
-			<label><input type="radio" name="modx" value="revo2.2.12-pl">        <span>MODX Revolution 2.2.12-pl Standard Traditional (19.02.2014)</span></label><br>
-			<label><input type="radio" name="modx" value="revo2.2.12-pl-ad">     <span>MODX Revolution 2.2.12-pl Standard Advanced (19.02.2014)</span></label><br>
-			<label><input type="radio" name="modx" value="revo2.2.12-pl-sdk">    <span>MODX Revolution 2.2.12-pl Standard SDK (19.02.2014)</span></label><br>  
-			<label><input type="radio" name="modx" value="revo2.3.0-pl">         <span>MODX Revolution 2.3.0 Traditional (02.02.2014)</span></label><br>
-			<label><input type="radio" name="modx" value="revo2.3.0-ad">         <span>MODX Revolution 2.3.0 Advanced (02.02.2014)</span></label><br>
-		</div><br>
-		<button>Install &rarr;</button>
-	</form>
+	<form>';
+	foreach($ItemGrid as $tree=>$item){
+		echo '<div class="column">
+			<h3>'.strtoupper($tree).'</h3>';
+			foreach($item as $version => $itemInfo){
+				echo '<label><input type="radio" name="modx" value="'.$version.'">            <span>'.$itemInfo['name'].'</span></label><br>';
+			}
+		echo '</div>';
+	}
+echo '<br><button>Install &rarr;</button> </form>
 	<div class="footer">
 		<p>Created by <a href="http://ga-alex.com" title="">Bumkaka</a> & <a href="http://dmi3yy.com" title="">Dmi3yy</a></p>
 		<p>Designed by <a href="http://a-sharapov.com" title="">Sharapov</a></p>
