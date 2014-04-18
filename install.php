@@ -35,22 +35,22 @@ $InstallData = array(
 	    'link' => 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.6.zip',
 	    'location' => 'install/index.php'
 	),
-	'revo2.2.13-pl' => array(
+	'revo2.2.14-pl' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.13-pl Standard Traditional (06.03.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.2.13-pl.zip',
+		'name' => 'MODX Revolution 2.2.14-pl Standard Traditional (04.04.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.2.14-pl.zip',
 	    'location' =>'setup/index.php'
 	),
-	'revo2.2.13-pl-ad' => array(
+	'revo2.2.14-pl-ad' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.13-pl Standard Advanced (06.03.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.2.13-pl-advanced.zip',
+		'name' => 'MODX Revolution 2.2.14-pl Standard Advanced (04.04.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.2.14-pl-advanced.zip',
 	    'location' =>'setup/index.php'
 	),
-	'revo2.2.13-pl-sdk' => array(
+	'revo2.2.14-pl-sdk' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.13-pl Standard SDK (06.03.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.2.13-pl-sdk.zip',
+		'name' => 'MODX Revolution 2.2.14-pl Standard SDK (04.04.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.2.14-pl-sdk.zip',
 	    'location' => 'setup/index.php'
 	),
 	'revo2.3.0-pl' => array(
@@ -131,7 +131,7 @@ class ModxInstaller{
 	
 if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GET['modx']])) {
 	$rowInstall = $InstallData[$_GET['modx']];
-	
+		
 	//run unzip and install
 	ModxInstaller::downloadFile($rowInstall['link'] ,"modx.zip");
 	$zip = new ZipArchive;
@@ -177,8 +177,8 @@ echo '
 		</div>
 	</div>
 </div>
-<div class="content">
-	<h2>Choose MODX version for Install</h2>
+<div class="content">';
+echo '<h2>Choose MODX version for Install</h2>
 	<form>';
 	foreach($ItemGrid as $tree=>$item){
 		echo '<div class="column">
@@ -188,7 +188,13 @@ echo '
 			}
 		echo '</div>';
 	}
-echo '<br><button>Install &rarr;</button> </form>
+	
+if(ini_get('allow_url_fopen') ) {
+echo '<br><button>Install &rarr;</button>'; 
+} else {
+echo '<h2>Cannot download the files - url_fopen is not enabled on this server.</h2>';
+}
+echo '</form>
 	<div class="footer">
 		<p>Created by <a href="http://ga-alex.com" title="">Bumkaka</a> & <a href="http://dmi3yy.com" title="">Dmi3yy</a></p>
 		<p>Designed by <a href="http://a-sharapov.com" title="">Sharapov</a></p>
