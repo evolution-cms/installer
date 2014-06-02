@@ -55,14 +55,14 @@ $InstallData = array(
 	),
 	'revo2.3.0-pl' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.0 Traditional (02.02.2014)',
-	    'link' => 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-020214.zip',
+		'name' => 'MODX Revolution 2.3.0 Traditional (28.05.2014)',
+	    'link' => 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-052814.zip',
 	    'location' => 'setup/index.php'
 	),
 	'revo2.3.0-ad' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.0 Advanced (02.02.2014)',
-	    'link' => 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-advanced-020214.zip',
+		'name' => 'MODX Revolution 2.3.0 Advanced (28.05.2014)',
+	    'link' => 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-advanced-052814.zip',
 	    'location' => 'setup/index.php'
 	)
 );
