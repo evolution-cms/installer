@@ -35,34 +35,28 @@ $InstallData = array(
 	    'link' => 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.6.zip',
 	    'location' => 'install/index.php'
 	),
-	'revo2.2.14-pl' => array(
+	'revo2.2.15-pl' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.14-pl Standard Traditional (04.04.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.2.14-pl.zip',
+		'name' => 'MODX Revolution 2.2.15-pl Standard Traditional (15.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.2.15-pl.zip',
 	    'location' =>'setup/index.php'
 	),
-	'revo2.2.14-pl-ad' => array(
+	'revo2.3.1-pl' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.14-pl Standard Advanced (04.04.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.2.14-pl-advanced.zip',
+		'name' => 'MODX Revolution 2.3.1-pl Standard (22.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl.zip',
 	    'location' =>'setup/index.php'
 	),
-	'revo2.2.14-pl-sdk' => array(
+	'revo2.3.1-pl-adv' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.14-pl Standard SDK (04.04.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.2.14-pl-sdk.zip',
+		'name' => 'MODX Revolution 2.2.14-pl Standard Advanced (22.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl-advanced.zip',
 	    'location' => 'setup/index.php'
 	),
-	'revo2.3.0-pl' => array(
+	'revo2.3.1-pl-sdk' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.0 Traditional (02.02.2014)',
-	    'link' => 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-020214.zip',
-	    'location' => 'setup/index.php'
-	),
-	'revo2.3.0-ad' => array(
-		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.0 Advanced (02.02.2014)',
-	    'link' => 'http://modx.s3.amazonaws.com/releases/nightlies/modx-2.3.0-dev-advanced-020214.zip',
+		'name' => 'MODX Revolution 2.3.1 SDK (22.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl-sdk.zip',
 	    'location' => 'setup/index.php'
 	)
 );
