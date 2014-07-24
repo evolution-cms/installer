@@ -38,7 +38,7 @@ $InstallData = array(
 	'revo2.3.0-ad' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.3.1 Advanced (22.07.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.4.1-pl-advanced.zip',
+	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl-advanced.zip',
 	    'location' => 'setup/index.php'
 	)
 );
