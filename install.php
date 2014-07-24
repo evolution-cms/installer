@@ -173,8 +173,8 @@ echo '<h2>Cannot download the files - url_fopen is not enabled on this server.</
 echo '</form>
 	<div class="footer">
 		<p>Created by <a href="http://ga-alex.com" title="">Bumkaka</a> & <a href="http://dmi3yy.com" title="">Dmi3yy</a></p>
-		<p>Modified for Revolution only and update maintained by <a href="http://sottwell.com" title="">sottwell</a></p>
 		<p>Designed by <a href="http://a-sharapov.com" title="">Sharapov</a></p>
+		<p>Modified for Revolution only and update maintained by <a href="http://sottwell.com" title="">sottwell</a></p>
 	</div>
 </body>
 </html>
