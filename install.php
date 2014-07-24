@@ -11,52 +11,34 @@ if(extension_loaded('xdebug')){
 }
 
 $InstallData = array(
-	'evo1.0.13' => array(
-		'tree' => 'Evolution',
-		'name' => 'MODX Evolution 1.0.13 (03.03.2014)',
-		'link' => 'https://github.com/modxcms/evolution/archive/v1.0.13.zip',
-	    'location' =>'install/index.php'
-	),
-	'evodmi3yy1.0.13-d6.7' => array(
-		'tree' => 'Evolution',
-		'name' => 'MODX Evolution by Dmi3yy 1.0.13-d6.7 (07.03.2014)',
-		'link' => 'https://github.com/dmi3yy/modx.evo.custom/archive/master.zip',
-	    'location' => 'install/index.php'
-	),
-	'evojp1.0.12j-r1' => array(
-		'tree' => 'Evolution',
-		'name' => 'MODX Evolution 1.0.12J-r1 (31.12.2013)',
-	    'link' => 'http://modx.jp/?dl=evo.zip',
-	    'location' => 'install/index.php'
-	),
-	'clipper1.2.6' => array(
-		'tree' => 'Evolution',
-		'name' => 'ClipperCMS 1.2.6 (30.11.2013)',
-	    'link' => 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.6.zip',
-	    'location' => 'install/index.php'
-	),
-	'revo2.2.15-pl' => array(
+	'revo2.2.14-pl' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.2.15-pl Standard Traditional (15.07.2014)',
 	    'link' => 'http://modx.com/download/direct/modx-2.2.15-pl.zip',
 	    'location' =>'setup/index.php'
 	),
-	'revo2.3.1-pl' => array(
+	'revo2.2.14-pl-ad' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.1-pl Standard (22.07.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl.zip',
+		'name' => 'MODX Revolution 2.2.15-pl Standard Advanced (15.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.2.15-pl-advanced.zip',
 	    'location' =>'setup/index.php'
 	),
-	'revo2.3.1-pl-adv' => array(
+	'revo2.2.14-pl-sdk' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.14-pl Standard Advanced (22.07.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl-advanced.zip',
+		'name' => 'MODX Revolution 2.2.15-pl Standard SDK (15.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.2.15-pl-sdk.zip',
 	    'location' => 'setup/index.php'
 	),
-	'revo2.3.1-pl-sdk' => array(
+	'revo2.3.0-pl' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.1 SDK (22.07.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl-sdk.zip',
+		'name' => 'MODX Revolution 2.3.1 Traditional (22.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl.zip',
+	    'location' => 'setup/index.php'
+	),
+	'revo2.3.0-ad' => array(
+		'tree' => 'Revolution',
+		'name' => 'MODX Revolution 2.3.1 Advanced (22.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.4.1-pl-advanced.zip',
 	    'location' => 'setup/index.php'
 	)
 );
