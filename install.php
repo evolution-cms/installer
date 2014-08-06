@@ -1,5 +1,5 @@
 <?php
-$version = '0.2';
+$version = '0.3';
 error_reporting(0);
 ini_set('display_errors', 0);
 set_time_limit(0);
@@ -10,32 +10,39 @@ if(extension_loaded('xdebug')){
     ini_set('xdebug.max_nesting_level', 100000);
 }
 
+$method = 0;
+if(ini_get('allow_url_fopen') ) {
+    $method = 'fopen';
+} elseif(extension_loaded('curl')) {
+	$method = 'curl';
+}
+
 $InstallData = array(
-	'revo2.2.14-pl' => array(
+	'revo2.2.15-pl' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.2.15-pl Standard Traditional (15.07.2014)',
 	    'link' => 'http://modx.com/download/direct/modx-2.2.15-pl.zip',
 	    'location' =>'setup/index.php'
 	),
-	'revo2.2.14-pl-ad' => array(
+	'revo2.2.15-pl-ad' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.2.15-pl Standard Advanced (15.07.2014)',
 	    'link' => 'http://modx.com/download/direct/modx-2.2.15-pl-advanced.zip',
 	    'location' =>'setup/index.php'
 	),
-	'revo2.2.14-pl-sdk' => array(
+	'revo2.2.15-pl-sdk' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.2.15-pl Standard SDK (15.07.2014)',
 	    'link' => 'http://modx.com/download/direct/modx-2.2.15-pl-sdk.zip',
 	    'location' => 'setup/index.php'
 	),
-	'revo2.3.0-pl' => array(
+	'revo2.3.1-pl' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.3.1 Traditional (22.07.2014)',
 	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl.zip',
 	    'location' => 'setup/index.php'
 	),
-	'revo2.3.0-ad' => array(
+	'revo2.3.1-ad' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.3.1 Advanced (22.07.2014)',
 	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl-advanced.zip',
@@ -44,24 +51,38 @@ $InstallData = array(
 );
 
 class ModxInstaller{
-	static public function downloadFile ($url, $path) {
+	static public function downloadFile ($url, $path, $method) {	
 		$newfname = $path;
-		try {
-			$file = fopen ($url, "rb");
-			if ($file) {
-				$newf = fopen ($newfname, "wb");
-				if ($newf)
-				while(!feof($file)) {
-					fwrite($newf, fread($file, 1024 * 8 ), 1024 * 8 );
-				}
-			}			
-		} catch(Exception $e) {
-			$this->errors[] = array('ERROR:Download',$e->getMessage());
-			return false;
+		if($method == 'fopen') {
+			try {
+				$file = fopen ($url, "rb");
+				if ($file) {
+					$newf = fopen ($newfname, "wb");
+					if ($newf)
+					while(!feof($file)) {
+						fwrite($newf, fread($file, 1024 * 8 ), 1024 * 8 );
+					}
+				}			
+			} catch(Exception $e) {
+				$this->errors[] = array('ERROR:Download',$e->getMessage());
+				return "Cannot download file.";
+			}
+			if ($file) fclose($file);
+			if ($newf) fclose($newf);
+			return true;
+		} elseif($method == 'curl') { 
+			$newf = fopen($path, "wb");
+			if($newf) {
+				$ch = curl_init(str_replace(" ","%20",$url));
+				curl_setopt($ch, CURLOPT_TIMEOUT, 50);
+				curl_setopt($ch, CURLOPT_FILE, $newf);
+				curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+				$data = curl_exec($ch);
+				curl_close($ch);
+			} else {
+			    return ("Cannot create target file.");
+			}
 		}
-		if ($file) fclose($file);
-		if ($newf) fclose($newf);
-		return true;
 	}	
 	static public function removeFolder($path){
 		$dir = realpath($path);
@@ -109,7 +130,7 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
 	$rowInstall = $InstallData[$_GET['modx']];
 		
 	//run unzip and install
-	ModxInstaller::downloadFile($rowInstall['link'] ,"modx.zip");
+	ModxInstaller::downloadFile($rowInstall['link'] ,"modx.zip",$method);
 	$zip = new ZipArchive;
 	$res = $zip->open(dirname(__FILE__)."/modx.zip");
 	$zip->extractTo(dirname(__FILE__).'/temp' );
@@ -165,16 +186,17 @@ echo '<h2>Choose MODX version for Install</h2>
 		echo '</div>';
 	}
 	
-if(ini_get('allow_url_fopen') ) {
+if($method) {
+echo "<h2> Using ".$method."</h2>";
 echo '<br><button>Install &rarr;</button>'; 
 } else {
-echo '<h2>Cannot download the files - url_fopen is not enabled on this server.</h2>';
+echo '<h2>Cannot download the files - allow_url_fopen is not enabled on this server.</h2>';
 }
 echo '</form>
 	<div class="footer">
 		<p>Created by <a href="http://ga-alex.com" title="">Bumkaka</a> & <a href="http://dmi3yy.com" title="">Dmi3yy</a></p>
-		<p>Designed by <a href="http://a-sharapov.com" title="">Sharapov</a></p>
 		<p>Modified for Revolution only and update maintained by <a href="http://sottwell.com" title="">sottwell</a></p>
+		<p>Designed by <a href="http://a-sharapov.com" title="">Sharapov</a></p>
 	</div>
 </body>
 </html>
