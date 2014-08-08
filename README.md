@@ -12,3 +12,6 @@ This can be used to either upgrade an existing installation or handle a new inst
 
 In order to be able to directly download the MODX zip archive from the MODX repository, your server must have either allow_url_fopen or cURL enabled.
 
+<!-- md-config
+ 	prettify=1;
+ -->
