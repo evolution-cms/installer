@@ -4,6 +4,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 set_time_limit(0);
 ini_set('max_execution_time',0);
+define('_CR_', "\n");
 header('Content-Type: text/html; charset=utf-8');
 
 if(extension_loaded('xdebug')){
@@ -157,7 +158,7 @@ foreach($InstallData as $ver=>$item){
 }
 
 //@TODO : add check installer version	
-echo '
+?>
 <!DOCTYPE html>
 <html>
 <head>
@@ -177,30 +178,32 @@ echo '
 		</div>
 	</div>
 </div>
-<div class="content">';
-echo '<h2>Choose MODX version for Install</h2>
-	<form>';
+<div class="content">
+<?php
+echo '<h2>Choose MODX version for Install</h2>'._CR_;
+echo ' <form>'._CR_;
 	foreach($ItemGrid as $tree=>$item){
-		echo '<div class="column">
-			<h3>'.strtoupper($tree).'</h3>';
+		echo '  <div class="column">'._CR_;
+		echo '   <h3>'.strtoupper($tree).'</h3>'._CR_;
 			foreach($item as $version => $itemInfo){
-				echo '<label><input type="radio" name="modx" value="'.$version.'">            <span>'.$itemInfo['name'].'</span></label><br>';
+				echo '    <label><input type="radio" name="modx" value="'.$version.'"><span>'.$itemInfo['name'].'</span></label><br />'._CR_;
 			}
-		echo '</div>';
+		echo '   </div>'._CR_;
 	}
 	
-if(ini_get('allow_url_fopen') ) {
-echo '<br><button>Install &rarr;</button>'; 
+if(ini_get('allow_url_fopen') == '1') {
+	echo '<br />'._CR_; 
+	echo '<button>Install &rarr;</button>'; 
 } else {
-echo '<h2>Cannot download the files - url_fopen is not enabled on this server.</h2>';
+	echo '<h2>Cannot download the files - url_fopen is not enabled on this server.</h2>';
 }
-echo '</form>
+?>
+</form>
+
 	<div class="footer">
 		<p>Created by <a href="http://ga-alex.com" title="">Bumkaka</a> & <a href="http://dmi3yy.com" title="">Dmi3yy</a></p>
 		<p>Designed by <a href="http://a-sharapov.com" title="">Sharapov</a></p>
 	</div>
 </body>
 </html>
-';
-}	
-?>
+<?php } ?>
