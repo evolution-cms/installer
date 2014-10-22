@@ -20,19 +20,19 @@ if(ini_get('allow_url_fopen') ) {
 $InstallData = array(
 	'revo2.2.16-pl' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.16-pl Standard Traditional (22.20.2014)',
+		'name' => 'MODX Revolution 2.2.16-pl Traditional (22.20.2014)',
 	    'link' => 'http://modx.com/download/direct/modx-2.2.16-pl.zip',
 	    'location' =>'setup/index.php'
 	),
 	'revo2.2.16-pl-ad' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.16-pl Standard Advanced (22.10.2014)',
+		'name' => 'MODX Revolution 2.2.16-pl Advanced (22.10.2014)',
 	    'link' => 'http://modx.com/download/direct/modx-2.2.16-pl-advanced.zip',
 	    'location' =>'setup/index.php'
 	),
 	'revo2.2.16-pl-sdk' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.2.16-pl Standard SDK (22.10.2014)',
+		'name' => 'MODX Revolution 2.2.16-pl SDK (22.10.2014)',
 	    'link' => 'http://modx.com/download/direct/modx-2.2.15-pl-sdk.zip',
 	    'location' => 'setup/index.php'
 	),
