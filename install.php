@@ -1,5 +1,5 @@
 <?php
-$version = '0.3';
+$version = '1.3';
 error_reporting(0);
 ini_set('display_errors', 0);
 set_time_limit(0);
