@@ -36,16 +36,16 @@ $InstallData = array(
 	    'link' => 'http://modx.com/download/direct/modx-2.2.15-pl-sdk.zip',
 	    'location' => 'setup/index.php'
 	),
-	'revo2.3.1-pl' => array(
+	'revo2.3.2-pl' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.1 Traditional (22.07.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl.zip',
+		'name' => 'MODX Revolution 2.3.2 Traditional (22.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.3.2-pl.zip',
 	    'location' => 'setup/index.php'
 	),
-	'revo2.3.1-ad' => array(
+	'revo2.3.2-ad' => array(
 		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.1 Advanced (22.07.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.1-pl-advanced.zip',
+		'name' => 'MODX Revolution 2.3.2 Advanced (22.07.2014)',
+	    'link' => 'http://modx.com/download/direct/modx-2.3.2-pl-advanced.zip',
 	    'location' => 'setup/index.php'
 	)
 );
