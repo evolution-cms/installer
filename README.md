@@ -11,6 +11,7 @@ This can be used to either upgrade an existing installation or handle a new inst
 
 #### Always make sure to backup your existing installation before doing anything else.
 
-
 In order to be able to directly download the MODX zip archive from the MODX repository, your server must have either allow_url_fopen or cURL enabled.
+
+You may need to change the permissions for newly created folders on line 145. For example, your server may require directory permissions of 0755.
 
