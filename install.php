@@ -40,22 +40,22 @@ $InstallData = array(
         'link'     => 'http://modx.com/download/direct/modx-2.2.15-pl-sdk.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.3.2-pl'      => array(
+    'revo2.3.3-pl'      => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.3.2 Traditional (22.10.2014)',
-        'link'     => 'http://modx.com/download/direct/modx-2.3.2-pl.zip',
+        'name'     => 'MODX Revolution 2.3.3 Traditional (29.01.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.3.3-pl.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.3.2-ad'      => array(
+    'revo2.3.3-ad'      => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.3.2 Advanced (22.10.2014)',
-        'link'     => 'http://modx.com/download/direct/modx-2.3.2-pl-advanced.zip',
+        'name'     => 'MODX Revolution 2.3.3 Advanced (29.01.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.3.3-pl-advanced.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.3.2-sdk'     => array(
+    'revo2.3.3-sdk'     => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.3.2 SDK (22.10.2014)',
-        'link'     => 'http://modx.com/download/direct/modx-2.3.2-pl-sdk.zip',
+        'name'     => 'MODX Revolution 2.3.3 SDK (29.01.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.3.3-pl-sdk.zip',
         'location' => 'setup/index.php'
     )
 );
@@ -243,3 +243,4 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
 ';
 }
 ?>
+
