@@ -243,4 +243,3 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
 ';
 }
 ?>
-
