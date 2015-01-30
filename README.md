@@ -15,3 +15,8 @@ In order to be able to directly download the MODX zip archive from the MODX repo
 
 You may need to change the permissions for newly created folders on line 145. For example, your server may require directory permissions of 0755.
 
+Changlog:
+
+Version 1.4 
+30-01-2014
+- updated to Revo 2.3.3
