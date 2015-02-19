@@ -17,7 +17,11 @@ In order to be able to unzip the downloaded MODX archive, your PHP must be at le
 
 You may need to change the permissions for newly created folders on line 145. For example, your server may require directory permissions of 0755.
 
-Changlog:
+Changelog:
+
+Version 1.4.1
+(19-02-2015)
+- Fixed failure to extract error - temp directory needed trailing slash
 
 Version 1.4 
 (30-01-2015)
