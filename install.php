@@ -157,7 +157,7 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
     if ($success !== true) {
         die($success);
     }
-    $zip = new ZipArchive;
+    $zip = new ZipArchive();
     $success = $zip->open(dirname(__FILE__) . "/modx.zip");
     if ($success !== true) {
         die('Failed to open zip file');
