@@ -165,7 +165,7 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
     if (! is_dir(dirname(__FILE__) . '/temp')) {
         mkdir(dirname(__FILE__) . '/temp');
     }
-    $success = $zip->extractTo(dirname(__FILE__) . '/temp');
+    $success = $zip->extractTo(dirname(__FILE__) . '/temp/');
     if ($success !== true) {
         $zip->close();
         die('Failed to extract from zip file');
