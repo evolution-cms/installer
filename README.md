@@ -19,10 +19,14 @@ You may need to change the permissions for newly created folders on line 145. Fo
 
 Changelog:
 
+Version 1.4.2
+(24-06-2015)
+- Updated to Revolution 2.3.4
+
 Version 1.4.1
 (19-02-2015)
 - Fixed failure to extract error - temp directory needed trailing slash
 
 Version 1.4 
 (30-01-2015)
-- updated to Revo 2.3.3
+- updated to Revolution 2.3.3
