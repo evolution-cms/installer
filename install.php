@@ -22,40 +22,22 @@ if (ini_get('allow_url_fopen')) {
 }
 
 $InstallData = array(
-    'revo2.2.16-pl'     => array(
-        'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.2.16-pl Traditional (22.20.2014)',
-        'link'     => 'http://modx.com/download/direct/modx-2.2.16-pl.zip',
-        'location' => 'setup/index.php'
-    ),
-    'revo2.2.16-pl-ad'  => array(
-        'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.2.16-pl Advanced (22.10.2014)',
-        'link'     => 'http://modx.com/download/direct/modx-2.2.16-pl-advanced.zip',
-        'location' => 'setup/index.php'
-    ),
-    'revo2.2.16-pl-sdk' => array(
-        'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.2.16-pl SDK (22.10.2014)',
-        'link'     => 'http://modx.com/download/direct/modx-2.2.15-pl-sdk.zip',
-        'location' => 'setup/index.php'
-    ),
     'revo2.3.4-pl'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.3.4 Traditional (24.06.2015)',
-        'link'     => 'http://modx.com/download/direct/modx-2.3.4-pl.zip',
+        'link'     => 'http://modx.s3.amazonaws.com/releases/2.3.4/modx-2.3.4-pl.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.3.4-ad'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.3.4 Advanced (24.06.2015)',
-        'link'     => 'http://modx.com/download/direct/modx-2.3.4-pl-advanced.zip',
+        'link'     => 'http://modx.s3.amazonaws.com/releases/2.3.4/modx-2.3.4-pl-advanced.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.3.4-sdk'     => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.3.4 SDK (24.06.2015)',
-        'link'     => 'http://modx.com/download/direct/modx-2.3.4-pl-sdk.zip',
+        'link'     => 'http://modx.s3.amazonaws.com/releases/2.3.4/modx-2.3.4-pl-sdk.zip',
         'location' => 'setup/index.php'
     )
 );
@@ -93,7 +75,6 @@ class ModxInstaller {
                 $ch = curl_init(str_replace(" ", "%20", $url));
                 curl_setopt($ch, CURLOPT_TIMEOUT, 50);
                 curl_setopt($ch, CURLOPT_FILE, $newf);
-                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
                 $data = curl_exec($ch);
                 curl_close($ch);
             } else {
