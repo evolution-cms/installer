@@ -19,6 +19,11 @@ You may need to change the permissions for newly created folders on line 145. Fo
 
 Changelog:
 
+Version 1.4.3
+(24-06-2015)
+- Changed links to direct links to AWS to solve problems with servers that have open_basedire or safe_mode enabled.
+- Dropped support for 2.2.16 due to some of the archive having issues unzipping.
+
 Version 1.4.2
 (24-06-2015)
 - Updated to Revolution 2.3.4
