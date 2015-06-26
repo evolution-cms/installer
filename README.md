@@ -19,6 +19,11 @@ You may need to change the permissions for newly created folders on line 145. Fo
 
 Changelog:
 
+Version 1.5.0-beta
+(26-06-2015)
+- Change links back to MODX repository direct links
+- Modified cURL code to emulate CURLOPT_FOLLOWLOCATION for systems with open_basedir and safe_mode
+
 Version 1.4.3
 (24-06-2015)
 - Changed links to direct links to AWS to solve problems with servers that have open_basedir or safe_mode enabled.
