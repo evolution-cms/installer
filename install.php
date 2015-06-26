@@ -1,5 +1,5 @@
 <?php
-$version = '1.4.3';
+$version = '1.5.0-beta';
 
 error_reporting(0);
 ini_set('display_errors', 0);
@@ -22,22 +22,40 @@ if (ini_get('allow_url_fopen')) {
 }
 
 $InstallData = array(
-    'revo2.3.4-pl'      => array(
+    'revo2.2.16-pl'     => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.3.4 Traditional (24.06.2015)',
-        'link'     => 'http://modx.s3.amazonaws.com/releases/2.3.4/modx-2.3.4-pl.zip',
+        'name'     => 'MODX Revolution 2.2.16-pl Traditional (22.20.2014)',
+        'link'     => 'http://modx.com/download/direct/modx-2.2.16-pl.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.3.4-ad'      => array(
+    'revo2.2.16-pl-ad'  => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.3.4 Advanced (24.06.2015)',
-        'link'     => 'http://modx.s3.amazonaws.com/releases/2.3.4/modx-2.3.4-pl-advanced.zip',
+        'name'     => 'MODX Revolution 2.2.16-pl Advanced (22.10.2014)',
+        'link'     => 'http://modx.com/download/direct/modx-2.2.16-pl-advanced.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.3.4-sdk'     => array(
+    'revo2.2.16-pl-sdk' => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.3.4 SDK (24.06.2015)',
-        'link'     => 'http://modx.s3.amazonaws.com/releases/2.3.4/modx-2.3.4-pl-sdk.zip',
+        'name'     => 'MODX Revolution 2.2.16-pl SDK (22.10.2014)',
+        'link'     => 'http://modx.com/download/direct/modx-2.2.15-pl-sdk.zip',
+        'location' => 'setup/index.php'
+    ),
+    'revo2.3.5-pl'      => array(
+        'tree'     => 'Revolution',
+        'name'     => 'MODX Revolution 2.3.5 Traditional (26.06.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.3.5-pl.zip',
+        'location' => 'setup/index.php'
+    ),
+    'revo2.3.5-ad'      => array(
+        'tree'     => 'Revolution',
+        'name'     => 'MODX Revolution 2.3.5 Advanced (26.06.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.3.5-pl-advanced.zip',
+        'location' => 'setup/index.php'
+    ),
+    'revo2.3.5-sdk'     => array(
+        'tree'     => 'Revolution',
+        'name'     => 'MODX Revolution 2.3.5 SDK (26.06.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.3.5-pl-sdk.zip',
         'location' => 'setup/index.php'
     )
 );
@@ -75,6 +93,26 @@ class ModxInstaller {
                 $ch = curl_init(str_replace(" ", "%20", $url));
                 curl_setopt($ch, CURLOPT_TIMEOUT, 50);
                 curl_setopt($ch, CURLOPT_FILE, $newf);
+                if (filter_var(ini_get(‘open_basedir’), FILTER_VALIDATE_BOOLEAN) === false && filter_var(ini_get(‘safe_mode’), FILTER_VALIDATE_BOOLEAN) === false) {
+                	curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                } else {
+                	curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+                	$rch = curl_copy_handle($ch);
+                	$newurl = $url;
+									curl_setopt($rch, CURLOPT_URL, $newurl);
+        					$header = curl_exec($rch);
+        					if (curl_errno($rch)) {
+          					$code = 0;
+        					} else {
+          					$code = curl_getinfo($rch, CURLINFO_HTTP_CODE);
+          					if ($code == 301 || $code == 302) {
+            					preg_match('/Location:(.*?)\n/i', $header, $matches);
+            					$newurl = trim(array_pop($matches));
+                		}
+                		curl_close($rch);
+      							curl_setopt($ch, CURLOPT_URL, $newurl);
+      						}
+      					}
                 $data = curl_exec($ch);
                 curl_close($ch);
             } else {
@@ -123,7 +161,7 @@ class ModxInstaller {
         }
     }
 
-    static public function mmkDir($folder, $perm = 0777) {
+    static public function mmkDir($folder, $perm = 0755) {
         if (!is_dir($folder)) {
             mkdir($folder, $perm);
         }
@@ -138,7 +176,7 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
     if ($success !== true) {
         die($success);
     }
-    $zip = new ZipArchive();
+    $zip = new ZipArchive;
     $success = $zip->open(dirname(__FILE__) . "/modx.zip");
     if ($success !== true) {
         die('Failed to open zip file');
