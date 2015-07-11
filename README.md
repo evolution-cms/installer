@@ -19,6 +19,10 @@ You may need to change the permissions for newly created folders on line 145. Fo
 
 Changelog:
 
+Version 1.5.1-beta
+(11-07-2015)
+- Corrected some single-quotes
+
 Version 1.5.0-beta
 (26-06-2015)
 - Change links back to MODX repository direct links
