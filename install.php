@@ -1,5 +1,5 @@
 <?php
-$version = '1.5.1-beta';
+$version = '1.5.2';
 
 error_reporting(0);
 ini_set('display_errors', 0);
@@ -40,22 +40,22 @@ $InstallData = array(
         'link'     => 'http://modx.com/download/direct/modx-2.2.15-pl-sdk.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.3.5-pl'      => array(
+    'revo2.4.0-pl'      => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.3.5 Traditional (26.06.2015)',
-        'link'     => 'http://modx.com/download/direct/modx-2.3.5-pl.zip',
+        'name'     => 'MODX Revolution 2.4.0 Traditional (18.08.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.4.0-pl.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.3.5-ad'      => array(
+    'revo2.4.0-ad'      => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.3.5 Advanced (26.06.2015)',
-        'link'     => 'http://modx.com/download/direct/modx-2.3.5-pl-advanced.zip',
+        'name'     => 'MODX Revolution 2.4.0 Advanced (18.08.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.4.0-pl-advanced.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.3.5-sdk'     => array(
+    'revo2.4.0-sdk'     => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.3.5 SDK (26.06.2015)',
-        'link'     => 'http://modx.com/download/direct/modx-2.3.5-pl-sdk.zip',
+        'name'     => 'MODX Revolution 2.4.0 SDK (18.08.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.4.0-pl-sdk.zip',
         'location' => 'setup/index.php'
     )
 );
