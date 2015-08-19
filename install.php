@@ -225,8 +225,7 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
 </head>
 <body>
     <div class="header">
-        <img src="http://installer.evolution-cms.com/img/logo.png">
-        <h1 class="main-heading"><span>MODX</span> Installer <sup>v' . $version . '</sup> </h1>
+        <h1 class="main-heading"><span>MODX</span>MODX Installer <sup>v' . $version . '</sup> </h1>
         <div class="header-button-wrapper">
             <!--<a href="#" class="button">New version</a>&nbsp;-->
             <a href="https://github.com/evolution-cms/installer" class="button">GitHub</a>
