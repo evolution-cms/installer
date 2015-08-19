@@ -228,7 +228,7 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
         <h1 class="main-heading"><span>MODX</span>MODX Installer <sup>v' . $version . '</sup> </h1>
         <div class="header-button-wrapper">
             <!--<a href="#" class="button">New version</a>&nbsp;-->
-            <a href="https://github.com/evolution-cms/installer" class="button">GitHub</a>
+            <a href="https://github.com/sottwell/installer" class="button">GitHub</a>
         </div>
     </div>
 </div>
