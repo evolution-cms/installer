@@ -7,7 +7,7 @@ Place the install.php file in the same directory as your site root. Load it in y
 
 The script will download the selected version from the MODX respository, unzip it in the same location, then forward you to the MODX setup. The install.php script will automatically delete itself.
 
-This can be used to either upgrade an existing installation or handle a new installation.
+This script is best used for a new installation. To upgrade an exising installation, install and use UpgradeMODX.
 
 #### Always make sure to backup your existing installation before doing anything else.
 
