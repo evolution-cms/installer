@@ -40,22 +40,22 @@ $InstallData = array(
         'link'     => 'http://modx.com/download/direct/modx-2.3.6-pl-sdk.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.4.0-pl'      => array(
+    'revo2.4.1-pl'      => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.4.0 Traditional (18.08.2015)',
-        'link'     => 'http://modx.com/download/direct/modx-2.4.0-pl.zip',
+        'name'     => 'MODX Revolution 2.4.1 Traditional (24.09.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.4.1-pl.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.4.0-ad'      => array(
+    'revo2.4.1-ad'      => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.4.0 Advanced (18.08.2015)',
-        'link'     => 'http://modx.com/download/direct/modx-2.4.0-pl-advanced.zip',
+        'name'     => 'MODX Revolution 2.4.1 Advanced (24.09.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.4.1-pl-advanced.zip',
         'location' => 'setup/index.php'
     ),
-    'revo2.4.0-sdk'     => array(
+    'revo2.4.1-sdk'     => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.4.0 SDK (18.08.2015)',
-        'link'     => 'http://modx.com/download/direct/modx-2.4.0-pl-sdk.zip',
+        'name'     => 'MODX Revolution 2.4.1 SDK (24.09.2015)',
+        'link'     => 'http://modx.com/download/direct/modx-2.4.1-pl-sdk.zip',
         'location' => 'setup/index.php'
     )
 );
