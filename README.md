@@ -17,6 +17,10 @@ You may need to change the permissions for newly created folders on line 145. Fo
 
 Changelog:
 
+Version 1.5.5
+(06-10-2015)
+- Update to 2.4.2
+
 Version 1.5.4
 (24-09-2015)
 - Update to 2.4.1
