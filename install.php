@@ -212,7 +212,7 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
         $ItemGrid[$item['tree']][$ver] = $item;
     }
 
-//@TODO : add check installer version
+//@TODO : add check installer version 
     echo '
 <!DOCTYPE html>
 <html>
