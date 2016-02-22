@@ -252,9 +252,9 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
     }
     echo '</form>
     <div class="footer">
-        <p>Created by <a href="http://ga-alex.com" title="">Bumkaka</a> & <a href="http://dmi3yy.com" title="">Dmi3yy</a></p>
-        <p>Modified for Revolution only and update maintained by <a href="http://sottwell.com" title="">sottwell</a></p>
-        <p>Designed by <a href="http://a-sharapov.com" title="">Sharapov</a></p>
+        <p>Created by <a href="http://ga-alex.com" target="_blank" title="">Bumkaka</a> & <a href="http://dmi3yy.com" target="_blank" title="">Dmi3yy</a></p>
+        <p>Modified for Revolution only and update maintained by <a href="http://sottwell.com" target="_blank" title="">sottwell</a></p>
+        <p>Designed by <a href="http://a-sharapov.com" target="_blank" title="">Sharapov</a></p>
     </div>
 </body>
 </html>
