@@ -11,53 +11,11 @@ if(extension_loaded('xdebug')){
 }
 
 $InstallData = array(
-	'evo1.0.15' => array(
+	'evo1.1' => array(
 		'tree' => 'Evolution',
-		'name' => 'MODX Evolution 1.0.15 (31.10.2014)',
-		'link' => 'https://github.com/modxcms/evolution/archive/v1.0.15.zip',
+		'name' => 'MODX Evolution 1.1 (29.02.2016)',
+		'link' => 'https://github.com/modxcms/evolution/archive/1.1.zip',
 	    'location' =>'install/index.php'
-	),
-	'evodmi3yy1.1b-d7.0.18' => array(
-		'tree' => 'Evolution',
-		'name' => 'MODX Evolution by Dmi3yy 1.1b-d7.0.18 (14.11.2014)',
-		'link' => 'https://github.com/dmi3yy/modx.evo.custom/archive/1.1b-d7.0.18.zip',
-	    'location' => 'install/index.php'
-	),
-	'evodmi3yy1.0.15-d6.0.18' => array(
-		'tree' => 'Evolution',
-		'name' => 'MODX Evolution by Dmi3yy 1.0.15-d6.0.18 (14.11.2014)',
-		'link' => 'https://github.com/dmi3yy/modx.evo.custom/archive/1.0.15-d6.18.zip',
-	    'location' => 'install/index.php'
-	),
-	'evojp1.0.14j-r5' => array(
-		'tree' => 'Evolution',
-		'name' => 'MODX Evolution 1.0.14J-r5 (31.09.2014)',
-	    'link' => 'http://modx.jp/?dl=evo.zip',
-	    'location' => 'install/index.php'
-	),
-	'clipper1.2.9' => array(
-		'tree' => 'Evolution',
-		'name' => 'ClipperCMS 1.2.9 (08.11.2014)',
-	    'link' => 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.9.zip',
-	    'location' => 'install/index.php'
-	),
-	'revo2.3.2-pl' => array(
-		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.2-pl Standard Traditional (21.10.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.2-pl.zip',
-	    'location' =>'setup/index.php'
-	),
-	'revo2.3.2-pl-ad' => array(
-		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.2-pl Standard Advanced (21.10.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.2-pl-advanced.zip',
-	    'location' =>'setup/index.php'
-	),
-	'revo2.3.2-pl-sdk' => array(
-		'tree' => 'Revolution',
-		'name' => 'MODX Revolution 2.3.2-pl Standard SDK (21.10.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.2-pl-sdk.zip',
-	    'location' => 'setup/index.php'
 	)
 );
 
