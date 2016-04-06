@@ -25,55 +25,55 @@ $InstallData = array(
     'revo2.5.0-rc1'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.5.0 RC1 Traditional (04.02.2016) NOT FOR PRODUCTION',
-        'link'     => 'http://modx.com/download/direct/modx-2.5.0-rc1.zip',
+        'link'     => 'https://modx.com/download/direct/modx-2.5.0-rc1.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.5.0-ad'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.5.0 RC1 Advanced (04.02.2016) NOT FOR PRODUCTION',
-        'link'     => 'http://modx.com/download/direct/modx-2.5.0-rc1-advanced.zip',
+        'link'     => 'https://modx.com/download/direct/modx-2.5.0-rc1-advanced.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.5.0-sdk'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.5.0 RC1 SDK (04.02.2016) NOT FOR PRODUCTION',
-        'link'     => 'http://modx.com/download/direct/modx-2.5.0-rc1-sdk.zip',
+        'link'     => 'https://modx.com/download/direct/modx-2.5.0-rc1-sdk.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.4.4-pl'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.4.4 Traditional (04.06.2016)',
-        'link'     => 'http://modx.com/download/direct/modx-2.4.4-pl.zip',
+        'link'     => 'https://modx.com/download/direct/modx-2.4.4-pl.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.4.4-ad'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.4.4 Advanced (04.06.2016)',
-        'link'     => 'http://modx.com/download/direct/modx-2.4.4-pl-advanced.zip',
+        'link'     => 'https://modx.com/download/direct/modx-2.4.4-pl-advanced.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.4.4-sdk'     => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.4.4 SDK (04.06.2016)',
-        'link'     => 'http://modx.com/download/direct/modx-2.4.4-pl-sdk.zip',
+        'link'     => 'https://modx.com/download/direct/modx-2.4.4-pl-sdk.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.4.3-pl'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.4.3 Traditional (02.11.2016)',
-        'link'     => 'http://modx.com/download/direct/modx-2.4.3-pl.zip',
+        'link'     => 'https://modx.com/download/direct/modx-2.4.3-pl.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.4.3-ad'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.4.3 Advanced (02.11.2016)',
-        'link'     => 'http://modx.com/download/direct/modx-2.4.3-pl-advanced.zip',
+        'link'     => 'https://modx.com/download/direct/modx-2.4.3-pl-advanced.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.4.3-sdk'     => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.4.3 SDK (02.11.2016)',
-        'link'     => 'http://modx.com/download/direct/modx-2.4.3-pl-sdk.zip',
+        'link'     => 'https://modx.com/download/direct/modx-2.4.3-pl-sdk.zip',
         'location' => 'setup/index.php'
     )
 );
