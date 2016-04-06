@@ -57,7 +57,7 @@ $InstallData = array(
         'name'     => 'MODX Revolution 2.4.4 SDK (04.06.2016)',
         'link'     => 'http://modx.com/download/direct/modx-2.4.4-pl-sdk.zip',
         'location' => 'setup/index.php'
-    )
+    ),
     'revo2.4.3-pl'      => array(
         'tree'     => 'Revolution',
         'name'     => 'MODX Revolution 2.4.3 Traditional (02.11.2016)',
