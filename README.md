@@ -20,6 +20,7 @@ Changelog:
 Version 1.6.2
 (06-04-2016)
 - Update to Revo 2.4.4
+- Chaged URLs to use https
 
 Version 1.6.1
 (11-02-2016)
