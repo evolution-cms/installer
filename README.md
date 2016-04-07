@@ -18,10 +18,10 @@ You may need to change the permissions for newly created folders on line 145. Fo
 Changelog:
 
 Version 1.6.3
-
 (07-04-2016)
 - Update to Revo 2.5.0-rc2
 
+Version 1.6.2
 (06-04-2016)
 - Update to Revo 2.4.4
 - Chaged URLs to use https
