@@ -1,5 +1,5 @@
 <?php
-$version = '1.6.3';
+$version = '1.6.4';
 
 error_reporting(0);
 ini_set('display_errors', 0);
@@ -22,22 +22,22 @@ if (ini_get('allow_url_fopen')) {
 }
 
 $InstallData = array(
-    'revo2.5.0-rc2'      => array(
+    'revo2.5.0-pl'      => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.5.0 RC2 Traditional (07.04.2016) NOT FOR PRODUCTION',
-        'link'     => 'https://modx.com/download/direct/modx-2.5.0-rc2.zip',
+        'name'     => 'MODX Revolution 2.5.0 Traditional (21.04.2016)',
+        'link'     => 'https://modx.com/download/direct/modx-2.5.0-pl.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.5.0-ad'      => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.5.0 RC2 Advanced (07.04.2016) NOT FOR PRODUCTION',
-        'link'     => 'https://modx.com/download/direct/modx-2.5.0-rc2-advanced.zip',
+        'name'     => 'MODX Revolution 2.5.0 Advanced (21.04.2016)',
+        'link'     => 'https://modx.com/download/direct/modx-2.5.0-pl-advanced.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.5.0-sdk'      => array(
         'tree'     => 'Revolution',
-        'name'     => 'MODX Revolution 2.5.0 RC2 SDK (07.04.2016) NOT FOR PRODUCTION',
-        'link'     => 'https://modx.com/download/direct/modx-2.5.0-rc2-sdk.zip',
+        'name'     => 'MODX Revolution 2.5.0 SDK (21.04.2016)',
+        'link'     => 'https://modx.com/download/direct/modx-2.5.0-pl-sdk.zip',
         'location' => 'setup/index.php'
     ),
     'revo2.4.4-pl'      => array(
