@@ -19,7 +19,7 @@ Changelog:
 
 Version 1.6.5
 (22-04-2016)
-- Changed test for safe_mode and base_dir to account for non-boolean results, thanks to bezumkin and jako
+- Changed test for safe_mode and open_basedir to account for non-boolean results, thanks to bezumkin and jako
 
 Version 1.6.4
 (21-04-2016)
