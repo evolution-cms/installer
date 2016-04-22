@@ -17,6 +17,10 @@ You may need to change the permissions for newly created folders on line 145. Fo
 
 Changelog:
 
+Version 1.6.5
+(22-04-2016)
+- Changed test for safe_mode and base_dir to account for non-boolean results
+
 Version 1.6.4
 (21-04-2016)
 - Update to Revo 2.5.0-pl
