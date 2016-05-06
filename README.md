@@ -17,6 +17,10 @@ You may need to change the permissions for newly created folders on line 184. Fo
 
 Changelog:
 
+Version 1.6.6
+(06-05-2016)
+- Corrected line 205 to use the mmkDir() function
+
 Version 1.6.5
 (22-04-2016)
 - Changed test for safe_mode and open_basedir to account for non-boolean results, thanks to bezumkin and jako
