@@ -13,7 +13,7 @@ In order to be able to directly download the MODX zip archive from the MODX repo
 
 In order to be able to unzip the downloaded MODX archive, your PHP must be at least version 5.2, it must have been compiled to include the zip extensions, and have the zip extension enabled.
 
-You may need to change the permissions for newly created folders on line 145. For example, your server may require directory permissions of 0755.
+You may need to change the permissions for newly created folders on line 184. For example, your server may require directory permissions of 0755.
 
 Changelog:
 
