@@ -1,5 +1,5 @@
 <?php
-$version = '1.6.5';
+$version = '1.6.6';
 
 error_reporting(0);
 ini_set('display_errors', 0);
@@ -202,7 +202,7 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
         die('Failed to open zip file');
     }
     if (! is_dir(dirname(__FILE__) . '/temp')) {
-        mkdir(dirname(__FILE__) . '/temp');
+        mmkDir(dirname(__FILE__) . '/temp');
     }
     $success = $zip->extractTo(dirname(__FILE__) . '/temp/');
     if ($success !== true) {
