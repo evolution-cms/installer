@@ -17,6 +17,10 @@ You may need to change the permissions for newly created folders on line 184. Fo
 
 Changelog:
 
+Version 1.6.7
+(21-07-2016)
+- Updated for Revo 2.5.1 release
+
 Version 1.6.6
 (06-05-2016)
 - Corrected line 205 to use the mmkDir() function
