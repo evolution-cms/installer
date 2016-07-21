@@ -7,7 +7,7 @@ Place the install.php file in the same directory as your site root. Load it in y
 
 The script will download the selected version from the MODX respository, unzip it in the same location, then forward you to the MODX setup. The install.php script will automatically delete itself.
 
-#### This script is intended for initial installation. Install BobRay's UpgradeMODX extra for upgrades.
+#### This script is intended for initial installation. Install [BobRay's UpgradeMODX](https://github.com/BobRay/UpgradeMODX) extra for upgrades.
 
 In order to be able to directly download the MODX zip archive from the MODX repository, your server must have either allow_url_fopen or cURL enabled.
 
