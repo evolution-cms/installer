@@ -221,7 +221,7 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
         die('Failed to open zip file');
     }
     if (! is_dir(dirname(__FILE__) . '/temp')) {
-        mmkDir(dirname(__FILE__) . '/temp');
+        ModxInstaller::mmkDir(dirname(__FILE__) . '/temp');
     }
     $success = $zip->extractTo(dirname(__FILE__) . '/temp/');
     if ($success !== true) {
