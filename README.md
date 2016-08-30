@@ -17,6 +17,10 @@ You may need to change the permissions for newly created folders on line 184. Fo
 
 Changelog:
 
+Version 1.6.8
+(30-08-2016)
+- Fix bug causing 500 error
+
 Version 1.6.7
 (21-07-2016)
 - Updated for Revo 2.5.1 release
