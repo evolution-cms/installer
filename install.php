@@ -1,5 +1,5 @@
 <?php
-$version = '1.6.9';
+$version = '1.6.10';
 
 error_reporting(0);
 ini_set('display_errors', 0);
