@@ -1,5 +1,5 @@
 <?php
-$version = '0.2';
+$version = '0.2.1';
 error_reporting(0);
 ini_set('display_errors', 0);
 set_time_limit(0);
@@ -13,8 +13,8 @@ if(extension_loaded('xdebug')){
 $InstallData = array(
 	'evo1.1' => array(
 		'tree' => 'Evolution',
-		'name' => 'MODX Evolution 1.1 (29.02.2016)',
-		'link' => 'https://github.com/modxcms/evolution/archive/1.1.zip',
+		'name' => 'Evolution 1.2.1 (11.01.2017)',
+		'link' => 'https://github.com/modxcms/evolution/archive/1.2.1.zip',
 	    'location' =>'install/index.php'
 	)
 );
@@ -30,7 +30,7 @@ class ModxInstaller{
 				while(!feof($file)) {
 					fwrite($newf, fread($file, 1024 * 8 ), 1024 * 8 );
 				}
-			}			
+			}
 		} catch(Exception $e) {
 			$this->errors[] = array('ERROR:Download',$e->getMessage());
 			return false;
@@ -38,7 +38,7 @@ class ModxInstaller{
 		if ($file) fclose($file);
 		if ($newf) fclose($newf);
 		return true;
-	}	
+	}
 	static public function removeFolder($path){
 		$dir = realpath($path);
 		if ( !is_dir($dir)) return;
@@ -61,7 +61,7 @@ class ModxInstaller{
 		$dest = realpath($dest);
 		$objects = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path), RecursiveIteratorIterator::SELF_FIRST);
 		foreach($objects as $name => $object)
-		{			
+		{
 			$startsAt = substr(dirname($name), strlen($path));
 			self::mmkDir($dest.$startsAt);
 			if ( $object->isDir() ) {
@@ -80,10 +80,10 @@ class ModxInstaller{
 		}
 	}
 }
-	
+
 if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GET['modx']])) {
 	$rowInstall = $InstallData[$_GET['modx']];
-		
+
 	//run unzip and install
 	ModxInstaller::downloadFile($rowInstall['link'] ,"modx.zip");
 	$zip = new ZipArchive;
@@ -103,17 +103,17 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
 	header('Location: '.$rowInstall['location']);
 
 }else{
-$ItemGrid = array(); 
+$ItemGrid = array();
 foreach($InstallData as $ver=>$item){
 	$ItemGrid[$item['tree']][$ver] = $item;
 }
 
-//@TODO : add check installer version	
+//@TODO : add check installer version
 echo '
 <!DOCTYPE html>
 <html>
 <head>
-	<title>MODX Installer v'.$version.'</title>
+	<title>Installer v'.$version.'</title>
 	<meta charset="utf-8">
 	<style type="text/css">
 		@import url(http://fonts.googleapis.com/css?family=PT+Serif:400,700&subset=latin,cyrillic);article,aside,audio,b,body,canvas,dd,details,div,dl,dt,em,fieldset,figcaption,figure,footer,form,h1,h2,h3,h4,h5,h6,header,hgroup,html,i,img,label,li,mark,menu,nav,ol,p,section,span,strong,summary,table,tbody,td,tfoot,th,thead,time,tr,u,ul,video{margin:0;padding:0;border:0;outline:0;vertical-align:baseline;background:0 0;font-size:100%}a{margin:0;padding:0;font-size:100%;vertical-align:baseline;background:0 0}table{border-collapse:collapse;border-spacing:0}td,td img{vertical-align:top}button,input,select,textarea{margin:0;font-size:100%}input[type=password],input[type=text],textarea{padding:0}input[type=checkbox]{vertical-align:bottom}input[type=radio]{vertical-align:text-bottom}article,aside,details,figcaption,figure,footer,header,hgroup,menu,nav,section{display:block}html{overflow-y:scroll}body{color:#111;text-align:left;font:12px Verdana,"Geneva CY","DejaVu Sans",sans-serif}button,input,select,textarea{font-family:Verdana,"Geneva CY","DejaVu Sans",sans-serif}a,a:active,a:focus,a:hover,a:visited,button,input[type=button],input[type=submit],label{cursor:pointer}::selection{background:#84d5e8;color:#fff;text-shadow:none}html{position:relative;background:#f8f8f8 url(http://installer.evolution-cms.com/img/base.png)}body{background:0 0;font-size:14px;line-height:22px;font-family:"Helvetica Neue",helvetica,arial,sans-serif;text-shadow:0 1px 0 #fff}a{color:#0f7096}.button,button{color:#fff;display:inline-block;padding:15px;font-size:20px;text-decoration:none;border:5px solid #fff;border-radius:8px;background-color:#67a749;background-image:linear-gradient(to top,#67a749 0,#67a749 27.76%,#a1c755 100%);text-shadow:0 0 2px rgba(0,0,0,.64)}a.button{padding:5px 15px}h1,h2,h3,h4,h5{font-family:"PT Serif",helvetica,arial,sans-serif;line-height:28px}h1{font-size:26px}h2{font-size:22px}h3{font-size:18px}h4{font-size:16px}h5{font-size:14px}.header{-moz-box-sizing: border-box;float:left;width:100%;box-sizing:border-box;background:#fff;background:linear-gradient(to bottom,#fff,#f2f2f2);padding:20px;border-bottom:1px solid #fff}.header img{float:left;width:180px;margin:0 5px 0 0}.header h1.main-heading{color:#137899;font-size:32px;line-height:40px}.header-button-wrapper{float:right}.main-heading>span{display:none}.main-heading>sup{color:#ccc;font-weight:400}.content{float:left;padding:30px}.content h2{margin:0;line-height:20px}.content form{margin:10px 0 50px}.content form .column{float:left;box-sizing:border-box;width:500px;margin:20px 0}.column h3{display:inline-block;padding:0 0 5px;margin:0 0 20px;border-bottom:2px solid #000}.column label{float:left;width:100%;clear:both;padding:3px 0}form button{float:left;width:200px;clear:both}label>span{border-bottom:1px dotted #555}label>input{margin:0 5px 0 0}.footer{position:absolute;bottom:20px;right:20px;font-size:10px;color:#ccc}.footer a{color:#aaa}
@@ -122,7 +122,7 @@ echo '
 <body>
 	<div class="header">
 		<img src="http://installer.evolution-cms.com/img/logo.png">
-		<h1 class="main-heading"><span>MODX</span> Installer <sup>v'.$version.'</sup> </h1>
+		<h1 class="main-heading">Installer <sup>v'.$version.'</sup> </h1>
 		<div class="header-button-wrapper">
 			<!--<a href="#" class="button">New version</a>&nbsp;-->
 			<a href="https://github.com/evolution-cms/installer" class="button">GitHub</a>
@@ -130,7 +130,7 @@ echo '
 	</div>
 </div>
 <div class="content">';
-echo '<h2>Choose MODX version for Install</h2>
+echo '<h2>Choose version for install</h2>
 	<form>';
 	foreach($ItemGrid as $tree=>$item){
 		echo '<div class="column">
@@ -140,9 +140,9 @@ echo '<h2>Choose MODX version for Install</h2>
 			}
 		echo '</div>';
 	}
-	
+
 if(ini_get('allow_url_fopen') ) {
-echo '<br><button>Install &rarr;</button>'; 
+echo '<br><button>Install &rarr;</button>';
 } else {
 echo '<h2>Cannot download the files - url_fopen is not enabled on this server.</h2>';
 }
@@ -154,5 +154,5 @@ echo '</form>
 </body>
 </html>
 ';
-}	
+}
 ?>
