@@ -20,6 +20,7 @@ Changelog:
 Version 1.6.11
 (09.02.2017)
 - Add links for Revo 2.5.5
+- Merge fixes for cURL
 
 Version 1.6.9
 (22-11-2016)
