@@ -11,34 +11,34 @@ if (extension_loaded('xdebug')) {
 }
 
 $InstallData = array(
-	'evo1.0.15' => array(
+	'evo_master' => array(
 		'tree' => 'Evolution',
-		'name' => 'MODX Evolution 1.0.15 (31.10.2014)',
-		'link' => 'https://github.com/modxcms/evolution/archive/v1.0.15.zip',
+		'name' => 'Evolution CMS 1.3 and newer (branch master)',
+		'link' => 'https://github.com/evolution-cms/evolution/archive/master.zip',
 		'location' => 'install/index.php'
 	),
-	'evodmi3yy1.1b-d7.0.18' => array(
-		'tree' => 'Evolution',
-		'name' => 'MODX Evolution by Dmi3yy 1.1b-d7.0.18 (14.11.2014)',
-		'link' => 'https://github.com/dmi3yy/modx.evo.custom/archive/1.1b-d7.0.18.zip',
+	'modx_origin' => array(
+		'tree' => 'Modx Evo',
+		'name' => 'MODX Evolution 1.x - 1.2.2. This is last "Modx"',
+		'link' => 'https://github.com/modxcms/evolution/archive/master.zip',
 		'location' => 'install/index.php'
 	),
-	'evodmi3yy1.0.15-d6.0.18' => array(
-		'tree' => 'Evolution',
-		'name' => 'MODX Evolution by Dmi3yy 1.0.15-d6.0.18 (14.11.2014)',
-		'link' => 'https://github.com/dmi3yy/modx.evo.custom/archive/1.0.15-d6.18.zip',
+	'modx_dmi3yy' => array(
+		'tree' => 'Modx Evo',
+		'name' => 'Modx Evo Custom by dmi3yy. This is Last "Modx"',
+		'link' => 'https://github.com/dmi3yy/modx.evo.custom/archive/master.zip',
 		'location' => 'install/index.php'
 	),
-	'evojp1.0.14j-r5' => array(
+	'modx_yama' => array(
 		'tree' => 'Evolution',
-		'name' => 'MODX Evolution 1.0.14J-r5 (31.09.2014)',
+		'name' => 'MODX Evolution by Yama',
 		'link' => 'http://modx.jp/?dl=evo.zip',
 		'location' => 'install/index.php'
 	),
-	'clipper1.2.9' => array(
-		'tree' => 'Evolution',
-		'name' => 'ClipperCMS 1.2.9 (08.11.2014)',
-		'link' => 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.9.zip',
+	'clipper_master' => array(
+		'tree' => 'ClipperCMS',
+		'name' => 'ClipperCMS ',
+		'link' => 'https://github.com/ClipperCMS/ClipperCMS/archive/master.zip',
 		'location' => 'install/index.php'
 	),
 	'revo2.3.2-pl' => array(
