@@ -3,11 +3,11 @@ $version = '0.2';
 error_reporting(0);
 ini_set('display_errors', 0);
 set_time_limit(0);
-ini_set('max_execution_time',0);
+ini_set('max_execution_time', 0);
 header('Content-Type: text/html; charset=utf-8');
 
-if(extension_loaded('xdebug')){
-    ini_set('xdebug.max_nesting_level', 100000);
+if (extension_loaded('xdebug')) {
+	ini_set('xdebug.max_nesting_level', 100000);
 }
 
 $InstallData = array(
@@ -15,82 +15,83 @@ $InstallData = array(
 		'tree' => 'Evolution',
 		'name' => 'MODX Evolution 1.0.15 (31.10.2014)',
 		'link' => 'https://github.com/modxcms/evolution/archive/v1.0.15.zip',
-	    'location' =>'install/index.php'
+		'location' => 'install/index.php'
 	),
 	'evodmi3yy1.1b-d7.0.18' => array(
 		'tree' => 'Evolution',
 		'name' => 'MODX Evolution by Dmi3yy 1.1b-d7.0.18 (14.11.2014)',
 		'link' => 'https://github.com/dmi3yy/modx.evo.custom/archive/1.1b-d7.0.18.zip',
-	    'location' => 'install/index.php'
+		'location' => 'install/index.php'
 	),
 	'evodmi3yy1.0.15-d6.0.18' => array(
 		'tree' => 'Evolution',
 		'name' => 'MODX Evolution by Dmi3yy 1.0.15-d6.0.18 (14.11.2014)',
 		'link' => 'https://github.com/dmi3yy/modx.evo.custom/archive/1.0.15-d6.18.zip',
-	    'location' => 'install/index.php'
+		'location' => 'install/index.php'
 	),
 	'evojp1.0.14j-r5' => array(
 		'tree' => 'Evolution',
 		'name' => 'MODX Evolution 1.0.14J-r5 (31.09.2014)',
-	    'link' => 'http://modx.jp/?dl=evo.zip',
-	    'location' => 'install/index.php'
+		'link' => 'http://modx.jp/?dl=evo.zip',
+		'location' => 'install/index.php'
 	),
 	'clipper1.2.9' => array(
 		'tree' => 'Evolution',
 		'name' => 'ClipperCMS 1.2.9 (08.11.2014)',
-	    'link' => 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.9.zip',
-	    'location' => 'install/index.php'
+		'link' => 'https://github.com/ClipperCMS/ClipperCMS/archive/clipper_1.2.9.zip',
+		'location' => 'install/index.php'
 	),
 	'revo2.3.2-pl' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.3.2-pl Standard Traditional (21.10.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.2-pl.zip',
-	    'location' =>'setup/index.php'
+		'link' => 'http://modx.com/download/direct/modx-2.3.2-pl.zip',
+		'location' => 'setup/index.php'
 	),
 	'revo2.3.2-pl-ad' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.3.2-pl Standard Advanced (21.10.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.2-pl-advanced.zip',
-	    'location' =>'setup/index.php'
+		'link' => 'http://modx.com/download/direct/modx-2.3.2-pl-advanced.zip',
+		'location' => 'setup/index.php'
 	),
 	'revo2.3.2-pl-sdk' => array(
 		'tree' => 'Revolution',
 		'name' => 'MODX Revolution 2.3.2-pl Standard SDK (21.10.2014)',
-	    'link' => 'http://modx.com/download/direct/modx-2.3.2-pl-sdk.zip',
-	    'location' => 'setup/index.php'
+		'link' => 'http://modx.com/download/direct/modx-2.3.2-pl-sdk.zip',
+		'location' => 'setup/index.php'
 	)
 );
 
-class ModxInstaller{
-	static public function downloadFile ($url, $path) {
+class ModxInstaller {
+	static public function downloadFile($url, $path) {
 		$newfname = $path;
 		try {
-			$file = fopen ($url, "rb");
+			$file = fopen($url, "rb");
 			if ($file) {
-				$newf = fopen ($newfname, "wb");
+				$newf = fopen($newfname, "wb");
 				if ($newf)
-				while(!feof($file)) {
-					fwrite($newf, fread($file, 1024 * 8 ), 1024 * 8 );
-				}
-			}			
-		} catch(Exception $e) {
-			$this->errors[] = array('ERROR:Download',$e->getMessage());
+					while (!feof($file)) {
+						fwrite($newf, fread($file, 1024 * 8), 1024 * 8);
+					}
+			}
+		} catch (Exception $e) {
+			$this->errors[] = array('ERROR:Download', $e->getMessage());
 			return false;
 		}
 		if ($file) fclose($file);
 		if ($newf) fclose($newf);
 		return true;
-	}	
-	static public function removeFolder($path){
+	}
+
+	static public function removeFolder($path) {
 		$dir = realpath($path);
-		if ( !is_dir($dir)) return;
+		if (!is_dir($dir)) return;
 		$it = new RecursiveDirectoryIterator($dir);
 		$files = new RecursiveIteratorIterator($it, RecursiveIteratorIterator::CHILD_FIRST);
-		foreach($files as $file) {
+		foreach ($files as $file) {
 			if ($file->getFilename() === '.' || $file->getFilename() === '..') {
 				continue;
 			}
-			if ($file->isDir()){
+			if ($file->isDir()) {
 				rmdir($file->getRealPath());
 			} else {
 				unlink($file->getRealPath());
@@ -98,39 +99,39 @@ class ModxInstaller{
 		}
 		rmdir($dir);
 	}
+
 	static public function copyFolder($src, $dest) {
 		$path = realpath($src);
 		$dest = realpath($dest);
 		$objects = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path), RecursiveIteratorIterator::SELF_FIRST);
-		foreach($objects as $name => $object)
-		{			
+		foreach ($objects as $name => $object) {
 			$startsAt = substr(dirname($name), strlen($path));
 			self::mmkDir($dest.$startsAt);
-			if ( $object->isDir() ) {
+			if ($object->isDir()) {
 				self::mmkDir($dest.substr($name, strlen($path)));
 			}
 
-			if(is_writable($dest.$startsAt) and $object->isFile())
-			{
+			if (is_writable($dest.$startsAt) and $object->isFile()) {
 				copy((string)$name, $dest.$startsAt.DIRECTORY_SEPARATOR.basename($name));
 			}
 		}
 	}
-	static public function mmkDir($folder, $perm=0777) {
-		if(!is_dir($folder)) {
+
+	static public function mmkDir($folder, $perm = 0777) {
+		if (!is_dir($folder)) {
 			mkdir($folder, $perm);
 		}
 	}
 }
-	
+
 if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GET['modx']])) {
 	$rowInstall = $InstallData[$_GET['modx']];
-		
+
 	//run unzip and install
-	ModxInstaller::downloadFile($rowInstall['link'] ,"modx.zip");
+	ModxInstaller::downloadFile($rowInstall['link'], "modx.zip");
 	$zip = new ZipArchive;
 	$res = $zip->open(dirname(__FILE__)."/modx.zip");
-	$zip->extractTo(dirname(__FILE__).'/temp' );
+	$zip->extractTo(dirname(__FILE__).'/temp');
 	$zip->close();
 	unlink(dirname(__FILE__).'/modx.zip');
 
@@ -144,14 +145,14 @@ if (!empty($_GET['modx']) && is_scalar($_GET['modx']) && isset($InstallData[$_GE
 	unlink(basename(__FILE__));
 	header('Location: '.$rowInstall['location']);
 
-}else{
-$ItemGrid = array(); 
-foreach($InstallData as $ver=>$item){
-	$ItemGrid[$item['tree']][$ver] = $item;
-}
+} else {
+	$ItemGrid = array();
+	foreach ($InstallData as $ver => $item) {
+		$ItemGrid[$item['tree']][$ver] = $item;
+	}
 
 //@TODO : add check installer version	
-echo '
+	echo '
 <!DOCTYPE html>
 <html>
 <head>
@@ -172,23 +173,23 @@ echo '
 	</div>
 </div>
 <div class="content">';
-echo '<h2>Choose MODX version for Install</h2>
+	echo '<h2>Choose MODX version for Install</h2>
 	<form>';
-	foreach($ItemGrid as $tree=>$item){
+	foreach ($ItemGrid as $tree => $item) {
 		echo '<div class="column">
 			<h3>'.strtoupper($tree).'</h3>';
-			foreach($item as $version => $itemInfo){
-				echo '<label><input type="radio" name="modx" value="'.$version.'">            <span>'.$itemInfo['name'].'</span></label><br>';
-			}
+		foreach ($item as $version => $itemInfo) {
+			echo '<label><input type="radio" name="modx" value="'.$version.'">            <span>'.$itemInfo['name'].'</span></label><br>';
+		}
 		echo '</div>';
 	}
-	
-if(ini_get('allow_url_fopen') ) {
-echo '<br><button>Install &rarr;</button>'; 
-} else {
-echo '<h2>Cannot download the files - url_fopen is not enabled on this server.</h2>';
-}
-echo '</form>
+
+	if (ini_get('allow_url_fopen')) {
+		echo '<br><button>Install &rarr;</button>';
+	} else {
+		echo '<h2>Cannot download the files - url_fopen is not enabled on this server.</h2>';
+	}
+	echo '</form>
 	<div class="footer">
 		<p>Created by <a href="http://ga-alex.com" title="">Bumkaka</a> & <a href="http://dmi3yy.com" title="">Dmi3yy</a></p>
 		<p>Designed by <a href="http://a-sharapov.com" title="">Sharapov</a></p>
@@ -196,5 +197,5 @@ echo '</form>
 </body>
 </html>
 ';
-}	
+}
 ?>
