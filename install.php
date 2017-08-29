@@ -90,23 +90,24 @@ class ModxInstaller{
 	
 if (!empty($_GET['evo']) && is_scalar($_GET['evo']) && isset($InstallData[$_GET['evo']])) {
 	$rowInstall = $InstallData[$_GET['evo']];
-		
+	$base_dir = str_replace('\\','/',__DIR__);
+	$temp_dir = str_replace('\\','/',__DIR__).'/temp';
 	//run unzip and install
 	ModxInstaller::downloadFile($rowInstall['link'] ,"evo.zip");
 	$zip = new ZipArchive;
-	$res = $zip->open(dirname(__FILE__)."/evo.zip");
-	$zip->extractTo(dirname(__FILE__).'/temp' );
+	$res = $zip->open($base_dir."/evo.zip");
+	$zip->extractTo($temp_dir);
 	$zip->close();
-	unlink(dirname(__FILE__).'/evo.zip');
+	unlink($base_dir.'/evo.zip');
 
-	if ($handle = opendir(dirname(__FILE__).'/temp')) {
+	if ($handle = opendir($temp_dir)) {
 		while (false !== ($name = readdir($handle))) if ($name != "." && $name != "..") $dir = $name;
 		closedir($handle);
 	}
 
-	ModxInstaller::copyFolder(dirname(__FILE__).'/temp/'.$dir, dirname(__FILE__).'/');
-	ModxInstaller::removeFolder(dirname(__FILE__).'/temp');
-	unlink(basename(__FILE__));
+	ModxInstaller::copyFolder($temp_dir.'/'.$dir, $base_dir.'/');
+	ModxInstaller::removeFolder($temp_dir);
+	unlink(__FILE__);
 	header('Location: '.$rowInstall['location']);
 
 }else{
@@ -163,4 +164,4 @@ echo '</form>
 </body>
 </html>
 ';
-}	
+}
