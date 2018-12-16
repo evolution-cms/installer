@@ -138,7 +138,7 @@ class EvoInstaller{
     }
     static public function getPackageInfo() {
         return array(
-            '1.4.6' => array(
+            '1.4.7' => array(
                 'tree' => 'Evolution',
                 'name' => 'Evolution CMS (1.4.7)',
                 'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.7.zip',
