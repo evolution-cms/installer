@@ -138,10 +138,10 @@ class EvoInstaller{
     }
     static public function getPackageInfo() {
         return array(
-            '1.4.8' => array(
+            '1.4.9' => array(
                 'tree' => 'Evolution',
-                'name' => 'Evolution CMS LTS(1.4.8)',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.8.zip',
+                'name' => 'Evolution CMS LTS(1.4.9)',
+                'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.9.zip',
                 'location' =>'install/index.php'
             ),
             '1.4.x' => array(
