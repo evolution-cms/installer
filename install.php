@@ -124,17 +124,18 @@ class EvoInstaller{
         exit;
     }
     static public function rmdirs($dir) {
-        if (is_dir($dir) && !is_link($dir)) {
-            $_ = $dir;
-            $paths = array();
-            while ($glob = glob($_.'/{*,.[!.]*,..?*}', GLOB_BRACE)) {
-                $paths = array_merge($glob, $paths);
-                $_ .= '/*';
+        if (is_dir($dir)) {
+            $objects = scandir($dir);
+            foreach ($objects as $object) {
+                if ($object != "." && $object != "..") {
+                    if (is_dir($dir."/".$object) && !is_link($dir."/".$object))
+                        self::rmdirs($dir."/".$object);
+                    else
+                        unlink($dir."/".$object);
+                }
             }
-            array_map('unlink', array_filter($paths, 'is_file'));
-            array_map('rmdir',  array_filter($paths, 'is_dir'));
+            rmdir($dir);
         }
-        rmdir($dir);
     }
     static public function getPackageInfo() {
         return array(
