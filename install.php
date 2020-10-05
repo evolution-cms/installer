@@ -139,6 +139,20 @@ class EvoInstaller{
     }
     static public function getPackageInfo() {
         return array(
+            '3.0RC' => array(
+                'tree' => 'Evolution',
+                'name' => 'Evolution CMS 3.0 RC',
+                'link' => 'https://github.com/evolution-cms/evolution/archive/3.0RC.zip',
+                'location' => 'install/index.php'
+            ),
+            
+            '3.x' => array(
+                'tree' => 'Evolution',
+                'name' => 'Evolution CMS 3(3.x develop version)',
+                'link' => 'https://github.com/evolution-cms/evolution/archive/3.x.zip',
+                'location' => 'install/index.php'
+            ),
+            
             '2.0.3' => array(
                 'tree' => 'Evolution',
                 'name' => 'Evolution CMS 2.0.3',
