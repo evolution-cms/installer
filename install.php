@@ -57,8 +57,8 @@ else                                echo '<br><button>Install &rarr;</button>';
 
 echo '</form>
     <div class="footer">
-        <p>Created by <a href="http://ga-alex.com" title="">Bumkaka</a> & <a href="http://dmi3yy.com" title="">Dmi3yy</a></p>
-        <p>Designed by <a href="http://a-sharapov.com" title="">Sharapov</a></p>
+        <p>Created by Bumkaka &amp; <a href="https://dmi3yy.com/">Dmi3yy</a></p>
+        <p>Designed by <a href="https://a-sharapov.com">Sharapov</a></p>
     </div>
 </body>
 </html>
@@ -139,10 +139,10 @@ class EvoInstaller{
     }
     static public function getPackageInfo() {
         return array(
-            '3.0RC' => array(
+            '3.0RC2' => array(
                 'tree' => 'Evolution',
-                'name' => 'Evolution CMS 3.0 RC',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/3.0RC.zip',
+                'name' => 'Evolution CMS 3.0 RC2',
+                'link' => 'https://github.com/evolution-cms/evolution/archive/3.0RC2.zip',
                 'location' => 'install/index.php'
             ),
             
@@ -153,10 +153,10 @@ class EvoInstaller{
                 'location' => 'install/index.php'
             ),
             
-            '2.0.3' => array(
+            '2.0.4' => array(
                 'tree' => 'Evolution',
-                'name' => 'Evolution CMS 2.0.3',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/2.0.3.zip',
+                'name' => 'Evolution CMS 2.0.4',
+                'link' => 'https://github.com/evolution-cms/evolution/archive/2.0.4.zip',
                 'location' => 'install/index.php'
             ),
             
@@ -167,10 +167,10 @@ class EvoInstaller{
                 'location' => 'install/index.php'
             ),
             
-            '1.4.11' => array(
+            '1.4.12' => array(
                 'tree' => 'Evolution',
-                'name' => 'Evolution CMS 1.4.11',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.11.zip',
+                'name' => 'Evolution CMS 1.4.12',
+                'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.12.zip',
                 'location' =>'install/index.php'
             ),
             '1.4.x' => array(
