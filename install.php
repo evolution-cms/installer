@@ -139,34 +139,36 @@ class EvoInstaller{
     }
     static public function getPackageInfo() {
         return array(
+            '3.0.2' => array(
+                'tree' => 'Evolution',
+                'name' => 'Evolution CMS 3.0.2',
+                'link' => 'https://github.com/evolution-cms/evolution/archive/3.0.2.zip',
+                'location' => 'install/index.php'
+            ),
             '3.0.1' => array(
                 'tree' => 'Evolution',
                 'name' => 'Evolution CMS 3.0.1',
                 'link' => 'https://github.com/evolution-cms/evolution/archive/3.0.1.zip',
                 'location' => 'install/index.php'
             ),
-            
             '3.x' => array(
                 'tree' => 'Evolution',
                 'name' => 'Evolution CMS 3(3.x develop version)',
                 'link' => 'https://github.com/evolution-cms/evolution/archive/3.x.zip',
                 'location' => 'install/index.php'
-            ),
-            
+            ),      
             '2.0.4' => array(
                 'tree' => 'Evolution',
                 'name' => 'Evolution CMS 2.0.4',
                 'link' => 'https://github.com/evolution-cms/evolution/archive/2.0.4.zip',
                 'location' => 'install/index.php'
             ),
-            
             '2.0.x' => array(
                 'tree' => 'Evolution',
                 'name' => 'Evolution CMS 2(2.0.x develop version)',
                 'link' => 'https://github.com/evolution-cms/evolution/archive/2.0.x.zip',
                 'location' => 'install/index.php'
             ),
-            
             '1.4.12' => array(
                 'tree' => 'Evolution',
                 'name' => 'Evolution CMS 1.4.12',
@@ -179,7 +181,6 @@ class EvoInstaller{
                 'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.x.zip',
                 'location' => 'install/index.php'
             ),
-            
         );
     }
     static public function hasDirPerm() {
