@@ -141,8 +141,8 @@ class EvoInstaller{
         return array(
             '3.1.5' => array(
                 'tree' => 'Evolution',
-                'name' => 'Evolution CMS 3.1.5',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/3.1.5.zip',
+                'name' => 'Evolution CMS 3.1.6',
+                'link' => 'https://github.com/evolution-cms/evolution/archive/3.1.6.zip',
                 'location' => 'install/index.php'
             ),
             '3.x' => array(
@@ -153,8 +153,8 @@ class EvoInstaller{
             ),     
             '1.4.14' => array(
                 'tree' => 'Evolution',
-                'name' => 'Evolution CMS 1.4.14',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.14.zip',
+                'name' => 'Evolution CMS 1.4.15',
+                'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.15.zip',
                 'location' =>'install/index.php'
             ),
             '1.4.x' => array(
