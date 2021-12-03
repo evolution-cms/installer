@@ -12,7 +12,7 @@ if(extension_loaded('xdebug')) {
     ini_set('xdebug.max_nesting_level', 100000);
 }
 
-if (!empty($_GET['evo']) && EvoInstaller::doInstall($_GET['evo'])) {
+if (!empty($_GET['target']) && Installer::doInstall($_GET['target'])) {
     exit;
 }
 
@@ -20,7 +20,7 @@ header('Content-Type: text/html; charset=utf-8');
 
 //@TODO : add check installer version
 
-class EvoInstaller{
+class Installer{
     public static $packageInfo = [
         '3.1.7' => [
             'tree' => 'Evolution',
@@ -64,12 +64,11 @@ class EvoInstaller{
             $rs[] = '<div class="column">'.strtoupper($tree);
             foreach($item as $version => $itemInfo){
                 $rs[] = sprintf(
-                    '<label><input type="radio" name="evo" value="%s"> <span>%s</span></label><br>',
+                    '<label><input type="radio" name="target" value="%s"> <span>%s</span></label><br>',
                     $version,
                     $itemInfo['name']
                 );
             }
-
             $rs[] = '</div>';
         }
 
@@ -88,7 +87,7 @@ class EvoInstaller{
         if (!ini_get('allow_url_fopen')) {
             return '<h2 class="warning">Cannot download the files - url_fopen is not enabled on this server.</h2>';
         }
-        if (!EvoInstaller::hasDirPerm()) {
+        if (!Installer::hasDirPerm()) {
             return '<h2 class="warning">Cannot download the files - The directory does not have write permission.</h2>';
         }
         return false;
@@ -151,18 +150,23 @@ class EvoInstaller{
         $temp_dir = str_replace('\\','/',__DIR__).'/_temp'.md5(time());
 
         //run unzip and install
-        static::downloadFile($rowInstall['link'] ,'evo.zip');
+        static::downloadFile($rowInstall['link'] ,'fetch.zip');
         $zip = new ZipArchive;
-        $zip->open($base_dir.'/evo.zip');
+        $zip->open($base_dir.'/fetch.zip');
         $zip->extractTo($temp_dir);
         $zip->close();
-        unlink($base_dir.'/evo.zip');
+        unlink($base_dir.'/fetch.zip');
 
+        $dir = '';
         if ($handle = opendir($temp_dir)) {
-            while (false !== ($name = readdir($handle))) {
-                if ($name !== '.' && $name !== '..') {
-                    $dir = $name;
+            while ($name = readdir($handle)) {
+                if (!$name) {
+                    break;
                 }
+                if ($name === '.' || $name === '..') {
+                    continue;
+                }
+                $dir = $name;
             }
             closedir($handle);
         }
@@ -281,8 +285,8 @@ class EvoInstaller{
 <div class="content">
     <h2>Choose EVO version for Install:</h2>
     <form>';
-        <?= EvoInstaller::items($default) ?>
-        <?= EvoInstaller::hasProblem() ?: '<br><button>Install &rarr;</button>' ?>
+        <?= Installer::items($default) ?>
+        <?= Installer::hasProblem() ?: '<br><button>Install &rarr;</button>' ?>
     </form>
 </div>
 <div class="footer">
