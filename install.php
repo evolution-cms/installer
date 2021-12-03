@@ -1,16 +1,20 @@
 <?php
-$version = '1';
+
 error_reporting(0);
 ini_set('display_errors', 0);
 set_time_limit(0);
 ini_set('max_execution_time',0);
+
+$version = '1';
 header('Content-Type: text/html; charset=utf-8');
 
-if(extension_loaded('xdebug')) ini_set('xdebug.max_nesting_level', 100000);
+if(extension_loaded('xdebug')) {
+    ini_set('xdebug.max_nesting_level', 100000);
+}
 
-$InstallData = EvoInstaller::getPackageInfo();
-
-if (!empty($_GET['evo'])) EvoInstaller::doInstall();
+if (!empty($_GET['evo']) && EvoInstaller::doInstall($_GET['evo'])) {
+    exit;
+}
 
 //@TODO : add check installer version
 echo '
@@ -19,9 +23,9 @@ echo '
 <head>
     <title>EVO Installer v'.$version.'</title>
     <meta charset="utf-8">
-    <style type="text/css">
+    <style>
 
-        @import url(https://fonts.googleapis.com/css?family=Quicksand:300,400&subset=latin,cyrillic);article,aside,audio,b,body,canvas,dd,details,div,dl,dt,em,fieldset,figcaption,figure,footer,form,h1,h2,h3,h4,h5,h6,header,hgroup,html,i,img,label,li,mark,menu,nav,ol,p,section,span,strong,summary,table,tbody,td,tfoot,th,thead,time,tr,u,ul,video{margin:0;padding:0;border:0;outline:0;vertical-align:baseline;background:0 0;font-size:100%}a{margin:0;padding:0;font-size:100%;vertical-align:baseline;background:0 0}table{border-collapse:collapse;border-spacing:0}td,td img{vertical-align:top}button,input,select,textarea{margin:0;font-size:100%}input[type=password],input[type=text],textarea{padding:0}input[type=checkbox]{vertical-align:bottom}input[type=radio]{vertical-align:text-bottom}article,aside,details,figcaption,figure,footer,header,hgroup,menu,nav,section{display:block}html{overflow-y:scroll}body{color:#111;text-align:left;font:12px "Quicksand",sans-serif}button,input,select,textarea{font-family:"Quicksand",sans-serif}a,a:active,a:focus,a:hover,a:visited,button,input[type=button],input[type=submit],label{cursor:pointer}::selection{background:#84d5e8;color:#fff;text-shadow:none}html{position:relative;background:#f8f8f8 url(https://installer.evolution-cms.com/img/base.png)}body{background:0 0;font-size:14px;line-height:22px;font-family:"Quicksand",sans-serif;text-shadow:0 1px 0 #fff}a{color:#0f7096}.button,button{color:#fff;display:inline-block;padding:15px;font-size:20px;text-decoration:none;border:5px solid #fff;border-radius:8px;background-color:#67a749;background-image:linear-gradient(to top,#67a749 0,#67a749 27.76%,#a1c755 100%);text-shadow:0 0 2px rgba(0,0,0,.64)}a.button{padding:5px 15px; float: right;}h1,h2,h3,h4,h5{font-family:"Quicksand",sans-serif;line-height:28px; font-weight:300;}h1{font-size:26px;font-weight: 300;}h2{font-size:22px}h3{font-size:18px}h4{font-size:16px}h5{font-size:14px}.header{-moz-box-sizing: border-box;float:left;width:100%;box-sizing:border-box;background:#fff;background:linear-gradient(to bottom,#fff,#f2f2f2);padding:20px;border-bottom:1px solid #fff}.header img{float:left;width:256px;margin: 0 20px 0 0}.header h1.main-heading{color:#137899;font-size:24px;line-height:30px; float: left;}.header-button-wrapper{float:right}.main-heading>span{display:none}.main-heading>sup{color:#ccc;font-weight:400}.content{float:left;padding:30px}.content h2{margin:0;line-height:20px}.content form{margin:10px 0 50px}.content form .column{float:left;box-sizing:border-box;width:500px;margin:20px 0}.column h3{display:inline-block;padding:0 0 5px;margin:0 0 20px;border-bottom:2px solid #000}.column label{float:left;width:100%;clear:both;padding:5px 0;font-size:16px}form button{float:left;width:200px;clear:both; margin-top:15px;}label>span{border-bottom:1px dotted #555}label>input{margin:0 5px 0 0}.footer{position:absolute;bottom:20px;right:20px;font-size:10px;color:#ccc}.footer a{color:#aaa}
+        @import url(https://fonts.googleapis.com/css?family=Quicksand:300,400&subset=latin,cyrillic);article,aside,audio,b,body,canvas,dd,details,div,dl,dt,em,fieldset,figcaption,figure,footer,form,h1,h2,h3,h4,h5,h6,header,hgroup,html,i,img,label,li,mark,menu,nav,ol,p,section,span,strong,summary,table,tbody,td,tfoot,th,thead,time,tr,u,ul,video{margin:0;padding:0;border:0;outline:0;vertical-align:baseline;background:0 0;font-size:100%}a{margin:0;padding:0;font-size:100%;vertical-align:baseline;background:0 0}table{border-collapse:collapse;border-spacing:0}td,td img{vertical-align:top}button,input,select,textarea{margin:0;font-size:100%}input[type=password],input[type=text],textarea{padding:0}input[type=checkbox]{vertical-align:bottom}input[type=radio]{vertical-align:text-bottom}article,aside,details,figcaption,figure,footer,header,hgroup,menu,nav,section{display:block}html{overflow-y:scroll}body{color:#111;text-align:left;font:12px "Quicksand",sans-serif}button,input,select,textarea{font-family:"Quicksand",sans-serif}a,a:active,a:focus,a:hover,a:visited,button,input[type=button],input[type=submit],label{cursor:pointer}::selection{background:#84d5e8;color:#fff;text-shadow:none}html{position:relative;background:#f8f8f8 url(https://installer.evolution-cms.com/img/base.png)}body{background:0 0;font-size:14px;line-height:22px;font-family:"Quicksand",sans-serif;text-shadow:0 1px 0 #fff}a{color:#0f7096}.button,button{color:#fff;display:inline-block;padding:15px;font-size:20px;text-decoration:none;border:5px solid #fff;border-radius:8px;background-color:#67a749;background-image:linear-gradient(to top,#67a749 0,#67a749 27.76%,#a1c755 100%);text-shadow:0 0 2px rgba(0,0,0,.64)}a.button{padding:5px 15px; float: right;}h1,h2,h3,h4,h5{font-family:"Quicksand",sans-serif;line-height:28px; font-weight:300;}h1{font-size:26px;font-weight: 300;}h2{font-size:22px}h3{font-size:18px}h4{font-size:16px}h5{font-size:14px}.header{-moz-box-sizing: border-box;float:left;width:100%;box-sizing:border-box;background:#fff;background:linear-gradient(to bottom,#fff,#f2f2f2);padding:20px;border-bottom:1px solid #fff}.header img{float:left;width:256px;margin: 0 20px 0 0}.header h1.main-heading{color:#137899;font-size:24px;line-height:30px; float: left;}.header-button-wrapper{float:right}.main-heading>span{display:none}.main-heading>sup{color:#ccc;font-weight:400}.content{float:left;padding:30px}.content h2{margin:0;line-height:20px}.content form{margin:10px 0 50px}.content form .column{float:left;box-sizing:border-box;width:500px;margin:20px 0}.column h3{display:inline-block;padding:0 0 5px;margin:0 0 20px;border-bottom:2px solid #000}.column label{float:left;width:100%;clear:both;padding:5px 0;font-size:16px}form button{float:left;width:200px;clear:both; margin-top:15px;}label>span{border-bottom:1px dotted #555}label>input{margin:0 5px 0 0}.footer{position:absolute;bottom:20px;right:20px;font-size:10px;color:#ccc}.footer a{color:#aaa}.warning{float:left;padding:10px;background-color:#f9caca;}
     </style>
 </head>
 <body>
@@ -37,23 +41,25 @@ echo '
 <div class="content">
     <h2>Choose EVO version for Install:</h2>
     <form>';
-    $ItemGrid = array(); 
-    foreach($InstallData as $ver=>$item){
-        $ItemGrid[$item['tree']][$ver] = $item;
+$ItemGrid = [];
+foreach(EvoInstaller::$packageInfo as $ver=>$item){
+    $ItemGrid[$item['tree']][$ver] = $item;
+}
+foreach($ItemGrid as $tree=>$item){
+    echo '<div class="column">'.strtoupper($tree);
+    ob_start();
+    foreach($item as $version => $itemInfo){
+        echo sprintf(
+            '<label><input type="radio" name="evo" value="%s"> <span>%s</span></label><br>',
+            $version,
+            $itemInfo['name']
+        );
     }
-    foreach($ItemGrid as $tree=>$item){
-        echo '<div class="column">
-            <!--h3>'.strtoupper($tree).'</h3-->';
-            foreach($item as $version => $itemInfo){
-                $checked = ($version == 'master') ? 'checked' : '';
-                echo '<label><input type="radio" name="evo" value="'.$version.'" '.$checked.'> <span>'.$itemInfo['name'].'</span></label><br>';
-            }
-        echo '</div>';
-    }
-    
-if(!ini_get('allow_url_fopen') )    echo '<h2>Cannot download the files - url_fopen is not enabled on this server.</h2>';
-elseif(!EvoInstaller::hasDirPerm()) echo '<h2>Cannot download the files - The directory does not have write permission.</h2>';
-else                                echo '<br><button>Install &rarr;</button>';
+    echo str_replace('value="master"', 'value="master" checked', ob_get_clean());
+
+    echo '</div>';
+}
+echo EvoInstaller::hasProblem() ?: '<br><button>Install &rarr;</button>';
 
 echo '</form>
     <div class="footer">
@@ -64,18 +70,65 @@ echo '</form>
 </html>
 ';
 
-
 class EvoInstaller{
-    static public function downloadFile ($url, $path) {
-        $newfname = $path;
-        $rs = file_get_contents($url);
-        if($rs) $rs = file_put_contents($newfname,$rs);
-        return $rs;
+    public static $packageInfo = [
+        '3.1.7' => [
+            'tree' => 'Evolution',
+            'name' => 'Evolution CMS 3.1.7',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/3.1.7.zip',
+            'location' => 'install/index.php'
+        ],
+        '3.x' => [
+            'tree' => 'Evolution',
+            'name' => 'Evolution CMS 3(3.x develop version)',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/3.x.zip',
+            'location' => 'install/index.php'
+        ],
+        '1.4.14' => [
+            'tree' => 'Evolution',
+            'name' => 'Evolution CMS 1.4.15',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.15.zip',
+            'location' =>'install/index.php'
+        ],
+        '1.4.x' => [
+            'tree' => 'Evolution',
+            'name' => 'Evolution CMS (1.4.x develop version)',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.x.zip',
+            'location' => 'install/index.php'
+        ],
+        '2.0.x' => [
+            'tree' => 'Evolution',
+            'name' => 'Evolution CMS (2.0.x develop version, depricated and not supported)',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/2.0.x.zip',
+            'location' => 'install/index.php'
+        ],
+    ];
+    public static function hasProblem() {
+        if (!ini_get('allow_url_fopen')) {
+            return '<h2 class="warning">Cannot download the files - url_fopen is not enabled on this server.</h2>';
+        }
+        if (!EvoInstaller::hasDirPerm()) {
+            return '<h2 class="warning">Cannot download the files - The directory does not have write permission.</h2>';
+        }
+        return false;
     }
-    static public function moveFiles($src, $dest) {
+
+    private static function downloadFile ($url, $path) {
+        $rs = file_get_contents($url);
+        if(!$rs) {
+            return false;
+
+        }
+        return file_put_contents($path, $rs);
+    }
+
+    private static function moveFiles($src, $dest) {
         $path = realpath($src);
         $dest = realpath($dest);
-        $objects = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path), RecursiveIteratorIterator::SELF_FIRST);
+        $objects = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($path),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
         foreach($objects as $name => $object) {
             $startsAt = substr(dirname($name), strlen($path));
             self::mmkDir($dest.$startsAt);
@@ -88,99 +141,97 @@ class EvoInstaller{
             }
         }
     }
-    static public function mmkDir($folder, $perm=0777) {
-        if(!is_dir($folder)) {
-            mkdir($folder, $perm);
+
+    private static function mmkDir($folder, $perm=0777) {
+        if(is_dir($folder)) {
+            return;
         }
+        if (mkdir($folder, $perm) || is_dir($folder)) {
+            return;
+        }
+        throw new \RuntimeException(
+            sprintf(
+                'Directory "%s" was not created', $folder
+            )
+        );
     }
-    static public function doInstall() {
-        
-        $InstallData = SELF::getPackageInfo();
-        
-        if (empty($_GET['evo']) || !is_scalar($_GET['evo']) || !isset($InstallData[$_GET['evo']])) return;
-        
-        $rowInstall = $InstallData[$_GET['evo']];
+
+    public static function doInstall($target_version=null) {
+
+        if (empty($target_version) || !is_scalar($target_version)) {
+            return false;
+        }
+        if (!isset(static::$packageInfo[$target_version])) {
+            return false;
+        }
+
+        $rowInstall = static::$packageInfo[$target_version];
         $base_dir = str_replace('\\','/',__DIR__);
         $temp_dir = str_replace('\\','/',__DIR__).'/_temp'.md5(time());
+
         //run unzip and install
-        SELF::downloadFile($rowInstall['link'] ,'evo.zip');
+        static::downloadFile($rowInstall['link'] ,'evo.zip');
         $zip = new ZipArchive;
-        $res = $zip->open($base_dir.'/evo.zip');
+        $zip->open($base_dir.'/evo.zip');
         $zip->extractTo($temp_dir);
         $zip->close();
         unlink($base_dir.'/evo.zip');
-        
+
         if ($handle = opendir($temp_dir)) {
             while (false !== ($name = readdir($handle))) {
-                if ($name != '.' && $name != '..') $dir = $name;
+                if ($name !== '.' && $name !== '..') {
+                    $dir = $name;
+                }
             }
             closedir($handle);
         }
-        
-        SELF::moveFiles($temp_dir.'/'.$dir, $base_dir.'/');
-        SELF::rmdirs($temp_dir);
+
+        static::moveFiles($temp_dir.'/'.$dir, $base_dir.'/');
+        static::rmdirs($temp_dir);
         unlink(__FILE__);
         header('Location: '.$rowInstall['location']);
-        exit;
+        return true;
     }
-    static public function rmdirs($dir) {
-        if (is_dir($dir)) {
-            $objects = scandir($dir);
-            foreach ($objects as $object) {
-                if ($object != "." && $object != "..") {
-                    if (is_dir($dir."/".$object) && !is_link($dir."/".$object))
-                        self::rmdirs($dir."/".$object);
-                    else
-                        unlink($dir."/".$object);
-                }
-            }
-            rmdir($dir);
+
+    private static function rmdirs($dir) {
+        if (!is_dir($dir)) {
+            return;
         }
+        $objects = scandir($dir);
+        foreach ($objects as $object) {
+            if ($object === '.' || $object === '..') {
+                continue;
+            }
+            $path = sprintf('%s/%s', $dir, $object);
+            if (is_dir($path) && !is_link($path)) {
+                self::rmdirs($path);
+            } else {
+                unlink($path);
+            }
+        }
+        rmdir($dir);
     }
-    static public function getPackageInfo() {
-        return array(
-            '3.1.7' => array(
-                'tree' => 'Evolution',
-                'name' => 'Evolution CMS 3.1.7',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/3.1.7.zip',
-                'location' => 'install/index.php'
-            ),
-            '3.x' => array(
-                'tree' => 'Evolution',
-                'name' => 'Evolution CMS 3(3.x develop version)',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/3.x.zip',
-                'location' => 'install/index.php'
-            ),     
-            '1.4.14' => array(
-                'tree' => 'Evolution',
-                'name' => 'Evolution CMS 1.4.15',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.15.zip',
-                'location' =>'install/index.php'
-            ),
-            '1.4.x' => array(
-                'tree' => 'Evolution',
-                'name' => 'Evolution CMS (1.4.x develop version)',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.x.zip',
-                'location' => 'install/index.php'
-            ),
-             '2.0.x' => array(
-                'tree' => 'Evolution',
-                'name' => 'Evolution CMS (2.0.x develop version, depricated and not supported)',
-                'link' => 'https://github.com/evolution-cms/evolution/archive/2.0.x.zip',
-                'location' => 'install/index.php'
-            ),
-        );
-    }
-    static public function hasDirPerm() {
-        
-        $s = basename(__FILE__);
+
+    private static function hasDirPerm() {
+
+        if (basename(__FILE__) !== 'install.php') {
+            return false;
+        }
+
         $r = __DIR__.'/_index_tmp.php';
-        if ($s !== 'install.php') return false;
-        if (!@ copy(__FILE__,$r)) return false;
-        if (!@ unlink(__FILE__))  return false;
-        if (!@ copy($r,__FILE__)) return false;
-        if (!@ unlink($r))        return false;
-    
+        if (!@ copy(__FILE__,$r)) {
+            return false;
+        }
+        if (!@ unlink(__FILE__)) {
+            return false;
+        }
+        if (!@ copy($r,__FILE__)) {
+            return false;
+        }
+        if (!@ unlink($r)) {
+            return false;
+        }
+
         return  true;
     }
 }
