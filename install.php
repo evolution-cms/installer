@@ -6,7 +6,6 @@ set_time_limit(0);
 ini_set('max_execution_time',0);
 
 $version = '1';
-header('Content-Type: text/html; charset=utf-8');
 
 if(extension_loaded('xdebug')) {
     ini_set('xdebug.max_nesting_level', 100000);
@@ -16,6 +15,8 @@ if (!empty($_GET['evo']) && EvoInstaller::doInstall($_GET['evo'])) {
     exit;
 }
 
+header('Content-Type: text/html; charset=utf-8');
+
 //@TODO : add check installer version
 echo '
 <!DOCTYPE html>
@@ -24,7 +25,6 @@ echo '
     <title>EVO Installer v'.$version.'</title>
     <meta charset="utf-8">
     <style>
-
         @import url(https://fonts.googleapis.com/css?family=Quicksand:300,400&subset=latin,cyrillic);
         article,aside,audio,b,body,canvas,dd,details,div,dl,dt,em,fieldset,figcaption,figure,footer,form,h1,h2,h3,h4,h5,h6,header,hgroup,html,i,img,label,li,mark,menu,nav,ol,p,section,span,strong,summary,table,tbody,td,tfoot,th,thead,time,tr,u,ul,video{margin:0;padding:0;border:0;outline:0;vertical-align:baseline;background:0 0;font-size:100%}
         a{margin:0;padding:0;font-size:100%;vertical-align:baseline;background:0 0}table{border-collapse:collapse;border-spacing:0}
@@ -83,25 +83,8 @@ echo '
 <div class="content">
     <h2>Choose EVO version for Install:</h2>
     <form>';
-$ItemGrid = [];
-foreach(EvoInstaller::$packageInfo as $ver=>$item){
-    $ItemGrid[$item['tree']][$ver] = $item;
-}
-foreach($ItemGrid as $tree=>$item){
-    echo '<div class="column">'.strtoupper($tree);
-    ob_start();
-    foreach($item as $version => $itemInfo){
-        echo sprintf(
-            '<label><input type="radio" name="evo" value="%s"> <span>%s</span></label><br>',
-            $version,
-            $itemInfo['name']
-        );
-    }
-    echo str_replace('value="master"', 'value="master" checked', ob_get_clean());
-    echo '</div>';
-}
+echo EvoInstaller::items();
 echo EvoInstaller::hasProblem() ?: '<br><button>Install &rarr;</button>';
-
 echo '</form>
     <div class="footer">
         <p>Created by Bumkaka &amp; <a href="https://dmi3yy.com/">Dmi3yy</a></p>
@@ -144,6 +127,32 @@ class EvoInstaller{
             'location' => 'install/index.php'
         ],
     ];
+
+    public static function items() {
+        $ItemGrid = [];
+        foreach(static::$packageInfo as $ver=>$item){
+            $ItemGrid[$item['tree']][$ver] = $item;
+        }
+        $rs = [];
+        foreach($ItemGrid as $tree=>$item){
+            $rs[] = '<div class="column">'.strtoupper($tree);
+            foreach($item as $version => $itemInfo){
+                $rs[] = sprintf(
+                    '<label><input type="radio" name="evo" value="%s"> <span>%s</span></label><br>',
+                    $version,
+                    $itemInfo['name']
+                );
+            }
+
+            $rs[] = '</div>';
+        }
+        return str_replace(
+            'value="master"',
+            'value="master" checked',
+            implode("\n", $rs)
+        );
+    }
+
     public static function hasProblem() {
         if (!ini_get('allow_url_fopen')) {
             return '<h2 class="warning">Cannot download the files - url_fopen is not enabled on this server.</h2>';
