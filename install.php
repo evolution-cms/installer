@@ -6,6 +6,7 @@ set_time_limit(0);
 ini_set('max_execution_time',0);
 
 $version = '1';
+$default = '1.4.15';
 
 if(extension_loaded('xdebug')) {
     ini_set('xdebug.max_nesting_level', 100000);
@@ -33,9 +34,9 @@ class EvoInstaller{
             'link' => 'https://github.com/evolution-cms/evolution/archive/3.x.zip',
             'location' => 'install/index.php'
         ],
-        '1.4.14' => [
+        '1.4.15' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 1.4.15',
+            'name' => 'Evolution CMS 1.4.15 LTS',
             'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.15.zip',
             'location' =>'install/index.php'
         ],
@@ -53,7 +54,7 @@ class EvoInstaller{
         ],
     ];
 
-    public static function items() {
+    public static function items($default=null) {
         $ItemGrid = [];
         foreach(static::$packageInfo as $ver=>$item){
             $ItemGrid[$item['tree']][$ver] = $item;
@@ -71,9 +72,14 @@ class EvoInstaller{
 
             $rs[] = '</div>';
         }
+
+        if(!$default) {
+            return implode("\n", $rs);
+        }
+
         return str_replace(
-            'value="master"',
-            'value="master" checked',
+            sprintf('value="%s"', $default),
+            sprintf('value="%s" checked', $default),
             implode("\n", $rs)
         );
     }
@@ -275,7 +281,7 @@ class EvoInstaller{
 <div class="content">
     <h2>Choose EVO version for Install:</h2>
     <form>';
-        <?= EvoInstaller::items() ?>
+        <?= EvoInstaller::items($default) ?>
         <?= EvoInstaller::hasProblem() ?: '<br><button>Install &rarr;</button>' ?>
     </form>
 </div>
