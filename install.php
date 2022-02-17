@@ -6,7 +6,7 @@ set_time_limit(0);
 ini_set('max_execution_time',0);
 
 $installer_version = '1';
-$default = '1.4.15';
+$default = '1.4.16';
 
 if(extension_loaded('xdebug')) {
     ini_set('xdebug.max_nesting_level', 100000);
@@ -22,10 +22,10 @@ header('Content-Type: text/html; charset=utf-8');
 
 class Installer{
     public static $packageInfo = [
-        '3.1.8' => [
+        '3.1.9' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 3.1.8',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/3.1.8.zip',
+            'name' => 'Evolution CMS 3.1.9',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/3.1.9.zip',
             'location' => 'install/index.php'
         ],
         '3.x' => [
@@ -34,10 +34,10 @@ class Installer{
             'link' => 'https://github.com/evolution-cms/evolution/archive/3.x.zip',
             'location' => 'install/index.php'
         ],
-        '1.4.15' => [
+        '1.4.16' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 1.4.15 LTS',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.15.zip',
+            'name' => 'Evolution CMS 1.4.16',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.16.zip',
             'location' =>'install/index.php'
         ],
         '1.4.x' => [
@@ -283,7 +283,7 @@ class Installer{
     </div>
 </div>
 <div class="content">
-    <h2>Choose EVO version for Install:</h2>
+    <h2>Choose Evolution CMS version for install:</h2>
     <form>';
         <?= Installer::items($default) ?>
         <?= Installer::hasProblem() ?: '<br><button>Install &rarr;</button>' ?>
