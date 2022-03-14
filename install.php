@@ -6,7 +6,7 @@ set_time_limit(0);
 ini_set('max_execution_time',0);
 
 $installer_version = '1';
-$default = '1.4.16';
+$default = '3.1.10';
 
 if(extension_loaded('xdebug')) {
     ini_set('xdebug.max_nesting_level', 100000);
@@ -22,10 +22,10 @@ header('Content-Type: text/html; charset=utf-8');
 
 class Installer{
     public static $packageInfo = [
-        '3.1.9' => [
+        '3.1.10' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 3.1.9',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/3.1.9.zip',
+            'name' => 'Evolution CMS 3.1.10',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/3.1.10.zip',
             'location' => 'install/index.php'
         ],
         '3.x' => [
@@ -34,10 +34,10 @@ class Installer{
             'link' => 'https://github.com/evolution-cms/evolution/archive/3.x.zip',
             'location' => 'install/index.php'
         ],
-        '1.4.16' => [
+        '1.4.17' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 1.4.16',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.16.zip',
+            'name' => 'Evolution CMS 1.4.17',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.17.zip',
             'location' =>'install/index.php'
         ],
         '1.4.x' => [
