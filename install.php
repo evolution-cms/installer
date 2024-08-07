@@ -6,7 +6,7 @@ set_time_limit(0);
 ini_set('max_execution_time',0);
 
 $installer_version = '1';
-$default = '3.1.10';
+$default = '3.2.5';
 
 if(extension_loaded('xdebug')) {
     ini_set('xdebug.max_nesting_level', 100000);
@@ -22,10 +22,10 @@ header('Content-Type: text/html; charset=utf-8');
 
 class Installer{
     public static $packageInfo = [
-        '3.1.10' => [
+        '3.2.5' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 3.1.10',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/3.1.10.zip',
+            'name' => 'Evolution CMS 3.2.5',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/3.2.5.zip',
             'location' => 'install/index.php'
         ],
         '3.x' => [
