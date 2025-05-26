@@ -6,7 +6,7 @@ set_time_limit(0);
 ini_set('max_execution_time',0);
 
 $installer_version = '1';
-$default = '3.2.5';
+$default = '3.2.6';
 
 if(extension_loaded('xdebug')) {
     ini_set('xdebug.max_nesting_level', 100000);
@@ -22,34 +22,28 @@ header('Content-Type: text/html; charset=utf-8');
 
 class Installer{
     public static $packageInfo = [
-        '3.2.5' => [
+        '3.2.6' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 3.2.5',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/3.2.5.zip',
+            'name' => 'Evolution CMS 3.2.6',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/3.2.6.zip',
             'location' => 'install/index.php'
         ],
         '3.x' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 3(3.x develop version)',
+            'name' => 'Evolution CMS 3 (3.x develop version)',
             'link' => 'https://github.com/evolution-cms/evolution/archive/3.x.zip',
             'location' => 'install/index.php'
         ],
-        '1.4.17' => [
+        '1.4.18' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 1.4.17',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.17.zip',
+            'name' => 'Evolution CMS 1.4.18',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.18.zip',
             'location' =>'install/index.php'
         ],
         '1.4.x' => [
             'tree' => 'Evolution',
             'name' => 'Evolution CMS (1.4.x develop version)',
             'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.x.zip',
-            'location' => 'install/index.php'
-        ],
-        '2.0.x' => [
-            'tree' => 'Evolution',
-            'name' => 'Evolution CMS (2.0.x develop version, depricated and not supported)',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/2.0.x.zip',
             'location' => 'install/index.php'
         ],
     ];
@@ -95,7 +89,7 @@ class Installer{
 
     private static function downloadFile ($url, $path) {
         $rs = file_get_contents($url);
-        if(!$rs) {
+        if (!$rs) {
             return false;
 
         }
