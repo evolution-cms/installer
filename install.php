@@ -22,16 +22,16 @@ header('Content-Type: text/html; charset=utf-8');
 
 class Installer{
     public static $packageInfo = [
-        '3.2.6' => [
+        '3.2.7' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 3.2.6',
+            'name' => 'Evolution CMS 3.2.7',
             'link' => 'https://github.com/evolution-cms/evolution/archive/3.2.6.zip',
             'location' => 'install/index.php'
         ],
-        '3.x' => [
+        '3.2.x' => [
             'tree' => 'Evolution',
-            'name' => 'Evolution CMS 3 (3.x develop version)',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/3.x.zip',
+            'name' => 'Evolution CMS 3 (3.2.x develop version)',
+            'link' => 'https://github.com/evolution-cms/evolution/archive/3.2.x.zip',
             'location' => 'install/index.php'
         ],
         '1.4.18' => [
