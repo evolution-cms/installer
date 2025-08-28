@@ -12,6 +12,44 @@ if(extension_loaded('xdebug')) {
     ini_set('xdebug.max_nesting_level', 100000);
 }
 
+$githubResponse = json_decode(
+    file_get_contents(
+        'https://api.github.com/repos/evolution-cms/evolution/releases',
+        false,
+        stream_context_create(['http' => ['header' => "User-Agent: Evolution CMS Installer\r\n"]])
+    ),
+    true
+);
+
+$versions = [];
+foreach ($githubResponse as $versionItem) {
+    $itemVersion = $versionItem['tag_name'];
+    $itemTarget = $versionItem['target_commitish'];
+    if (!isset($versions[$itemTarget])) {
+        $versions[$itemTarget] = [];
+    }
+    $versions[$itemTarget][] = [
+        'tree' => 'Evolution',
+        'name' => $versionItem['name'],
+        'link' => "https://github.com/evolution-cms/evolution/archive/{$itemVersion}.zip",
+        'location' => 'install/index.php'
+    ];
+}
+krsort($versions, SORT_NUMERIC);
+$versions = array_map(fn($item) => $item[0], $versions);
+$devVersions = array_keys($versions);
+rsort($devVersions, SORT_NUMERIC);
+foreach ($devVersions as $devVersion) {
+    $versions[] = [
+        'tree' => 'Evolution',
+        'name' => "Evolution CMS ($devVersion develop version)",
+        'link' => "https://github.com/evolution-cms/evolution/archive/{$devVersion}.zip",
+        'location' => 'install/index.php'
+    ];
+}
+
+Installer::$packageInfo = $versions;
+
 if (!empty($_GET['target']) && Installer::doInstall($_GET['target'])) {
     exit;
 }
