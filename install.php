@@ -29,6 +29,7 @@ foreach ($githubResponse as $versionItem) {
         $versions[$itemTarget] = [];
     }
     $versions[$itemTarget][] = [
+        'version' => $itemVersion,
         'tree' => 'Evolution',
         'name' => $versionItem['name'],
         'link' => "https://github.com/evolution-cms/evolution/archive/{$itemVersion}.zip",
@@ -36,19 +37,26 @@ foreach ($githubResponse as $versionItem) {
     ];
 }
 krsort($versions, SORT_NUMERIC);
-$versions = array_map(fn($item) => $item[0], $versions);
-$devVersions = array_keys($versions);
-rsort($devVersions, SORT_NUMERIC);
-foreach ($devVersions as $devVersion) {
-    $versions[] = [
+$latestReleaseVersions = array_map(fn($item) => $item[0], $versions);
+$default = $latestReleaseVersions[array_key_first($latestReleaseVersions)]['version'];
+$releaseVersions = [];
+foreach ($latestReleaseVersions as $target => $item) {
+    $releaseVersions[$item['version']] = $item;
+    unset($releaseVersions[$item['version']]['version']);
+}
+$devVersionNumbers = array_keys($versions);
+rsort($devVersionNumbers, SORT_NUMERIC);
+$devVersions = [];
+foreach ($devVersionNumbers as $devVersionNumber) {
+    $devVersions[$devVersionNumber] = [
         'tree' => 'Evolution',
-        'name' => "Evolution CMS ($devVersion develop version)",
-        'link' => "https://github.com/evolution-cms/evolution/archive/{$devVersion}.zip",
+        'name' => "Evolution CMS ($devVersionNumber develop version)",
+        'link' => "https://github.com/evolution-cms/evolution/archive/{$devVersionNumber}.zip",
         'location' => 'install/index.php'
     ];
 }
 
-Installer::$packageInfo = $versions;
+Installer::$packageInfo = $releaseVersions + $devVersions;
 
 if (!empty($_GET['target']) && Installer::doInstall($_GET['target'])) {
     exit;
