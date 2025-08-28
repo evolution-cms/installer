@@ -6,11 +6,56 @@ set_time_limit(0);
 ini_set('max_execution_time',0);
 
 $installer_version = '1';
-$default = '3.2.6';
 
 if(extension_loaded('xdebug')) {
     ini_set('xdebug.max_nesting_level', 100000);
 }
+
+$githubResponse = json_decode(
+    file_get_contents(
+        'https://api.github.com/repos/evolution-cms/evolution/releases',
+        false,
+        stream_context_create(['http' => ['header' => "User-Agent: Evolution CMS Installer\r\n"]])
+    ),
+    true
+);
+
+$versions = [];
+foreach ($githubResponse as $versionItem) {
+    $itemVersion = $versionItem['tag_name'];
+    $itemTarget = $versionItem['target_commitish'];
+    if (!isset($versions[$itemTarget])) {
+        $versions[$itemTarget] = [];
+    }
+    $versions[$itemTarget][] = [
+        'version' => $itemVersion,
+        'tree' => 'Evolution',
+        'name' => $versionItem['name'],
+        'link' => "https://github.com/evolution-cms/evolution/archive/{$itemVersion}.zip",
+        'location' => 'install/index.php'
+    ];
+}
+krsort($versions, SORT_NUMERIC);
+$latestReleaseVersions = array_map(fn($item) => $item[0], $versions);
+$default = $latestReleaseVersions[array_key_first($latestReleaseVersions)]['version'];
+$releaseVersions = [];
+foreach ($latestReleaseVersions as $target => $item) {
+    $releaseVersions[$item['version']] = $item;
+    unset($releaseVersions[$item['version']]['version']);
+}
+$devVersionNumbers = array_keys($versions);
+rsort($devVersionNumbers, SORT_NUMERIC);
+$devVersions = [];
+foreach ($devVersionNumbers as $devVersionNumber) {
+    $devVersions[$devVersionNumber] = [
+        'tree' => 'Evolution',
+        'name' => "Evolution CMS ($devVersionNumber develop version)",
+        'link' => "https://github.com/evolution-cms/evolution/archive/{$devVersionNumber}.zip",
+        'location' => 'install/index.php'
+    ];
+}
+
+Installer::$packageInfo = $releaseVersions + $devVersions;
 
 if (!empty($_GET['target']) && Installer::doInstall($_GET['target'])) {
     exit;
@@ -21,32 +66,7 @@ header('Content-Type: text/html; charset=utf-8');
 //@TODO : add check installer version
 
 class Installer{
-    public static $packageInfo = [
-        '3.2.7' => [
-            'tree' => 'Evolution',
-            'name' => 'Evolution CMS 3.2.7',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/3.2.6.zip',
-            'location' => 'install/index.php'
-        ],
-        '3.2.x' => [
-            'tree' => 'Evolution',
-            'name' => 'Evolution CMS 3 (3.2.x develop version)',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/3.2.x.zip',
-            'location' => 'install/index.php'
-        ],
-        '1.4.18' => [
-            'tree' => 'Evolution',
-            'name' => 'Evolution CMS 1.4.18',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.18.zip',
-            'location' =>'install/index.php'
-        ],
-        '1.4.x' => [
-            'tree' => 'Evolution',
-            'name' => 'Evolution CMS (1.4.x develop version)',
-            'link' => 'https://github.com/evolution-cms/evolution/archive/1.4.x.zip',
-            'location' => 'install/index.php'
-        ],
-    ];
+    public static $packageInfo = [];
 
     public static function items($default=null) {
         $ItemGrid = [];
