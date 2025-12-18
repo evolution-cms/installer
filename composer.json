@@ -46,7 +46,8 @@
     "guzzlehttp/guzzle": "^7.10"
   },
   "require-dev": {
-    "phpunit/phpunit": "^11.0"
+    "phpunit/phpunit": "^11.0",
+    "mikey179/vfsstream": "^2.0"
   },
   "autoload": {
     "psr-4": {
@@ -65,8 +66,8 @@
     }
   },
   "scripts": {
-    "test": "phpunit",
-    "test-coverage": "phpunit --coverage-text --coverage-html=build/coverage --coverage-filter=src || echo 'Note: Code coverage requires Xdebug or PCOV extension. Install it to see coverage reports.'"
+    "test": "vendor/bin/phpunit",
+    "test-coverage": "vendor/bin/phpunit --coverage-text --coverage-html=build/coverage --coverage-filter=src || echo 'Note: Code coverage requires Xdebug or PCOV extension. Install it to see coverage reports.'"
   },
   "scripts-descriptions": {
     "test": "Run PHPUnit tests",
