@@ -1,0 +1,66 @@
+{
+  "name": "evolution-cms/installer",
+  "description": "Evolution CMS Installer - CLI tool for creating new Evolution CMS projects",
+  "type": "project",
+  "keywords": [
+    "evolution-cms",
+    "evo",
+    "cms",
+    "installer",
+    "cli"
+  ],
+  "homepage": "https://evo.im/",
+  "license": "GPL-3.0-or-later",
+  "authors": [
+    {
+      "name": "Dmytro Lukianenko",
+      "email": "dmi3yy@gmail.com",
+      "homepage": "https://dmi3yy.com",
+      "role": "Developer"
+    },
+    {
+      "name": "Serhii Korneliuk",
+      "email": "info@seigerit.com",
+      "homepage": "https://seigerit.com",
+      "role": "Developer"
+    }
+  ],
+  "support": {
+    "docs": "https://docs.evo.im",
+    "issues": "https://github.com/evolution-cms/installer/issues/",
+    "source": "https://github.com/evolution-cms/installer/"
+  },
+  "bin": [
+    "bin/evo"
+  ],
+  "require": {
+    "php": "^8.3",
+    "ext-pdo": "*",
+    "ext-json": "*",
+    "ext-mysqli": "*",
+    "ext-readline": "*",
+    "ext-zip": "*",
+    "symfony/console": "^7.0",
+    "symfony/process": "^7.0",
+    "symfony/filesystem": "^7.0",
+    "guzzlehttp/guzzle": "^7.10"
+  },
+  "autoload": {
+    "psr-4": {
+      "EvolutionCMS\\Installer\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "EvolutionCMS\\Installer\\Tests\\": "tests/"
+    }
+  },
+  "config": {
+    "sort-packages": true,
+    "allow-plugins": {
+      "symfony/flex": true
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}

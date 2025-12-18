@@ -1,0 +1,22 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Evolution CMS Installer
+ *
+ * This file is the entry point for the Evolution CMS installer CLI tool.
+ * It should be made executable: chmod +x bin/evo
+ */
+
+if (file_exists(dirname(__DIR__) . '/vendor/autoload.php')) {
+    require dirname(__DIR__) . '/vendor/autoload.php';
+} else {
+    echo "Please run 'composer install' to install dependencies." . PHP_EOL;
+    exit(1);
+}
+
+use EvolutionCMS\Installer\Application;
+
+$app = new Application();
+$app->run();
+
