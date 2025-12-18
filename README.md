@@ -112,15 +112,6 @@ evo new my-project --preset=evolution
 
 You can create custom presets by extending the `Preset` class. See the `src/Presets/` directory for examples.
 
-## Database Collation Handling
-
-The installer includes smart collation handling that:
-- Automatically detects the database collation
-- Uses the database collation if it's not available in the server's collation list (e.g., `utf8mb4_uca1400_ai_ci`)
-- Falls back to recommended collations if needed
-
-This solves issues where databases have collations that aren't listed in `SHOW COLLATION` but are valid for the database.
-
 ## Features
 
 ### Automatic Version Resolution
@@ -162,18 +153,22 @@ composer install
 
 ### Running Tests
 
-Tests are not yet configured. To add PHPUnit tests:
+Install dependencies first:
 
 ```bash
-composer require --dev phpunit/phpunit ^11.0
+composer install
 ```
 
-Then update the `test` script in `composer.json` to run PHPUnit:
+Then run tests:
 
-```json
-"scripts": {
-  "test": "phpunit"
-}
+```bash
+composer test
+```
+
+Run tests with coverage:
+
+```bash
+composer test-coverage
 ```
 
 ## Legacy Installer
