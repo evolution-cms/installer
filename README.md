@@ -171,6 +171,13 @@ Run tests with coverage:
 composer test-coverage
 ```
 
+**Note:** Code coverage requires either Xdebug or PCOV PHP extension to be installed:
+
+- **Xdebug**: `pecl install xdebug` or install via your OS package manager
+- **PCOV**: `pecl install pcov` (faster alternative to Xdebug for coverage only)
+
+After installing, restart PHP-FPM or your web server.
+
 ## Legacy Installer
 
 The old `install.php` file is still available in this repository for backward compatibility and quick installations.

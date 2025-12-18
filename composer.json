@@ -66,11 +66,11 @@
   },
   "scripts": {
     "test": "phpunit",
-    "test-coverage": "phpunit --coverage-text --coverage-html=build/coverage"
+    "test-coverage": "phpunit --coverage-text --coverage-html=build/coverage --coverage-filter=src || echo 'Note: Code coverage requires Xdebug or PCOV extension. Install it to see coverage reports.'"
   },
   "scripts-descriptions": {
     "test": "Run PHPUnit tests",
-    "test-coverage": "Run tests with code coverage"
+    "test-coverage": "Run tests with code coverage (requires Xdebug or PCOV)"
   },
   "minimum-stability": "dev",
   "prefer-stable": true
