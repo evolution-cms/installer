@@ -162,8 +162,18 @@ composer install
 
 ### Running Tests
 
+Tests are not yet configured. To add PHPUnit tests:
+
 ```bash
-composer test
+composer require --dev phpunit/phpunit ^11.0
+```
+
+Then update the `test` script in `composer.json` to run PHPUnit:
+
+```json
+"scripts": {
+  "test": "phpunit"
+}
 ```
 
 ## Legacy Installer

@@ -61,6 +61,15 @@
       "symfony/flex": true
     }
   },
+  "scripts": {
+    "test": "echo \"Tests are not yet configured. Please add PHPUnit or your preferred testing framework.\"",
+    "post-install-cmd": [
+      "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
+    ]
+  },
+  "scripts-descriptions": {
+    "test": "Run tests (PHPUnit not yet configured)"
+  },
   "minimum-stability": "dev",
   "prefer-stable": true
 }
