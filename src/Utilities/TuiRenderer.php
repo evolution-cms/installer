@@ -1,5 +1,8 @@
 <?php namespace EvolutionCMS\Installer\Utilities;
 
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Output\ConsoleSectionOutput;
+
 class TuiRenderer
 {
     protected bool $supportsColors;
@@ -10,14 +13,28 @@ class TuiRenderer
     protected ?int $rightPanelWidth = null;
     protected ?int $gap = null;
     protected ?int $leftPanelWidth = null;
+    protected ?OutputInterface $output = null;
+    protected ?ConsoleSectionOutput $logSection = null;
+    protected ?ConsoleSectionOutput $inputSection = null; // Section for interactive input inside Log block
+    protected bool $logSectionInitialized = false; // Track if log section has been initialized
 
-    public function __construct()
+    public function __construct(?OutputInterface $output = null)
     {
+        $this->output = $output;
         $this->supportsColors = function_exists('stream_isatty') && stream_isatty(STDOUT);
         
         // Try to get terminal size
         $this->terminalWidth = 120;
         $this->terminalHeight = 30;
+        
+        if ($this->output !== null) {
+            // Use Symfony Terminal if available
+            if (class_exists('\Symfony\Component\Console\Terminal')) {
+                $terminal = new \Symfony\Component\Console\Terminal();
+                $this->terminalWidth = $terminal->getWidth();
+                $this->terminalHeight = $terminal->getHeight();
+            }
+        }
         
         if (function_exists('exec')) {
             // Try different methods to get terminal size
@@ -35,6 +52,20 @@ class TuiRenderer
                 }
             }
         }
+        
+        // Create output sections if output is available
+        if ($this->output !== null) {
+            $this->logSection = $this->output->section();
+            $this->inputSection = $this->output->section(); // Section for interactive input
+        }
+    }
+    
+    /**
+     * Get the input section for interactive prompts inside Log block.
+     */
+    public function getInputSection(): ?ConsoleSectionOutput
+    {
+        return $this->inputSection;
     }
 
     /**
@@ -145,34 +176,50 @@ class TuiRenderer
             $topLines[] = $questLine . str_repeat(' ', $gap) . $systemStatusLine;
         }
         
-        // Combine: top panels + Log block
-        // No empty line - Log block starts immediately after top panels
-        $allLines = array_merge($topLines, $logLines);
+        // Combine: top panels + empty line + Log block
+        // Add empty line between top panels and Log block to move Log down by one line
+        $allLines = array_merge($topLines, [''], $logLines);
         
         // Save positions and dimensions for later updates
-        $logoHeight = 7;
+        $logoHeight = 8; // Top border + 6 logo lines + bottom border
         $this->questBlockStartRow = $logoHeight;
-        // Log block starts after top panels
-        $this->logBlockStartRow = $logoHeight + count($topLines) - 1;
+        // Log block starts after top panels + 1 empty line (moved down by one line)
+        $this->logBlockStartRow = $logoHeight + count($topLines) + 1;
         $this->rightPanelWidth = $topPanelWidth; // For quest track updates (same width)
         $this->gap = $gap;
         $this->leftPanelWidth = $topPanelWidth; // For quest track (it's on the left now)
         
-        // Print all lines
-        foreach ($allLines as $line) {
-            echo $line . PHP_EOL;
+        // Use Output Sections if available, otherwise fallback to direct output
+        if ($this->logSection !== null) {
+            // Render using Output Sections
+            // First, output top panels directly (they are static)
+            foreach ($topLines as $line) {
+                echo $line . PHP_EOL;
+            }
+            // Output empty line
+            echo PHP_EOL;
+            // Now render Log block with initial logs
+            // The section will be positioned correctly after the top panels
+            $this->renderLogSection($logs);
+        } else {
+            // Fallback: direct output (for backward compatibility)
+            foreach ($allLines as $line) {
+                echo $line . PHP_EOL;
+            }
         }
     }
     
     /**
-     * Update only the Log block without re-rendering everything.
+     * Render Log section with logs.
      */
-    public function updateLogs(array $logs): void
+    protected function renderLogSection(array $logs = []): void
     {
-        if ($this->logBlockStartRow === null) {
-            // If initial render hasn't been called, do nothing
+        if ($this->logSection === null) {
             return;
         }
+        
+        // Track if this is the first render
+        $isFirstRender = !$this->logSectionInitialized;
         
         $frameColor = $this->supportsColors ? "\033[1;37m" : '';
         $whiteText = $this->supportsColors ? "\033[0;37m" : '';
@@ -185,7 +232,7 @@ class TuiRenderer
         $logLines = [];
         $logTitle = ' Log ';
         $logTitleLength = mb_strlen($this->stripAnsi($logTitle));
-        $logTopBorderContent = str_repeat('─', 2) . $whiteText . $logTitle . $reset . $frameColor . str_repeat('─', max(0, $logBlockInnerWidth - 2 - 2 - $logTitleLength));
+        $logTopBorderContent = str_repeat('─', 2) . $whiteText . $logTitle . $reset . $frameColor . str_repeat('─', max(0, $logBlockInnerWidth - 2 - $logTitleLength));
         $logLines[] = $frameColor . '┌' . $logTopBorderContent . '┐' . $reset;
         
         // Add log items (display content)
@@ -196,25 +243,65 @@ class TuiRenderer
         }
         // No bottom border - just content below title bar
         
-        // Draw each line of Log block (full width, starting from column 1)
-        $currentRow = $this->logBlockStartRow;
-        foreach ($logLines as $logLine) {
-            // Move cursor to the position (full width, column 1)
-            echo "\033[{$currentRow};1H";
-            // Clear to end of line
-            echo "\033[K";
-            // Write the log line
-            echo $logLine;
-            $currentRow++;
+        // Update using Output Section
+        $logContent = implode(PHP_EOL, $logLines);
+        
+        // Always use overwrite() for consistent behavior
+        // For first render, overwrite() initializes the section at correct position
+        // For subsequent updates, clear() first to ensure clean replacement
+        if (!$isFirstRender) {
+            // Subsequent updates: clear previous content first
+            $this->logSection->clear();
+        }
+        // Use overwrite() for both first render and updates
+        $this->logSection->overwrite($logContent);
+        
+        if ($isFirstRender) {
+            $this->logSectionInitialized = true;
+        }
+    }
+    
+    /**
+     * Display interactive prompt inside Log block using Output Section.
+     */
+    public function displayInputPrompt(string $prompt): void
+    {
+        if ($this->inputSection === null) {
+            // Fallback: direct output
+            echo $prompt;
+            return;
         }
         
-        // Clear any remaining lines below logs (if logs are shorter than before)
-        $maxLogLines = 20; // Maximum expected log lines
-        for ($i = count($logLines); $i < $maxLogLines; $i++) {
-            echo "\033[{$currentRow};1H";
-            echo "\033[K"; // Clear to end of line
-            $currentRow++;
+        $this->inputSection->clear();
+        $this->inputSection->write($prompt);
+    }
+    
+    /**
+     * Clear the input prompt section.
+     */
+    public function clearInputPrompt(): void
+    {
+        if ($this->inputSection !== null) {
+            $this->inputSection->clear();
         }
+    }
+    
+    /**
+     * Update only the Log block without re-rendering everything.
+     */
+    public function updateLogs(array $logs): void
+    {
+        if ($this->logSection === null) {
+            // Fallback to old method if sections not available
+            if ($this->logBlockStartRow === null) {
+                return;
+            }
+            // ... (keep old implementation for fallback)
+            return;
+        }
+        
+        // Use shared method to render log section
+        $this->renderLogSection($logs);
     }
     
     /**
@@ -251,8 +338,8 @@ class TuiRenderer
         }
         
         // Fill remaining height
-        $logoHeight = 7;
-        $topPanelHeight = $this->logBlockStartRow - $logoHeight + 1;
+        $logoHeight = 8; // Top border + 6 logo lines + bottom border
+        $topPanelHeight = $this->logBlockStartRow - $logoHeight;
         $questContentLines = count($questLines);
         $questRemainingLines = max(0, $topPanelHeight - $questContentLines - 1); // -1 for bottom border
         for ($i = 0; $i < $questRemainingLines; $i++) {

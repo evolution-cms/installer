@@ -47,6 +47,8 @@ class NewCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $this->output = $output;
+        
         $name = $input->getArgument('name') ?? '.';
         $preset = $this->getPreset($input->getOption('preset'));
 
@@ -68,12 +70,11 @@ class NewCommand extends Command
         $phpVersion = SystemInfo::getPhpVersion();
         if (!$phpValidator->isSupported()) {
             $this->addLog("Cannot proceed with installation.");
-            $this->updateTuiLogs();
             Console::error("Cannot proceed with installation.");
             return Command::FAILURE;
         }
         $this->addLog("✔ PHP version {$phpVersion} is supported.");
-        $this->updateTuiLogs();
+        // Note: Logs will be rendered in displayTuiWelcome() via render()
 
         $options = $this->gatherInputs($input, $output);
         $options['git'] = $input->getOption('git');
@@ -117,7 +118,7 @@ class NewCommand extends Command
      */
     protected function displayTuiWelcome(): void
     {
-        $this->tui = new TuiRenderer();
+        $this->tui = new TuiRenderer($this->output);
         
         // Prepare system status
         $os = SystemInfo::getOS();
@@ -160,10 +161,8 @@ class NewCommand extends Command
 
         $this->tui->render($systemStatus, $this->steps, $this->logs);
         
-        // If we have logs after initial render, update them immediately
-        if (!empty($this->logs)) {
-            $this->updateTuiLogs();
-        }
+        // Note: With Output Sections, logs are already rendered in render() via renderLogSection().
+        // We only need to call updateTuiLogs() when adding new logs after initial render.
     }
 
     /**
@@ -345,16 +344,42 @@ LOGO;
         $this->addLog('  [1] pgsql');
         $this->updateTuiLogs();
         
-        // Use ChoiceQuestion but with empty question text (we show it in Log)
-        $question = new ChoiceQuestion(
-            '',
-            ['mysql', 'pgsql'],
-            0
-        );
-        $question->setErrorMessage('Database driver %s is invalid.');
+        // Use input section from TUI to display prompt inside Log block
+        $inputSection = $this->tui?->getInputSection();
+        
+        // Use regular Question to avoid duplicate option display
+        // ChoiceQuestion automatically displays options, which duplicates our Log output
+        $question = new Question(' > ');
+        $question->setAutocompleterValues(['0', '1', 'mysql', 'pgsql']);
+        $question->setValidator(function ($answer) {
+            if (empty($answer)) {
+                throw new \RuntimeException('Database driver cannot be empty.');
+            }
+            
+            // Normalize answer: allow both index and name
+            $normalized = strtolower(trim($answer));
+            if (in_array($normalized, ['0', 'mysql'])) {
+                return 'mysql';
+            }
+            if (in_array($normalized, ['1', 'pgsql'])) {
+                return 'pgsql';
+            }
+            
+            throw new \RuntimeException('Database driver must be either "mysql" or "pgsql".');
+        });
 
-        // Ask the question (Symfony will handle input, but we won't show its prompt)
-        $answer = $helper->ask($input, $output, $question);
+        // Ask the question - use input section if available to redirect output inside Log block
+        if ($inputSection !== null) {
+            // Use input section as output so the prompt appears inside Log block
+            $answer = $helper->ask($input, $inputSection, $question);
+        } else {
+            $answer = $helper->ask($input, $output, $question);
+        }
+        
+        // Clear input prompt after answer
+        if ($inputSection !== null) {
+            $inputSection->clear();
+        }
         
         // Add the answer to log
         $this->addLog(' > ' . $answer);
