@@ -9,11 +9,15 @@ use Symfony\Component\Console\Question\Question;
 use Symfony\Component\Console\Question\ChoiceQuestion;
 use EvolutionCMS\Installer\Utilities\Console;
 use EvolutionCMS\Installer\Utilities\SystemInfo;
+use EvolutionCMS\Installer\Utilities\TuiRenderer;
 use EvolutionCMS\Installer\Validators\PhpValidator;
 use EvolutionCMS\Installer\Presets\Preset;
 
 class NewCommand extends Command
 {
+    protected ?TuiRenderer $tui = null;
+    protected array $logs = [];
+    protected array $steps = [];
     /**
      * Configure the command options.
      */
@@ -22,7 +26,7 @@ class NewCommand extends Command
         $this
             ->setName('new')
             ->setDescription('Create a new Evolution CMS application')
-            ->addArgument('name', InputArgument::REQUIRED, 'The name of the application')
+            ->addArgument('name', InputArgument::OPTIONAL, 'The name of the application (use "." to install in current directory)', '.')
             ->addOption('preset', null, InputOption::VALUE_OPTIONAL, 'The preset to use', 'evolution')
             ->addOption('database', null, InputOption::VALUE_OPTIONAL, 'The database type (mysql, pgsql)')
             ->addOption('database-host', null, InputOption::VALUE_OPTIONAL, 'The database host', 'localhost')
@@ -43,24 +47,37 @@ class NewCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $name = $input->getArgument('name');
+        $name = $input->getArgument('name') ?? '.';
         $preset = $this->getPreset($input->getOption('preset'));
 
-        if (!$input->getOption('force')) {
+        // Normalize "." to current directory
+        $installInCurrentDir = ($name === '.');
+        if ($installInCurrentDir) {
+            $name = getcwd();
+        }
+
+        if (!$input->getOption('force') && !$installInCurrentDir) {
             $this->verifyApplicationDoesntExist($name);
         }
 
+        // Display welcome message first (this renders the TUI with empty logs)
         $this->displayWelcomeMessage();
 
-        // Pre-validate PHP version
+        // Pre-validate PHP version (after TUI is rendered)
         $phpValidator = new PhpValidator();
+        $phpVersion = SystemInfo::getPhpVersion();
         if (!$phpValidator->isSupported()) {
+            $this->addLog("Cannot proceed with installation.");
+            $this->updateTuiLogs();
             Console::error("Cannot proceed with installation.");
             return Command::FAILURE;
         }
+        $this->addLog("✔ PHP version {$phpVersion} is supported.");
+        $this->updateTuiLogs();
 
         $options = $this->gatherInputs($input, $output);
         $options['git'] = $input->getOption('git');
+        $options['install_in_current_dir'] = $installInCurrentDir;
 
         $preset->install($name, $options);
 
@@ -85,9 +102,107 @@ class NewCommand extends Command
      */
     protected function displayWelcomeMessage(): void
     {
-        $this->printLogo();
-        $this->printSystemStatus();
-        Console::line('');
+        try {
+            $this->displayTuiWelcome();
+        } catch (\Exception $e) {
+            // Fallback to simple display
+            $this->printLogo();
+            $this->printSystemStatus();
+            Console::line('');
+        }
+    }
+
+    /**
+     * Display TUI welcome screen.
+     */
+    protected function displayTuiWelcome(): void
+    {
+        $this->tui = new TuiRenderer();
+        
+        // Prepare system status
+        $os = SystemInfo::getOS();
+        $phpVersion = SystemInfo::getPhpVersion();
+        $composerVersion = SystemInfo::getComposerVersion();
+        $diskFree = SystemInfo::getDiskFreeSpace();
+        $memoryLimit = SystemInfo::getMemoryLimit();
+
+        $phpOk = version_compare($phpVersion, '8.3.0', '>=');
+        $pdoOk = SystemInfo::hasExtension('pdo');
+        $jsonOk = SystemInfo::hasExtension('json');
+        $mysqliOk = SystemInfo::hasExtension('mysqli');
+        $mbstringOk = SystemInfo::hasExtension('mbstring');
+        $composerOk = $composerVersion !== null;
+
+        $systemStatus = [
+            ['label' => $os, 'status' => true],
+            ['label' => "PHP - {$phpVersion}", 'status' => $phpOk],
+            ['label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'status' => $composerOk],
+            ['label' => 'PDO extension', 'status' => $pdoOk],
+            ['label' => 'JSON extension', 'status' => $jsonOk],
+            ['label' => 'MySQLi extension', 'status' => $mysqliOk],
+            ['label' => 'MBString extension', 'status' => $mbstringOk],
+            ['label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'status' => $diskFree !== null],
+            ['label' => 'Memory limit - ' . ($memoryLimit ?: 'Unknown'), 'status' => true],
+        ];
+
+        // Installation steps
+        $this->steps = [
+            ['label' => 'Step 1: Validate PHP version', 'completed' => $phpOk],
+            ['label' => 'Step 2: Check database connection', 'completed' => false],
+            ['label' => 'Step 3: Download Evolution CMF', 'completed' => false],
+            ['label' => 'Step 4: Extract files', 'completed' => false],
+            ['label' => 'Step 5: Install Evolution CMF', 'completed' => false],
+            ['label' => 'Step 6: Install dependencies', 'completed' => false],
+            ['label' => 'Step 7: Create admin user', 'completed' => false],
+            ['label' => 'Step 8: Initialize Git repository', 'completed' => false],
+            ['label' => 'Step 9: Finalize installation', 'completed' => false],
+        ];
+
+        $this->tui->render($systemStatus, $this->steps, $this->logs);
+        
+        // If we have logs after initial render, update them immediately
+        if (!empty($this->logs)) {
+            $this->updateTuiLogs();
+        }
+    }
+
+    /**
+     * Add log message.
+     */
+    protected function addLog(string $message): void
+    {
+        $this->logs[] = $message;
+    }
+
+    /**
+     * Update TUI logs display (only Log block, not the whole screen).
+     */
+    protected function updateTuiLogs(): void
+    {
+        if ($this->tui !== null) {
+            $this->tui->updateLogs($this->logs);
+        }
+    }
+
+    /**
+     * Update TUI steps display (only Quest track block, not the whole screen).
+     */
+    protected function updateTuiSteps(): void
+    {
+        if ($this->tui !== null) {
+            $this->tui->updateSteps($this->steps);
+        }
+    }
+
+    /**
+     * Mark a step as completed.
+     */
+    protected function completeStep(int $stepNumber): void
+    {
+        if (isset($this->steps[$stepNumber - 1])) {
+            $this->steps[$stepNumber - 1]['completed'] = true;
+            $this->updateTuiSteps();
+        }
     }
 
     /**
@@ -103,7 +218,7 @@ class NewCommand extends Command
      ███████╗╚██████╔╝╚██████╔╝
      ╚══════╝ ╚═════╝  ╚═════╝ 
      
-     Evolution CMS Installer
+     Evolution CMF Installer
 LOGO;
 
         // Print logo in bright cyan color
@@ -133,22 +248,24 @@ LOGO;
         $pdoOk = SystemInfo::hasExtension('pdo');
         $jsonOk = SystemInfo::hasExtension('json');
         $mysqliOk = SystemInfo::hasExtension('mysqli');
+        $mbstringOk = SystemInfo::hasExtension('mbstring');
         $composerOk = $composerVersion !== null;
 
         $this->printStatusItem('System status', true, true);
         Console::line('');
-
+        
         $this->printStatusItem($os, true);
         $this->printStatusItem("PHP - {$phpVersion}", $phpOk);
         $this->printStatusItem("Composer" . ($composerVersion ? " - {$composerVersion}" : ''), $composerOk);
         $this->printStatusItem('PDO extension', $pdoOk);
         $this->printStatusItem('JSON extension', $jsonOk);
         $this->printStatusItem('MySQLi extension', $mysqliOk);
-
+        $this->printStatusItem('MBString extension', $mbstringOk);
+        
         if ($diskFree) {
             $this->printStatusItem("Disk free - {$diskFree}", true);
         }
-
+        
         if ($memoryLimit) {
             $this->printStatusItem("Memory limit - {$memoryLimit}", true);
         }
@@ -173,15 +290,15 @@ LOGO;
         $indicator = $status ? '●' : '▲';
         $indicatorColor = $status ? "\033[0;32m" : "\033[0;33m";
         $reset = "\033[0m";
-
+        
         echo "  {$indicatorColor}{$indicator}{$reset} ";
-
+        
         if (!$status) {
             echo "\033[2m{$label}\033[0m";
         } else {
             echo $label;
         }
-
+        
         echo PHP_EOL;
     }
 
@@ -201,11 +318,11 @@ LOGO;
         // Database configuration
         $inputs['database']['type'] = $input->getOption('database') ?: $this->askDatabaseType($helper, $input, $output);
         $inputs['database']['host'] = $input->getOption('database-host') ?: $this->askDatabaseHost($helper, $input, $output);
-
+        
         if ($input->getOption('database-port')) {
             $inputs['database']['port'] = $input->getOption('database-port');
         }
-
+        
         $inputs['database']['name'] = $input->getOption('database-name') ?: $this->askDatabaseName($helper, $input, $output);
         $inputs['database']['user'] = $input->getOption('database-user') ?: $this->askDatabaseUser($helper, $input, $output);
         $inputs['database']['password'] = $input->getOption('database-password') ?: $this->askDatabasePassword($helper, $input, $output);
@@ -223,14 +340,27 @@ LOGO;
      */
     protected function askDatabaseType($helper, InputInterface $input, OutputInterface $output): string
     {
+        $this->addLog('Which database driver do you want to use?');
+        $this->addLog('  [0] mysql');
+        $this->addLog('  [1] pgsql');
+        $this->updateTuiLogs();
+        
+        // Use ChoiceQuestion but with empty question text (we show it in Log)
         $question = new ChoiceQuestion(
-            'Which database driver do you want to use?',
+            '',
             ['mysql', 'pgsql'],
             0
         );
         $question->setErrorMessage('Database driver %s is invalid.');
 
-        return $helper->ask($input, $output, $question);
+        // Ask the question (Symfony will handle input, but we won't show its prompt)
+        $answer = $helper->ask($input, $output, $question);
+        
+        // Add the answer to log
+        $this->addLog(' > ' . $answer);
+        $this->updateTuiLogs();
+        
+        return $answer;
     }
 
     /**
@@ -286,12 +416,16 @@ LOGO;
     {
         $question = new Question('Admin email:');
         $question->setValidator(function ($value) {
+            if (empty($value)) {
+                throw new \RuntimeException('Email address is required.');
+            }
             if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
                 throw new \RuntimeException('Please enter a valid email address.');
             }
             return $value;
         });
-        return $helper->ask($input, $output, $question);
+        $answer = $helper->ask($input, $output, $question);
+        return $answer ?? '';
     }
 
     /**
@@ -307,7 +441,8 @@ LOGO;
             }
             return $value;
         });
-        return $helper->ask($input, $output, $question);
+        $result = $helper->ask($input, $output, $question);
+        return $result ?? '';
     }
 
     /**

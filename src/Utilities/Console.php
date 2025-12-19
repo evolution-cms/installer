@@ -97,3 +97,4 @@ class Console
         echo $message . PHP_EOL;
     }
 }
+

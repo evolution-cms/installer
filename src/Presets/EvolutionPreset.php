@@ -31,7 +31,7 @@ class EvolutionPreset extends Preset
         }
 
         // Step 1: Download/Clone Evolution CMS (with version resolution)
-        $this->downloadEvolutionCMS($name);
+        $this->downloadEvolutionCMS($name, $options);
 
         // Step 2: Setup database
         $this->setupDatabase($name, $options);
@@ -74,9 +74,10 @@ class EvolutionPreset extends Preset
      * Download Evolution CMS.
      *
      * @param string $name
+     * @param array $options
      * @return void
      */
-    protected function downloadEvolutionCMS(string $name): void
+    protected function downloadEvolutionCMS(string $name, array $options = []): void
     {
         Console::info("Determining compatible Evolution CMS version...");
         
@@ -101,7 +102,14 @@ class EvolutionPreset extends Preset
         // For now, show instructions
         Console::warning("Download functionality not yet fully implemented.");
         Console::info("Please download manually from: {$downloadUrl}");
-        Console::info("Or use git: git clone --depth 1 --branch {$version} https://github.com/evolution-cms/evolution.git {$name}");
+        
+        // Show appropriate git command based on whether installing in current dir
+        $isCurrentDir = !empty($options['install_in_current_dir']);
+        if ($isCurrentDir) {
+            Console::info("Or use git in current directory: git clone --depth 1 --branch {$version} https://github.com/evolution-cms/evolution.git .");
+        } else {
+            Console::info("Or use git: git clone --depth 1 --branch {$version} https://github.com/evolution-cms/evolution.git {$name}");
+        }
     }
 
     /**
@@ -164,7 +172,8 @@ class EvolutionPreset extends Preset
     {
         Console::info("Configuring project...");
         
-        $projectPath = getcwd() . '/' . $name;
+        // If installing in current directory, use it directly
+        $projectPath = !empty($options['install_in_current_dir']) ? $name : (getcwd() . '/' . $name);
         
         // Create database configuration file
         $createDbConfig = new CreatesDatabaseConfig();
@@ -202,12 +211,15 @@ class EvolutionPreset extends Preset
     {
         Console::info("Installing dependencies...");
 
-        if (!file_exists("{$name}/composer.json")) {
+        $projectPath = $name;
+        $composerJson = $projectPath . '/composer.json';
+
+        if (!file_exists($composerJson)) {
             Console::warning("composer.json not found. Skipping dependency installation.");
             return;
         }
 
-        $process = new Process(['composer', 'install', '--no-interaction'], $name);
+        $process = new Process(['composer', 'install', '--no-interaction'], $projectPath);
         $process->setTimeout(300);
         
         $process->run(function ($type, $line) {
@@ -229,7 +241,8 @@ class EvolutionPreset extends Preset
      */
     protected function initializeGitRepository(string $name): void
     {
-        $projectPath = getcwd() . '/' . $name;
+        // Use the name directly (it's already the full path if installing in current dir)
+        $projectPath = $name;
 
         if (!is_dir($projectPath)) {
             Console::warning("Project directory not found. Skipping Git initialization.");
@@ -346,7 +359,7 @@ GITIGNORE;
         $userEmail = $this->getGitConfig('user.email', $projectPath);
 
         if (!$userName) {
-            $this->setGitConfig('user.name', 'Evolution CMS Installer', $projectPath);
+            $this->setGitConfig('user.name', 'Evolution CMF Installer', $projectPath);
         }
         if (!$userEmail) {
             $this->setGitConfig('user.email', 'installer@evolution-cms.com', $projectPath);

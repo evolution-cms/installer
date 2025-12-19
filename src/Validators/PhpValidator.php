@@ -26,7 +26,7 @@ class PhpValidator
             return false;
         }
 
-        Console::success("PHP version {$version} is supported.");
+        // Don't output here - let caller handle display through TUI
         return true;
     }
 

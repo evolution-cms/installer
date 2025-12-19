@@ -68,7 +68,8 @@ class SystemInfo
         
         if ($process->isSuccessful()) {
             $output = trim($process->getOutput());
-            if (preg_match('/Composer version (\S+)/', $output, $matches)) {
+            // Match both "Composer version X.X.X" and "Composer X.X.X" formats
+            if (preg_match('/Composer\s+(?:version\s+)?(\S+)/', $output, $matches)) {
                 return $matches[1];
             }
         }
