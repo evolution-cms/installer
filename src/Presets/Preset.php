@@ -25,4 +25,3 @@ abstract class Preset
      */
     abstract public function description(): string;
 }
-

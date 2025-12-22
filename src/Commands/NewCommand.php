@@ -1,23 +1,40 @@
 <?php namespace EvolutionCMS\Installer\Commands;
 
+use AllowDynamicProperties;
+use EvolutionCMS\Installer\Concerns\ConfiguresDatabase;
+use EvolutionCMS\Installer\Presets\Preset;
+use EvolutionCMS\Installer\Utilities\Console;
+use EvolutionCMS\Installer\Utilities\SystemInfo;
+use EvolutionCMS\Installer\Utilities\TuiRenderer;
+use EvolutionCMS\Installer\Validators\PhpValidator;
+use PDOException;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\Question;
-use Symfony\Component\Console\Question\ChoiceQuestion;
-use EvolutionCMS\Installer\Utilities\Console;
-use EvolutionCMS\Installer\Utilities\SystemInfo;
-use EvolutionCMS\Installer\Utilities\TuiRenderer;
-use EvolutionCMS\Installer\Validators\PhpValidator;
-use EvolutionCMS\Installer\Presets\Preset;
 
+#[AllowDynamicProperties]
 class NewCommand extends Command
 {
+    use ConfiguresDatabase;
+    
+    protected ?OutputInterface $logSection = null;
     protected ?TuiRenderer $tui = null;
-    protected array $logs = [];
-    protected array $steps = [];
+    protected array $steps = [
+        'php' => ['label' => 'Step 1: Validate PHP version', 'completed' => false],
+        'database' => ['label' => 'Step 2: Check database connection', 'completed' => false],
+        'download' => ['label' => 'Step 3: Download Evolution CMF', 'completed' => false],
+        'extract' => ['label' => 'Step 4: Extract files', 'completed' => false],
+        'install' => ['label' => 'Step 5: Install Evolution CMF', 'completed' => false],
+        'dependencies' => ['label' => 'Step 6: Install dependencies', 'completed' => false],
+        'admin' => ['label' => 'Step 7: Create admin user', 'completed' => false],
+        'git' => ['label' => 'Step 8: Initialize Git repository', 'completed' => false],
+        'finalize' => ['label' => 'Step 9: Finalize installation', 'completed' => false],
+    ];
+
+    //protected array $logs = [];
     /**
      * Configure the command options.
      */
@@ -28,8 +45,8 @@ class NewCommand extends Command
             ->setDescription('Create a new Evolution CMS application')
             ->addArgument('name', InputArgument::OPTIONAL, 'The name of the application (use "." to install in current directory)', '.')
             ->addOption('preset', null, InputOption::VALUE_OPTIONAL, 'The preset to use', 'evolution')
-            ->addOption('database', null, InputOption::VALUE_OPTIONAL, 'The database type (mysql, pgsql)')
-            ->addOption('database-host', null, InputOption::VALUE_OPTIONAL, 'The database host', 'localhost')
+            ->addOption('database', null, InputOption::VALUE_OPTIONAL, 'The database type (mysql, pgsql, sqlite, sqlsrv)')
+            ->addOption('database-host', null, InputOption::VALUE_OPTIONAL, 'The database host (localhost)')
             ->addOption('database-port', null, InputOption::VALUE_OPTIONAL, 'The database port')
             ->addOption('database-name', null, InputOption::VALUE_OPTIONAL, 'The database name')
             ->addOption('database-user', null, InputOption::VALUE_OPTIONAL, 'The database user')
@@ -47,8 +64,9 @@ class NewCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $this->output = $output;
-        
+        $this->tui = new TuiRenderer($output);
+        $this->tui->setSystemStatus($this->checkSystemStatus());
+
         $name = $input->getArgument('name') ?? '.';
         $preset = $this->getPreset($input->getOption('preset'));
 
@@ -62,27 +80,25 @@ class NewCommand extends Command
             $this->verifyApplicationDoesntExist($name);
         }
 
-        // Display welcome message first (this renders the TUI with empty logs)
-        $this->displayWelcomeMessage();
-
         // Pre-validate PHP version (after TUI is rendered)
         $phpValidator = new PhpValidator();
         $phpVersion = SystemInfo::getPhpVersion();
         if (!$phpValidator->isSupported()) {
-            $this->addLog("Cannot proceed with installation.");
-            Console::error("Cannot proceed with installation.");
+            Console::error("PHP version {$phpVersion} is not supported.");
             return Command::FAILURE;
         }
-        $this->addLog("✔ PHP version {$phpVersion} is supported.");
-        // Note: Logs will be rendered in displayTuiWelcome() via render()
+        $phpOk = version_compare($phpVersion, '8.3.0', '>=');
+        $this->steps['php']['completed'] = $phpOk;
+        $this->tui->setQuestTrack($this->steps);
+        $this->tui->addLog("PHP version {$phpVersion} is supported.", 'success');
 
         $options = $this->gatherInputs($input, $output);
-        $options['git'] = $input->getOption('git');
-        $options['install_in_current_dir'] = $installInCurrentDir;
+        //$options['git'] = $input->getOption('git');
+        //$options['install_in_current_dir'] = $installInCurrentDir;
 
-        $preset->install($name, $options);
+        //$preset->install($name, $options);
 
-        Console::success("Evolution CMS application ready! Build something amazing.");
+        //Console::success("Evolution CMF application ready! Build something amazing.");
 
         return Command::SUCCESS;
     }
@@ -101,13 +117,11 @@ class NewCommand extends Command
     /**
      * Display the welcome message with system information.
      */
-    protected function displayWelcomeMessage(): void
+    /*protected function displayWelcomeMessage($output): void
     {
         try {
-            $this->displayTuiWelcome();
+            $this->displayTuiWelcome($output);
         } catch (\Exception $e) {
-            // Fallback to simple display
-            $this->printLogo();
             $this->printSystemStatus();
             Console::line('');
         }
@@ -116,10 +130,31 @@ class NewCommand extends Command
     /**
      * Display TUI welcome screen.
      */
-    protected function displayTuiWelcome(): void
+    /*protected function displayTuiWelcome($output): void
     {
-        $this->tui = new TuiRenderer($this->output);
+        $output->write(sprintf("\033\143"));
+
+        // Pass sections to TuiRenderer
+        $this->tui = new TuiRenderer($output);
+        $this->tui->clear();
+
+        $logoSection = $output->section();
+        //$logoSection->setMaxHeight(9); // title + 6 logo lines + bottom border
+
+        $questSection = $output->section();
+        //$questSection->setMaxHeight(11); // title + 9 items + bottom border
+
+        $this->logSection = $output->section();
+        //$this->logSection->setMaxHeight(5); // allow scrolling for logs
+
+        $this->inputSection = $output->section();
+        //$this->logSection->setMaxHeight(2);
         
+        // Set input section in TuiRenderer
+        $this->tui->setInputSection($this->inputSection);
+
+        $logoSection->writeln($this->tui->buildLogoContent());
+
         // Prepare system status
         $os = SystemInfo::getOS();
         $phpVersion = SystemInfo::getPhpVersion();
@@ -159,16 +194,14 @@ class NewCommand extends Command
             ['label' => 'Step 9: Finalize installation', 'completed' => false],
         ];
 
-        $this->tui->render($systemStatus, $this->steps, $this->logs);
-        
-        // Note: With Output Sections, logs are already rendered in render() via renderLogSection().
-        // We only need to call updateTuiLogs() when adding new logs after initial render.
+        $questSection->writeln($this->tui->buildQuestAndSystemContent($this->steps, $systemStatus));
+        $this->logSection->writeln($this->tui->buildLogContent());
     }
 
     /**
      * Add log message.
      */
-    protected function addLog(string $message): void
+    /*protected function addLog(string $message): void
     {
         $this->logs[] = $message;
     }
@@ -176,7 +209,7 @@ class NewCommand extends Command
     /**
      * Update TUI logs display (only Log block, not the whole screen).
      */
-    protected function updateTuiLogs(): void
+    /*protected function updateTuiLogs(): void
     {
         if ($this->tui !== null) {
             $this->tui->updateLogs($this->logs);
@@ -186,17 +219,18 @@ class NewCommand extends Command
     /**
      * Update TUI steps display (only Quest track block, not the whole screen).
      */
-    protected function updateTuiSteps(): void
+    /*protected function updateTuiSteps(): void
     {
         if ($this->tui !== null) {
-            $this->tui->updateSteps($this->steps);
+            // Use fullRender to ensure all blocks stay in correct positions
+            $this->tui->fullRender($this->logs);
         }
     }
 
     /**
      * Mark a step as completed.
      */
-    protected function completeStep(int $stepNumber): void
+    /*protected function completeStep(int $stepNumber): void
     {
         if (isset($this->steps[$stepNumber - 1])) {
             $this->steps[$stepNumber - 1]['completed'] = true;
@@ -205,36 +239,9 @@ class NewCommand extends Command
     }
 
     /**
-     * Print EVO ASCII logo.
-     */
-    protected function printLogo(): void
-    {
-        $logo = <<<'LOGO'
-     ███████╗██╗   ██╗ ██████╗ 
-     ██╔════╝██║   ██║██╔═══██╗
-     █████╗  ██║   ██║██║   ██║
-     ██╔══╝  ██║   ██║██║   ██║
-     ███████╗╚██████╔╝╚██████╔╝
-     ╚══════╝ ╚═════╝  ╚═════╝ 
-     
-     Evolution CMF Installer
-LOGO;
-
-        // Print logo in bright cyan color
-        if (function_exists('stream_isatty') && stream_isatty(STDOUT)) {
-            echo "\033[1;36m"; // Bright cyan
-            echo $logo;
-            echo "\033[0m"; // Reset
-        } else {
-            echo $logo;
-        }
-        Console::line('');
-    }
-
-    /**
      * Print system status information.
      */
-    protected function printSystemStatus(): void
+    /*protected function printSystemStatus(): void
     {
         $os = SystemInfo::getOS();
         $phpVersion = SystemInfo::getPhpVersion();
@@ -277,7 +284,7 @@ LOGO;
      * @param bool $status
      * @param bool $isHeader
      */
-    protected function printStatusItem(string $label, bool $status, bool $isHeader = false): void
+    /*protected function printStatusItem(string $label, bool $status, bool $isHeader = false): void
     {
         if ($isHeader) {
             // Header without indicator
@@ -301,6 +308,48 @@ LOGO;
         echo PHP_EOL;
     }
 
+    /*
+     *
+     */
+    protected function checkSystemStatus(): array
+    {
+        $os = SystemInfo::getOS();
+        $phpVersion = SystemInfo::getPhpVersion();
+        $composerVersion = SystemInfo::getComposerVersion();
+        $diskFree = SystemInfo::getDiskFreeSpace();
+        $memoryLimit = SystemInfo::getMemoryLimit();
+
+        $phpOk = version_compare($phpVersion, '8.3.0', '>=');
+        $pdoOk = SystemInfo::hasExtension('pdo');
+        $jsonOk = SystemInfo::hasExtension('json');
+        $mysqliOk = SystemInfo::hasExtension('mysqli');
+        $mbstringOk = SystemInfo::hasExtension('mbstring');
+        $composerOk = $composerVersion !== null;
+
+        // Check available PDO drivers
+        $availablePdoDrivers = \PDO::getAvailableDrivers();
+        $pdoSqliteOk = in_array('sqlite', $availablePdoDrivers);
+        $pdoMysqlOk = in_array('mysql', $availablePdoDrivers);
+        $pdoPgsqlOk = in_array('pgsql', $availablePdoDrivers);
+        $pdoSqlsrvOk = in_array('sqlsrv', $availablePdoDrivers);
+        
+        return [
+            ['label' => $os, 'status' => true],
+            ['label' => "PHP - {$phpVersion}", 'status' => $phpOk],
+            ['label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'status' => $composerOk],
+            ['label' => 'PDO extension', 'status' => $pdoOk],
+            ['label' => 'PDO MySQL driver', 'status' => $pdoMysqlOk],
+            ['label' => 'PDO PostgreSQL driver', 'status' => $pdoPgsqlOk],
+            ['label' => 'PDO SQLite driver', 'status' => $pdoSqliteOk],
+            ['label' => 'PDO SQL Server driver', 'status' => $pdoSqlsrvOk],
+            ['label' => 'JSON extension', 'status' => $jsonOk],
+            ['label' => 'MySQLi extension', 'status' => $mysqliOk],
+            ['label' => 'MBString extension', 'status' => $mbstringOk],
+            ['label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'status' => $diskFree !== null],
+            ['label' => 'Memory limit - ' . ($memoryLimit ?: 'Unknown'), 'status' => true],
+        ];
+    }
+
     /**
      * Gather inputs from user.
      */
@@ -314,121 +363,534 @@ LOGO;
             'language' => $input->getOption('language') ?: 'en',
         ];
 
-        // Database configuration
-        $inputs['database']['type'] = $input->getOption('database') ?: $this->askDatabaseType($helper, $input, $output);
-        $inputs['database']['host'] = $input->getOption('database-host') ?: $this->askDatabaseHost($helper, $input, $output);
-        
-        if ($input->getOption('database-port')) {
-            $inputs['database']['port'] = $input->getOption('database-port');
-        }
-        
-        $inputs['database']['name'] = $input->getOption('database-name') ?: $this->askDatabaseName($helper, $input, $output);
-        $inputs['database']['user'] = $input->getOption('database-user') ?: $this->askDatabaseUser($helper, $input, $output);
-        $inputs['database']['password'] = $input->getOption('database-password') ?: $this->askDatabasePassword($helper, $input, $output);
+        // Database configuration with connection retry loop
+        $databaseConnected = false;
+        $firstAttempt = true;
+        while (!$databaseConnected) {
+            if ($firstAttempt && $this->hasAllDatabaseOptions($input)) {
+                // First attempt with command-line options
+                $inputs['database']['type'] = $input->getOption('database');
+                $inputs['database']['host'] = $input->getOption('database-host');
+                if ($input->getOption('database-port')) {
+                    $inputs['database']['port'] = $input->getOption('database-port');
+                }
+                $inputs['database']['name'] = $input->getOption('database-name');
+                $inputs['database']['user'] = $input->getOption('database-user');
+                $inputs['database']['password'] = $input->getOption('database-password');
+            } else {
+                // Ask for database credentials interactively (ignore command-line options on retry)
+                $inputs['database'] = $this->gatherDatabaseInputs($helper, $input, $output, $firstAttempt);
+            }
 
-        // Admin configuration
-        $inputs['admin']['username'] = $input->getOption('admin-username') ?: $this->askAdminUsername($helper, $input, $output);
-        $inputs['admin']['email'] = $input->getOption('admin-email') ?: $this->askAdminEmail($helper, $input, $output);
-        $inputs['admin']['password'] = $input->getOption('admin-password') ?: $this->askAdminPassword($helper, $input, $output);
+            // Test database connection
+            if ($this->testDatabaseConnection($inputs['database'])) {
+                $databaseConnected = true;
+            } else {
+                // Connection failed, ask user what to do
+                if (!$this->askRetryDatabaseConnection()) {
+                    throw new \RuntimeException('Installation cancelled by user.');
+                }
+                $firstAttempt = false;
+            }
+        }
+
+        // Admin configuration (only after successful DB connection)
+        $inputs['admin']['username'] = $input->getOption('admin-username') ?: $this->askAdminUsername();
+        $inputs['admin']['email'] = $input->getOption('admin-email') ?: $this->askAdminEmail();
+        $inputs['admin']['password'] = $input->getOption('admin-password') ?: $this->askAdminPassword();
 
         return $inputs;
     }
 
     /**
-     * Ask for database type.
+     * Check if all database options are provided via command line.
      */
-    protected function askDatabaseType($helper, InputInterface $input, OutputInterface $output): string
+    protected function hasAllDatabaseOptions(InputInterface $input): bool
     {
-        $this->addLog('Which database driver do you want to use?');
-        $this->addLog('  [0] mysql');
-        $this->addLog('  [1] pgsql');
-        $this->updateTuiLogs();
-        
-        // Use input section from TUI to display prompt inside Log block
-        $inputSection = $this->tui?->getInputSection();
-        
-        // Use regular Question to avoid duplicate option display
-        // ChoiceQuestion automatically displays options, which duplicates our Log output
-        $question = new Question(' > ');
-        $question->setAutocompleterValues(['0', '1', 'mysql', 'pgsql']);
-        $question->setValidator(function ($answer) {
-            if (empty($answer)) {
-                throw new \RuntimeException('Database driver cannot be empty.');
-            }
-            
-            // Normalize answer: allow both index and name
-            $normalized = strtolower(trim($answer));
-            if (in_array($normalized, ['0', 'mysql'])) {
-                return 'mysql';
-            }
-            if (in_array($normalized, ['1', 'pgsql'])) {
-                return 'pgsql';
-            }
-            
-            throw new \RuntimeException('Database driver must be either "mysql" or "pgsql".');
-        });
+        return $input->getOption('database') !== null
+            && $input->getOption('database-host') !== null
+            && $input->getOption('database-name') !== null
+            && $input->getOption('database-user') !== null
+            && $input->getOption('database-password') !== null;
+    }
 
-        // Ask the question - use input section if available to redirect output inside Log block
-        if ($inputSection !== null) {
-            // Use input section as output so the prompt appears inside Log block
-            $answer = $helper->ask($input, $inputSection, $question);
-        } else {
-            $answer = $helper->ask($input, $output, $question);
-        }
+    /**
+     * Gather database configuration inputs from user.
+     */
+    protected function gatherDatabaseInputs($helper, InputInterface $input, OutputInterface $output, bool $useOptions = true): array
+    {
+        $database = [];
         
-        // Clear input prompt after answer
+        // Use command-line options if available, otherwise ask interactively
+        $database['type'] = ($useOptions && $input->getOption('database')) ? $input->getOption('database') : $this->askDatabaseType();
+        
+        // SQLite doesn't need host, port, user, password
+        if ($database['type'] === 'sqlite') {
+            $database['name'] = ($useOptions && $input->getOption('database-name')) 
+                ? $input->getOption('database-name') 
+                : $this->askDatabaseName('sqlite');
+            // SQLite doesn't need these fields, but set defaults for compatibility
+            $database['host'] = '';
+            $database['user'] = '';
+            $database['password'] = '';
+        } else {
+            $database['host'] = ($useOptions && $input->getOption('database-host')) 
+                ? $input->getOption('database-host') 
+                : $this->askDatabaseHost();
+            
+            if ($input->getOption('database-port')) {
+                $database['port'] = $input->getOption('database-port');
+            }
+            
+            $database['name'] = ($useOptions && $input->getOption('database-name')) 
+                ? $input->getOption('database-name') 
+                : $this->askDatabaseName();
+            $database['user'] = ($useOptions && $input->getOption('database-user')) 
+                ? $input->getOption('database-user') 
+                : $this->askDatabaseUser();
+            $database['password'] = ($useOptions && $input->getOption('database-password')) 
+                ? $input->getOption('database-password') 
+                : $this->askDatabasePassword();
+        }
+
+        return $database;
+    }
+
+    /**
+     * Ask for database type with interactive radio button selection.
+     */
+    protected function askDatabaseType(): string
+    {
+        $driverNames = [
+            'mysql' => 'MySQL or MariaDB',
+            'pgsql' => 'PostgreSQL',
+            'sqlite' => 'SQLite',
+            'sqlsrv' => 'SQL Server'
+        ];
+        
+        $options = array_keys($driverNames);
+        $labels = array_values($driverNames);
+        $active = 0;
+
+        // Display question in cyan without icon
+        $this->tui->addLog('Which database driver do you want to use?', 'ask');
+        
+        // Display initial radio options (force render to avoid throttle)
+        $radioText = $this->tui->renderRadio($options, $active, $labels);
+        $this->tui->addLog($radioText);
+
+        // raw input
+        system('stty -icanon -echo');
+        try {
+            while (true) {
+                $key = fread(STDIN, 3);
+
+                switch ($key) {
+                    case "\033[D": // ←
+                    case "\033[A": // ↑
+                        $active = max(0, $active - 1);
+                        break;
+
+                    case "\033[C": // →
+                    case "\033[B": // ↓
+                        $active = min(count($options) - 1, $active + 1);
+                        break;
+
+                    case "\n": // Enter
+                        $this->tui->replaceLastLogs('<fg=green>✔</> Selected database driver: ' . $labels[$active] . '.', 2);
+                        return $options[$active];
+                }
+
+                $this->tui->replaceLastLog($this->tui->renderRadio($options, $active, $labels));
+            }
+        } finally {
+            system('stty sane');
+        }
+    }
+
+    /*protected function askDatabaseType($helper, InputInterface $input, OutputInterface $output): string
+    {
+        $this->tui->addLog("Which database driver do you want to use?", 'success');
+
+        $options = ['mysql', 'pgsql'];
+        $selectedIndex = 0;
+
+        // Display initial options with radio buttons
+        $this->updateDatabaseDriverOptions($selectedIndex);
+
+        // Use custom interactive selection via TuiRenderer
+        // Create key map for database driver selection (custom keys for mysql/pgsql)
+        $keyMap = [
+            '0' => 'select_0',  // Direct select mysql
+            '1' => 'select_1',  // Direct select pgsql
+            'm' => 'select_0',  // 'm' for mysql
+            'M' => 'select_0',
+            'p' => 'select_1',  // 'p' for pgsql
+            'P' => 'select_1',
+            'UP_ARROW' => 'toggle',
+            'DOWN_ARROW' => 'toggle',
+            'LEFT_ARROW' => 'toggle',
+            'RIGHT_ARROW' => 'toggle',
+            "\t" => 'toggle',  // TAB
+            'CTRL_P' => 'toggle',
+            'CTRL_N' => 'toggle',
+            'CTRL_F' => 'toggle',
+            'CTRL_B' => 'toggle',
+            'h' => 'toggle',
+            'j' => 'toggle',
+            'k' => 'toggle',
+            'l' => 'toggle',
+            'H' => 'toggle',
+            'J' => 'toggle',
+            'K' => 'toggle',
+            'L' => 'toggle',
+            "\n" => 'confirm',
+            "\r" => 'confirm',
+        ];
+
+        // Handle interactive selection with arrow keys using TuiRenderer
+        $answer = $this->tui?->handleInteractiveSelection(
+            $options,
+            $selectedIndex,
+            function($index) {
+                $this->updateDatabaseDriverOptions($index);
+                $this->logSection->write($this->logs ?? []);
+            },
+            $keyMap
+        ) ?? $options[$selectedIndex];
+
+        // Clear the input section after answer
+        $inputSection = $this->tui?->getInputSection();
         if ($inputSection !== null) {
             $inputSection->clear();
         }
-        
-        // Add the answer to log
-        $this->addLog(' > ' . $answer);
-        $this->updateTuiLogs();
-        
+
+        // Update Log Section with the final selected answer
+        $finalIndex = array_search($answer, $options, true);
+        if ($finalIndex === false) {
+            $finalIndex = 0;
+        }
+
+        $this->updateDatabaseDriverOptions($finalIndex);
+
+        // Add success message about selected database driver
+        $green = TuiRenderer::colorGreen();
+        $reset = TuiRenderer::colorReset();
+        $driverNames = ['mysql' => 'MySQL', 'pgsql' => 'PgSQL'];
+        $successMessage = $green . '✔' . $reset . ' Selected database driver: ' . $driverNames[$answer];
+
+        // Update log section
+        $msg = $this->tui->buildLogLine($successMessage);
+        $this->logSection->clear(2);
+        $this->logSection->writeln($msg);
+
         return $answer;
+    }
+
+    /**
+     * Update database driver options display with radio buttons.
+     */
+    /*protected function updateDatabaseDriverOptions(int $selectedIndex): void
+    {
+        // Create options with radio buttons based on selection
+        // Selected option has brighter text, unselected has dimmer text
+        $mysqlOption = ($selectedIndex === 0) ?
+            ('<fg=green>●</> <fg=white;options=bold>mysql</>') :
+            ('<fg=gray>○ mysql</>');
+        $pgsqlOption = ($selectedIndex === 1) ?
+            ('<fg=green>●</> <fg=white;options=bold>pgsql</>') :
+            ('<fg=gray>○ pgsql</>');
+
+        $optionsLine = '  ' . $mysqlOption . ' ' . '<fg=gray>/</>' . ' ' . $pgsqlOption;
+
+        // Update or add the options line in logs
+        // Find if options line already exists (should be the last log entry before potential prompt)
+        $optionsLineIndex = -1;
+        for ($i = count($this->logs ?? []) - 1; $i >= 0; $i--) {
+            if (strpos($this->logs[$i], 'mysql') !== false || strpos($this->logs[$i], 'pgsql') !== false) {
+                $optionsLineIndex = $i;
+                break;
+            }
+        }
+
+        if ($optionsLineIndex >= 0) {
+            $this->tui->addLog($optionsLineIndex, 'ask');
+            $this->tui->addLog($optionsLine, 'ask');
+        } else {
+            $this->tui->addLog($optionsLine, 'ask');
+        }
     }
 
     /**
      * Ask for database host.
      */
-    protected function askDatabaseHost($helper, InputInterface $input, OutputInterface $output): string
+    /*protected function askDatabaseHost($helper, InputInterface $input, OutputInterface $output): string
     {
-        $question = new Question('Database host:', 'localhost');
-        return $helper->ask($input, $output, $question);
+        $this->tui->addLog('Where is your database server located?', 'ask');
+        
+        // Use input section for prompt
+        /*$inputSection = $this->tui->getInputSection();
+        if ($inputSection !== null) {
+            $inputSection->clear();
+            $inputSection->write('localhost');
+        }*/
+        
+        // Use Question helper with default value
+        /*$question = new Question('', 'localhost');
+        $answer = $helper->ask($input, $output, $question);
+        var_dump($answer);die;
+        
+        // Clear input section after answer
+        /*if ($inputSection !== null) {
+            $inputSection->clear();
+        }
+        
+        // Display selected value
+        $green = TuiRenderer::colorGreen();
+        $successMessage = $green . '✔' . $reset . ' Database host: ' . $answer;
+        $msg = $this->tui->buildLogLine($successMessage);
+        $this->logSection->clear(2);
+        $this->logSection->writeln($msg);*/
+
+        //return $answer ?: 'localhost';
+    //}
+
+    protected function askDatabaseHost(): string
+    {
+        $answer = $this->tui->ask(
+            'Where is your database server located?',
+            'localhost'
+        );
+
+        $this->tui->replaceLastLogs('<fg=green>✔</> Selected database host: ' . $answer . '.', 2);
+
+        return $answer ?: 'localhost';
     }
 
     /**
      * Ask for database name.
+     * 
+     * @param string|null $type Database type (for SQLite, asks for file path)
      */
-    protected function askDatabaseName($helper, InputInterface $input, OutputInterface $output): string
+    protected function askDatabaseName(?string $type = null): string
     {
-        $question = new Question('Database name:', 'evo_db');
-        return $helper->ask($input, $output, $question);
+        if ($type === 'sqlite') {
+            $answer = $this->tui->ask(
+                'What is the path to your SQLite database file?',
+                'database.sqlite'
+            );
+
+            $this->tui->replaceLastLogs('<fg=green>✔</> Selected database path: ' . $answer . '.', 2);
+
+            return $answer ?: 'database.sqlite';
+        }
+
+        $answer = $this->tui->ask(
+            'What is your database name?',
+            'evo_db'
+        );
+
+        $this->tui->replaceLastLogs('<fg=green>✔</> Selected database name: ' . $answer . '.', 2);
+
+        return $answer ?: 'evo_db';
     }
 
     /**
      * Ask for database user.
      */
-    protected function askDatabaseUser($helper, InputInterface $input, OutputInterface $output): string
+    protected function askDatabaseUser(): string
     {
-        $question = new Question('Database user:', 'root');
-        return $helper->ask($input, $output, $question);
+        $answer = $this->tui->ask(
+            'What is your database username?',
+            'root'
+        );
+
+        $this->tui->replaceLastLogs('<fg=green>✔</> Selected database user: ' . $answer . '.', 2);
+
+        return $answer ?: 'root';
     }
 
     /**
      * Ask for database password.
      */
-    protected function askDatabasePassword($helper, InputInterface $input, OutputInterface $output): string
+    protected function askDatabasePassword(): string
     {
-        $question = new Question('Database password:');
-        $question->setHidden(true);
-        return $helper->ask($input, $output, $question) ?: '';
+        $answer = $this->tui->ask(
+            'What is your database password?',
+            '',
+            true // hidden input
+        );
+
+        $this->tui->replaceLastLogs('<fg=green>✔</> Selected database password: ' . (mb_strlen($answer) > 0 ? '••••••••' : '(empty)') . '.', 2);
+
+        return $answer;
+    }
+
+    /**
+     * Test database connection and display result in TUI.
+     * 
+     * @return bool True if connection successful, false otherwise
+     */
+    protected function testDatabaseConnection(array $config): bool
+    {
+        $this->tui->addLog('Testing database connection...');
+        
+        try {
+            $type = $config['type'] ?? 'mysql';
+            
+            // Check if PDO driver is available
+            $availableDrivers = \PDO::getAvailableDrivers();
+            $driverMap = [
+                'mysql' => 'mysql',
+                'pgsql' => 'pgsql',
+                'sqlite' => 'sqlite',
+                'sqlsrv' => 'sqlsrv'
+            ];
+            
+            $requiredDriver = $driverMap[$type] ?? null;
+            if ($requiredDriver && !in_array($requiredDriver, $availableDrivers)) {
+                $driverName = match($type) {
+                    'mysql' => 'MySQL/MariaDB',
+                    'pgsql' => 'PostgreSQL',
+                    'sqlite' => 'SQLite',
+                    'sqlsrv' => 'SQL Server',
+                    default => $type
+                };
+                $this->tui->replaceLastLogs(
+                    '<fg=red>✗</> Database connection failed: PDO driver for ' . $driverName . ' is not available. ' .
+                    'Please install PHP extension: ' . ($type === 'sqlite' ? 'pdo_sqlite' : 'pdo_' . $type) . '.',
+                    2
+                );
+                return false;
+            }
+            
+            if ($type === 'sqlite') {
+                // SQLite: Connect directly to the database file
+                if (empty($config['name'])) {
+                    $this->tui->replaceLastLogs('<fg=red>✗</> Database connection failed: SQLite database path is required.', 2);
+                    return false;
+                }
+                $this->createConnection($config);
+            } else {
+                // For server-based databases, try to connect without database name first
+                $configWithoutDb = $config;
+                unset($configWithoutDb['name']);
+                $this->createConnection($configWithoutDb);
+                
+                // If database name is provided, try to connect to it
+                if (!empty($config['name'])) {
+                    $this->createConnection($config);
+                }
+            }
+            
+            // Display success message
+            $this->tui->replaceLastLogs('<fg=green>✔</> Database connection successful!', 2);
+            return true;
+        } catch (PDOException $e) {
+            $errorMessage = $e->getMessage();
+            
+            // Improve error message for missing driver
+            if (str_contains($errorMessage, 'could not find driver') || str_contains($errorMessage, 'driver not found')) {
+                $driverName = match($config['type'] ?? 'mysql') {
+                    'mysql' => 'MySQL/MariaDB',
+                    'pgsql' => 'PostgreSQL',
+                    'sqlite' => 'SQLite',
+                    'sqlsrv' => 'SQL Server',
+                    default => $config['type'] ?? 'database'
+                };
+                $extensionName = match($config['type'] ?? 'mysql') {
+                    'sqlite' => 'pdo_sqlite',
+                    'sqlsrv' => 'pdo_sqlsrv',
+                    default => 'pdo_' . ($config['type'] ?? 'mysql')
+                };
+                $errorMessage = "PDO driver for {$driverName} is not installed. Please install PHP extension: {$extensionName}";
+            }
+            
+            $this->tui->replaceLastLogs('<fg=red>✗</> Database connection failed: ' . $errorMessage, 2);
+            return false;
+        }
+    }
+
+    /**
+     * Ask user if they want to retry database connection or exit.
+     * 
+     * @return bool True if user wants to retry, false if they want to exit
+     */
+    protected function askRetryDatabaseConnection(): bool
+    {
+        $options = ['Exit installation', 'Try again'];
+        $active = 0;
+
+        // Display question in cyan without icon
+        $this->tui->addLog('Would you like to try again or exit installation?', 'ask');
+
+        // Display initial radio options (force render to avoid throttle)
+        $radioText = $this->tui->renderRadio($options, $active);
+        $this->tui->addLog($radioText);
+
+        // raw input
+        system('stty -icanon -echo');
+        try {
+            while (true) {
+                $key = fread(STDIN, 3);
+
+                switch ($key) {
+                    case "\033[D": // ←
+                    case "\033[A": // ↑
+                        $active = max(0, $active - 1) ? true : false;
+                        break;
+
+                    case "\033[C": // →
+                    case "\033[B": // ↓
+                        $active = min(count($options) - 1, $active + 1) ? true : false;
+                        break;
+
+                    case "\n": // Enter
+                        $active
+                            ? $this->tui->replaceLastLogs('Reinput DB connections.', 2)
+                            : $this->tui->replaceLastLogs('Exit ...', 3);
+                        return $active;
+                }
+
+                $this->tui->replaceLastLog($this->tui->renderRadio($options, $active));
+            }
+        } finally {
+            system('stty sane');
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Update retry options display with radio buttons.
+     */
+    protected function updateRetryOptions(int $selectedIndex): void
+    {
+        $green = TuiRenderer::colorGreen();
+        $gray = TuiRenderer::colorWhite(); // Light gray for unselected
+        $brightWhite = TuiRenderer::colorBold(); // Bright white for selected text
+        $reset = TuiRenderer::colorReset();
+        
+        // Create options with radio buttons based on selection
+        // Selected option has brighter text, unselected has dimmer text
+        $tryAgainOption = ($selectedIndex === 0) ? 
+            ($green . '●' . $reset . ' ' . $brightWhite . 'Try again' . $reset) : 
+            ($gray . '○' . $reset . ' ' . $gray . 'Try again' . $reset);
+        $exitOption = ($selectedIndex === 1) ? 
+            ($green . '●' . $reset . ' ' . $brightWhite . 'Exit installation' . $reset) : 
+            ($gray . '○' . $reset . ' ' . $gray . 'Exit installation' . $reset);
+        
+        $optionsLine = '  ' . $tryAgainOption . ' ' . $gray . '/' . $reset . ' ' . $exitOption;
+        
+        // Update the options line in log section
+        $this->logSection->clear(1);
+        $this->logSection->writeln($optionsLine);
     }
 
     /**
      * Ask for admin username.
      */
-    protected function askAdminUsername($helper, InputInterface $input, OutputInterface $output): string
+    /*protected function askAdminUsername($helper, InputInterface $input, OutputInterface $output): string
     {
         $question = new Question('Admin username:', 'admin');
         return $helper->ask($input, $output, $question);
@@ -437,7 +899,7 @@ LOGO;
     /**
      * Ask for admin email.
      */
-    protected function askAdminEmail($helper, InputInterface $input, OutputInterface $output): string
+    /*protected function askAdminEmail($helper, InputInterface $input, OutputInterface $output): string
     {
         $question = new Question('Admin email:');
         $question->setValidator(function ($value) {
@@ -456,7 +918,7 @@ LOGO;
     /**
      * Ask for admin password.
      */
-    protected function askAdminPassword($helper, InputInterface $input, OutputInterface $output): string
+    /*protected function askAdminPassword($helper, InputInterface $input, OutputInterface $output): string
     {
         $question = new Question('Admin password:');
         $question->setHidden(true);
@@ -484,3 +946,90 @@ LOGO;
         return new $presetClass();
     }
 }
+
+/**
+ * Filtered Output wrapper that suppresses standard ChoiceQuestion output
+ * and tracks selection changes for updating radio buttons.
+ */
+/*class FilteredOutput extends Output
+{
+    protected OutputInterface $output;
+    protected array $options;
+    protected $updateCallback;
+    protected int $currentSelection = 0;
+    
+    public function __construct(OutputInterface $output, array $options, callable $updateCallback)
+    {
+        $this->output = $output;
+        $this->options = $options;
+        $this->updateCallback = $updateCallback;
+        parent::__construct($output->getVerbosity(), $output->isDecorated(), $output->getFormatter());
+    }
+    
+    protected function doWrite(string $message, bool $newline): void
+    {
+        // Filter out standard ChoiceQuestion options list ([0] mysql, [1] pgsql)
+        // ChoiceQuestion outputs options using escape sequences, so we need to filter carefully
+        $lines = explode("\n", $message);
+        $filtered = [];
+        
+        foreach ($lines as $line) {
+            // Skip lines that look like ChoiceQuestion numbered options
+            // Pattern: [0] mysql or [1] pgsql (may have ANSI codes)
+            $cleanLine = preg_replace('/\033\[[0-9;]*m/', '', $line); // Remove ANSI codes for matching
+            if (preg_match('/^\s*\[\d+\]\s+(mysql|pgsql)/i', $cleanLine, $matches)) {
+                // This is a standard option line - extract index and update selection
+                if (preg_match('/\[(\d+)\]/', $cleanLine, $indexMatch)) {
+                    $index = (int)$indexMatch[1];
+                    if ($index !== $this->currentSelection) {
+                        $this->currentSelection = $index;
+                        ($this->updateCallback)($index);
+                    }
+                }
+                // Don't output this line - we have our custom radio buttons
+                continue;
+            }
+            
+            // Suppress prompt lines starting with " > " or just ">"
+            if (preg_match('/^\s*>\s* /', $cleanLine)) {
+                // This is a prompt line, skip it
+                continue;
+            }
+            
+            // Suppress any lines containing both "[" and "]" with numbers (option lists)
+            if (preg_match('/\[\d+\]/', $cleanLine)) {
+                // Likely contains option numbering, skip it
+                continue;
+            }
+            
+            $filtered[] = $line;
+        }
+        
+        // Only output if there's actual content (not just option lists)
+        if (!empty($filtered)) {
+            $filteredMessage = implode("\n", $filtered);
+            $this->output->write($filteredMessage, $newline);
+        }
+    }
+    
+    public function getStream()
+    {
+        return $this->output->getStream();
+    }
+}
+
+/**
+ * Null Output that suppresses all output.
+ */
+/*class NullOutput extends Output
+{
+    protected function doWrite(string $message, bool $newline): void
+    {
+        // Suppress all output
+    }
+    
+    public function getStream()
+    {
+        return STDIN;
+    }
+}*/

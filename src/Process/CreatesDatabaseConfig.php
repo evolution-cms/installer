@@ -34,10 +34,10 @@ class CreatesDatabaseConfig
         
         $configContent = $this->generateConfigContent([
             'driver' => $dbType,
-            'host' => $dbConfig['host'],
+            'host' => $dbConfig['host'] ?? '',
             'port' => $dbPort,
             'database' => $dbConfig['name'],
-            'username' => $dbConfig['user'],
+            'username' => $dbConfig['user'] ?? '',
             'password' => $dbConfig['password'] ?? '',
             'charset' => $charset,
             'collation' => $collation,
@@ -67,11 +67,28 @@ class CreatesDatabaseConfig
     protected function generateConfigContent(array $params): string
     {
         $engineCode = $params['engine'] ? ", '{$params['engine']}'" : '';
+        $driver = $params['driver'];
+        
+        // SQLite doesn't need host, port, username, password
+        if ($driver === 'sqlite') {
+            return <<<PHP
+<?php
+return [
+    'driver' => env('DB_TYPE', '{$driver}'),
+    'database' => env('DB_DATABASE', '{$params['database']}'),
+    'prefix' => env('DB_PREFIX', '{$params['prefix']}'),
+    'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+    'options' => [
+        PDO::ATTR_STRINGIFY_FETCHES => true,
+    ]
+];
+PHP;
+        }
         
         return <<<PHP
 <?php
 return [
-    'driver' => env('DB_TYPE', '{$params['driver']}'),
+    'driver' => env('DB_TYPE', '{$driver}'),
     'host' => env('DB_HOST', '{$params['host']}'),
     'port' => env('DB_PORT', '{$params['port']}'),
     'database' => env('DB_DATABASE', '{$params['database']}'),
@@ -97,11 +114,13 @@ PHP;
      * @param string $type
      * @return int
      */
-    protected function getDefaultPort(string $type): int
+    protected function getDefaultPort(string $type): ?int
     {
         return match($type) {
             'pgsql' => 5432,
             'mysql' => 3306,
+            'sqlsrv' => 1433,
+            'sqlite' => null, // SQLite doesn't use port
             default => 3306,
         };
     }
@@ -117,6 +136,8 @@ PHP;
         return match($type) {
             'pgsql' => 'utf8',
             'mysql' => 'utf8mb4',
+            'sqlite' => 'utf8',
+            'sqlsrv' => 'utf8',
             default => 'utf8mb4',
         };
     }
@@ -132,6 +153,14 @@ PHP;
     {
         if ($type === 'pgsql') {
             return 'utf8';
+        }
+
+        if ($type === 'sqlite') {
+            return 'utf8'; // SQLite doesn't use collation in the same way
+        }
+
+        if ($type === 'sqlsrv') {
+            return 'SQL_Latin1_General_CP1_CI_AS'; // Default SQL Server collation
         }
 
         return match($charset) {
@@ -152,6 +181,8 @@ PHP;
         return match($type) {
             'pgsql' => '',
             'mysql' => 'innodb',
+            'sqlite' => '',
+            'sqlsrv' => '',
             default => 'innodb',
         };
     }

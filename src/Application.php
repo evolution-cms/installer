@@ -20,7 +20,6 @@ class Application extends ConsoleApplication
      */
     public function getLongVersion(): string
     {
-        return parent::getLongVersion() . ' by <comment>Evolution CMS</comment>';
+        return parent::getLongVersion() . ' by <comment>Evolution CMF</comment>';
     }
 }
-
