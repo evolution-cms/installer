@@ -19,7 +19,6 @@ final class TuiRenderer
 
     private float $lastRender = 0.0;
     private ?int $activeInputIndex = null;
-    private string $activeInputValue = '';
 
     public function __construct(OutputInterface $output)
     {
@@ -95,12 +94,7 @@ final class TuiRenderer
 
     private function renderFixed(): void
     {
-        $fixed =
-            $this->logo() . PHP_EOL .
-            $this->composeSideBySide(
-                $this->questTrack(),
-                $this->systemStatus()
-            );
+        $fixed = $this->composeFixedBlocks();
 
         $this->output->write("\033[2J\033[H");
         $this->output->write($fixed . PHP_EOL);
@@ -108,6 +102,37 @@ final class TuiRenderer
         $this->fixedLines = $this->countLines($fixed);
         $this->fixedRendered = true;
     }
+
+    /**
+     * Compose fixed blocks in columns:
+     */
+    private function composeFixedBlocks(): string
+    {
+        $logoVersionBlock = $this->logoVersionBlock();
+        $statusBlock = $this->systemStatus();
+        $questBlock = $this->questTrack();
+
+        // Stack left column blocks vertically, keeping them separate (with their own frames)
+        $leftColumn = $logoVersionBlock . PHP_EOL . $questBlock;
+        $leftColumnHeight = $this->countLines($leftColumn);
+        
+        // Align status block to match left column height
+        $statusBlockAligned = $this->alignBlockHeight($statusBlock, $leftColumnHeight);
+        
+        // Compose two columns side by side (1/2 + 1/2)
+        return $this->composeSideBySide($leftColumn, $statusBlockAligned);
+    }
+
+    /**
+     * Get half width (1/2 of screen width minus borders and gap).
+     */
+    private function getHalfWidth(): int
+    {
+        $frameWidth = $this->terminal->getWidth();
+        // -1 for gap between columns, -4 for borders (2 per side)
+        return intdiv($frameWidth - 1 - 4, 2);
+    }
+
 
     private function renderLogs(): void
     {
@@ -134,54 +159,62 @@ final class TuiRenderer
         $this->output->write($block);
     }
 
-    /*private function renderLogs(): void
-    {
-        $termHeight = $this->terminal->getHeight();
-        $available = max(1, $termHeight - $this->fixedLines - 2);
-        $visible = array_slice($this->logs, -$available);
-        $block = $this->formatLogBlock($visible);
-
-        $logStartRow = $this->fixedLines + 1;
-        $this->moveCursor($logStartRow, 1);
-
-        // Clear FULL log zone (not incrementally!)
-        $clearLines = $available + 2;
-        for ($i = 0; $i < $clearLines; $i++) {
-            $this->output->write("\033[2K\033[1B");
-        }
-
-        // Back to start of log zone
-        $this->moveCursor($logStartRow, 1);
-
-        // Render full log block
-        $this->output->write($block);
-    }*/
-
     private function moveCursor(int $row, int $col): void
     {
         $this->output->write("\033[{$row};{$col}H");
     }
 
-    private function getVisibleLogCount(): int
-    {
-        return min(
-            count($this->logs) + ($this->activeInput ? 1 : 0),
-            max(1, $this->terminal->getHeight() - $this->fixedLines - 2)
-        );
-    }
-
-    /*private function clearLines(int $count): void
-    {
-        for ($i = 0; $i < $count; $i++) {
-            $this->output->write("\033[2K");
-            $this->output->write("\033[1B");
-        }
-        $this->output->write("\033[{$count}A");
-    }*/
-
     private function countLines(string $text): int
     {
         return substr_count(rtrim($text, "\n"), "\n") + 1;
+    }
+
+    /**
+     * Align block to specified height by padding with empty lines.
+     */
+    private function alignBlockHeight(string $block, int $targetHeight): string
+    {
+        $currentHeight = $this->countLines($block);
+        
+        if ($currentHeight >= $targetHeight) {
+            return $block;
+        }
+
+        $lines = explode(PHP_EOL, rtrim($block));
+        if (empty($lines)) {
+            return $block;
+        }
+
+        // Extract content width from a middle line
+        $contentWidth = 0;
+        foreach ($lines as $line) {
+            if (preg_match('/│([^│]*)│/', $line, $matches)) {
+                $contentWidth = mb_strlen(strip_tags($matches[1]));
+                break;
+            }
+        }
+
+        // If we couldn't extract width, try to get it from top border
+        if ($contentWidth === 0 && isset($lines[0])) {
+            $topLine = strip_tags($lines[0]);
+            if (preg_match('/┌(─+)┐/', $topLine, $matches)) {
+                $contentWidth = mb_strlen($matches[1]);
+            }
+        }
+
+        // Create empty line with borders
+        $leftBorder = '<fg=white;options=bold>│</>';
+        $rightBorder = '<fg=white;options=bold>│</>';
+        $emptyLine = $leftBorder . str_repeat(' ', max(0, $contentWidth)) . $rightBorder;
+        
+        // Add empty lines before last line (bottom border)
+        $emptyLinesToAdd = $targetHeight - $currentHeight;
+        if ($emptyLinesToAdd > 0) {
+            $lastIndex = count($lines) - 1;
+            array_splice($lines, $lastIndex, 0, array_fill(0, $emptyLinesToAdd, $emptyLine));
+        }
+        
+        return implode(PHP_EOL, $lines);
     }
 
     private function isInteractive(): bool
@@ -195,20 +228,6 @@ final class TuiRenderer
             $this->output->writeln(strip_tags($log));
         }
     }
-
-    /*private function composeFixedBlock(string $logo, string $quest, string $status): string
-    {
-        $q = explode(PHP_EOL, rtrim($quest));
-        $s = explode(PHP_EOL, rtrim($status));
-        $max = max(count($q), count($s));
-
-        $lines = [];
-        for ($i = 0; $i < $max; $i++) {
-            $lines[] = ($q[$i] ?? '') . ' ' . ($s[$i] ?? '');
-        }
-
-        return rtrim($logo) . PHP_EOL . implode(PHP_EOL, $lines);
-    }*/
 
     /**
      * Compose two multiline blocks side by side.
@@ -236,8 +255,7 @@ final class TuiRenderer
 
     private function questTrack(): string
     {
-        $frameWidth = $this->terminal->getWidth();
-        $contentWidth = intdiv($frameWidth - 1 - 4, 2); // -1 for gap, -4 for borders (2 per side)
+        $contentWidth = $this->getHalfWidth();
 
         $lines = [];
 
@@ -291,9 +309,8 @@ final class TuiRenderer
 
     private function systemStatus(): string
     {
-        $frameWidth = $this->terminal->getWidth();
-        // System status takes half the width (minus 1 for gap), then minus 2 for borders
-        $contentWidth = intdiv($frameWidth - 1 - 4, 2); // -1 for gap, -4 for borders (2 per side)
+        // System status takes 2/4 (half) of the width
+        $contentWidth = $this->getHalfWidth();
 
         $lines = [];
 
@@ -319,10 +336,22 @@ final class TuiRenderer
         foreach ($systemStatus as $item) {
             $status = $item['status'] ?? true;
             $label = $item['label'] ?? '';
+            $warning = $item['warning'] ?? false; // Optional warning flag for non-critical issues
 
-            $indicator = $status ? '<fg=green>●</>' : '<fg=yellow>▲</>';
-            $labelColor = $status ? '' : '<fg=yellow>';
-            $resetColor = $status ? '' : '</>';
+            // Use different indicators: success (✓), warning (⚠), error (✗)
+            if ($status) {
+                $indicator = '<fg=green>●</>';
+                $labelColor = '';
+                $resetColor = '';
+            } elseif ($warning) {
+                $indicator = '<fg=yellow>●</>';
+                $labelColor = '<fg=yellow>';
+                $resetColor = '</>';
+            } else {
+                $indicator = '<fg=red>●</>';
+                $labelColor = '<fg=red>';
+                $resetColor = '</>';
+            }
 
             $line = ' ' . $indicator . ' ' . $labelColor . $label . $resetColor;
 
@@ -509,7 +538,10 @@ final class TuiRenderer
         return $final;
     }
 
-    private function logo(): string
+    /**
+     * Contains title "Evolution CMF Installer" with logo and version.
+     */
+    private function logoVersionBlock(): string
     {
         $logo = [
             ' ███████╗██╗   ██╗ ██████╗ ',
@@ -520,15 +552,16 @@ final class TuiRenderer
             ' ╚══════╝   ╚═╝    ╚═════╝ ',
         ];
 
-        $frameWidth = $this->terminal->getWidth();
-        $contentWidth = $frameWidth - 2;
-
+        $versionInfo = $this->getLatestVersion();
+        $contentWidth = $this->getHalfWidth(); // 1/2 width minus borders and gap
+        // Each quarter takes half of the block content width
+        $quarterWidth = intdiv($contentWidth, 2);
+        
         $lines = [];
 
         // ── Top border with title ─────────────────────────────
         $title = ' Evolution CMF Installer ';
         $titleLen = mb_strlen($title);
-
         $left = 2;
         $right = max(0, $contentWidth - $left - $titleLen);
 
@@ -541,17 +574,55 @@ final class TuiRenderer
             . str_repeat('─', $right)
             . '┐</>';
 
-        // ── Logo block ────────────────────────────────────────
-        foreach ($logo as $line) {
-            $lineLen = mb_strlen($line);
-            $padLeft = intdiv($contentWidth - $lineLen, 2);
-            $padRight = $contentWidth - $lineLen - $padLeft;
+        // ── Logo (left quarter) + Version (right quarter) ──
+        $logoHeight = count($logo);
+        
+        // Version lines
+        $versionLines = [
+            '<fg=white;options=bold>v' . $versionInfo . '</>',
+            '',
+            '<fg=green>The world\'s fastest!</>'
+        ];
+        $versionBlockHeight = count($versionLines);
+        $versionStartOffset = intdiv($logoHeight - $versionBlockHeight, 2);
+
+        for ($i = 0; $i < $logoHeight; $i++) {
+            // Left side: logo (centered in left quarter)
+            $logoLine = $logo[$i];
+            $logoLineLen = mb_strlen($logoLine);
+            $logoPadLeft = intdiv($quarterWidth - $logoLineLen, 2);
+            $logoPadRight = $quarterWidth - $logoLineLen - $logoPadLeft;
+            $leftContent = str_repeat(' ', $logoPadLeft)
+                         . '<fg=cyan>' . $logoLine . '</>'
+                         . str_repeat(' ', $logoPadRight);
+
+            // Right side: version (centered in right quarter)
+            $rightContent = '';
+            $versionIndex = $i - $versionStartOffset;
+            if ($versionIndex >= 0 && $versionIndex < $versionBlockHeight) {
+                $versionLine = $versionLines[$versionIndex];
+                if ($versionLine !== '') {
+                    $versionLen = mb_strlen(strip_tags($versionLine));
+                    $versionPadLeft = intdiv($quarterWidth - $versionLen, 2);
+                    $versionPadRight = $quarterWidth - $versionLen - $versionPadLeft;
+                    $rightContent = str_repeat(' ', $versionPadLeft)
+                                  . $versionLine
+                                  . str_repeat(' ', $versionPadRight);
+                } else {
+                    $rightContent = str_repeat(' ', $quarterWidth);
+                }
+            } else {
+                $rightContent = str_repeat(' ', $quarterWidth);
+            }
+
+            // Calculate remaining space in the middle (between logo and version quarters)
+            $middleSpace = $contentWidth - ($quarterWidth * 2);
 
             $lines[] =
                 '<fg=white;options=bold>│</>'
-                . str_repeat(' ', $padLeft)
-                . '<fg=cyan>' . $line . '</>'
-                . str_repeat(' ', $padRight)
+                . $leftContent
+                . str_repeat(' ', $middleSpace)
+                . $rightContent
                 . '<fg=white;options=bold>│</>';
         }
 
@@ -562,5 +633,43 @@ final class TuiRenderer
             . '┘</>';
 
         return implode(PHP_EOL, $lines);
+    }
+
+    /**
+     * Get latest version from GitHub releases.
+     */
+    private function getLatestVersion(): string
+    {
+        static $cachedVersion = null;
+        
+        if ($cachedVersion !== null) {
+            return $cachedVersion;
+        }
+
+        try {
+            $client = new \GuzzleHttp\Client([
+                'base_uri' => 'https://api.github.com',
+                'timeout' => 3,
+                'http_errors' => false,
+            ]);
+
+            $response = $client->get('/repos/evolution-cms/evolution/releases/latest');
+            
+            if ($response->getStatusCode() === 200) {
+                $data = json_decode($response->getBody()->getContents(), true);
+                if (isset($data['tag_name'])) {
+                    // Remove 'v' prefix if present
+                    $version = ltrim($data['tag_name'], 'v');
+                    $cachedVersion = $version;
+                    return $version;
+                }
+            }
+        } catch (\Exception $e) {
+            // Silent fail, return default version
+        }
+
+        // Default version if API fails
+        $cachedVersion = '3.3.0';
+        return $cachedVersion;
     }
 }

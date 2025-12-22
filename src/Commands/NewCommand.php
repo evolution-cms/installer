@@ -13,7 +13,6 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Question\Question;
 
 #[AllowDynamicProperties]
 class NewCommand extends Command
@@ -26,15 +25,12 @@ class NewCommand extends Command
         'php' => ['label' => 'Step 1: Validate PHP version', 'completed' => false],
         'database' => ['label' => 'Step 2: Check database connection', 'completed' => false],
         'download' => ['label' => 'Step 3: Download Evolution CMF', 'completed' => false],
-        'extract' => ['label' => 'Step 4: Extract files', 'completed' => false],
-        'install' => ['label' => 'Step 5: Install Evolution CMF', 'completed' => false],
-        'dependencies' => ['label' => 'Step 6: Install dependencies', 'completed' => false],
-        'admin' => ['label' => 'Step 7: Create admin user', 'completed' => false],
-        'git' => ['label' => 'Step 8: Initialize Git repository', 'completed' => false],
-        'finalize' => ['label' => 'Step 9: Finalize installation', 'completed' => false],
+        'install' => ['label' => 'Step 4: Install Evolution CMF', 'completed' => false],
+        'dependencies' => ['label' => 'Step 5: Install dependencies', 'completed' => false],
+        'admin' => ['label' => 'Step 6: Create admin user', 'completed' => false],
+        'finalize' => ['label' => 'Step 7: Finalize installation', 'completed' => false],
     ];
 
-    //protected array $logs = [];
     /**
      * Configure the command options.
      */
@@ -51,7 +47,7 @@ class NewCommand extends Command
             ->addOption('database-name', null, InputOption::VALUE_OPTIONAL, 'The database name')
             ->addOption('database-user', null, InputOption::VALUE_OPTIONAL, 'The database user')
             ->addOption('database-password', null, InputOption::VALUE_OPTIONAL, 'The database password')
-            ->addOption('admin-username', null, InputOption::VALUE_OPTIONAL, 'The admin username', 'admin')
+            ->addOption('admin-username', null, InputOption::VALUE_OPTIONAL, 'The admin username')
             ->addOption('admin-email', null, InputOption::VALUE_OPTIONAL, 'The admin email')
             ->addOption('admin-password', null, InputOption::VALUE_OPTIONAL, 'The admin password')
             ->addOption('language', null, InputOption::VALUE_OPTIONAL, 'The installation language', 'en')
@@ -64,6 +60,8 @@ class NewCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $output->writeln('Starting system installation...');
+
         $this->tui = new TuiRenderer($output);
         $this->tui->setSystemStatus($this->checkSystemStatus());
 
@@ -111,108 +109,6 @@ class NewCommand extends Command
         if (is_dir($name)) {
             Console::error("Directory [{$name}] already exists!");
             exit(1);
-        }
-    }
-
-    /**
-     * Display the welcome message with system information.
-     */
-    /*protected function displayWelcomeMessage($output): void
-    {
-        try {
-            $this->displayTuiWelcome($output);
-        } catch (\Exception $e) {
-            $this->printSystemStatus();
-            Console::line('');
-        }
-    }
-
-    /**
-     * Display TUI welcome screen.
-     */
-    /*protected function displayTuiWelcome($output): void
-    {
-        $output->write(sprintf("\033\143"));
-
-        // Pass sections to TuiRenderer
-        $this->tui = new TuiRenderer($output);
-        $this->tui->clear();
-
-        $logoSection = $output->section();
-        //$logoSection->setMaxHeight(9); // title + 6 logo lines + bottom border
-
-        $questSection = $output->section();
-        //$questSection->setMaxHeight(11); // title + 9 items + bottom border
-
-        $this->logSection = $output->section();
-        //$this->logSection->setMaxHeight(5); // allow scrolling for logs
-
-        $this->inputSection = $output->section();
-        //$this->logSection->setMaxHeight(2);
-        
-        // Set input section in TuiRenderer
-        $this->tui->setInputSection($this->inputSection);
-
-        $logoSection->writeln($this->tui->buildLogoContent());
-
-        // Prepare system status
-        $os = SystemInfo::getOS();
-        $phpVersion = SystemInfo::getPhpVersion();
-        $composerVersion = SystemInfo::getComposerVersion();
-        $diskFree = SystemInfo::getDiskFreeSpace();
-        $memoryLimit = SystemInfo::getMemoryLimit();
-
-        $phpOk = version_compare($phpVersion, '8.3.0', '>=');
-        $pdoOk = SystemInfo::hasExtension('pdo');
-        $jsonOk = SystemInfo::hasExtension('json');
-        $mysqliOk = SystemInfo::hasExtension('mysqli');
-        $mbstringOk = SystemInfo::hasExtension('mbstring');
-        $composerOk = $composerVersion !== null;
-
-        $systemStatus = [
-            ['label' => $os, 'status' => true],
-            ['label' => "PHP - {$phpVersion}", 'status' => $phpOk],
-            ['label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'status' => $composerOk],
-            ['label' => 'PDO extension', 'status' => $pdoOk],
-            ['label' => 'JSON extension', 'status' => $jsonOk],
-            ['label' => 'MySQLi extension', 'status' => $mysqliOk],
-            ['label' => 'MBString extension', 'status' => $mbstringOk],
-            ['label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'status' => $diskFree !== null],
-            ['label' => 'Memory limit - ' . ($memoryLimit ?: 'Unknown'), 'status' => true],
-        ];
-
-        // Installation steps
-        $this->steps = [
-            ['label' => 'Step 1: Validate PHP version', 'completed' => $phpOk],
-            ['label' => 'Step 2: Check database connection', 'completed' => false],
-            ['label' => 'Step 3: Download Evolution CMF', 'completed' => false],
-            ['label' => 'Step 4: Extract files', 'completed' => false],
-            ['label' => 'Step 5: Install Evolution CMF', 'completed' => false],
-            ['label' => 'Step 6: Install dependencies', 'completed' => false],
-            ['label' => 'Step 7: Create admin user', 'completed' => false],
-            ['label' => 'Step 8: Initialize Git repository', 'completed' => false],
-            ['label' => 'Step 9: Finalize installation', 'completed' => false],
-        ];
-
-        $questSection->writeln($this->tui->buildQuestAndSystemContent($this->steps, $systemStatus));
-        $this->logSection->writeln($this->tui->buildLogContent());
-    }
-
-    /**
-     * Add log message.
-     */
-    /*protected function addLog(string $message): void
-    {
-        $this->logs[] = $message;
-    }
-
-    /**
-     * Update TUI logs display (only Log block, not the whole screen).
-     */
-    /*protected function updateTuiLogs(): void
-    {
-        if ($this->tui !== null) {
-            $this->tui->updateLogs($this->logs);
         }
     }
 
@@ -333,18 +229,26 @@ class NewCommand extends Command
         $pdoPgsqlOk = in_array('pgsql', $availablePdoDrivers);
         $pdoSqlsrvOk = in_array('sqlsrv', $availablePdoDrivers);
         
+        // Additional extension checks
+        $curlOk = SystemInfo::hasExtension('curl');
+        $gdOk = SystemInfo::hasExtension('gd');
+        $imagickOk = SystemInfo::hasExtension('imagick');
+        $imageExtensionOk = $gdOk || $imagickOk; // At least one image extension
+        
         return [
             ['label' => $os, 'status' => true],
             ['label' => "PHP - {$phpVersion}", 'status' => $phpOk],
             ['label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'status' => $composerOk],
             ['label' => 'PDO extension', 'status' => $pdoOk],
-            ['label' => 'PDO MySQL driver', 'status' => $pdoMysqlOk],
-            ['label' => 'PDO PostgreSQL driver', 'status' => $pdoPgsqlOk],
-            ['label' => 'PDO SQLite driver', 'status' => $pdoSqliteOk],
-            ['label' => 'PDO SQL Server driver', 'status' => $pdoSqlsrvOk],
+            ['label' => 'PDO MySQL driver', 'status' => $pdoMysqlOk, 'warning' => !$pdoMysqlOk],
+            ['label' => 'PDO PostgreSQL driver', 'status' => $pdoPgsqlOk, 'warning' => !$pdoPgsqlOk],
+            ['label' => 'PDO SQLite driver', 'status' => $pdoSqliteOk, 'warning' => !$pdoSqliteOk],
+            ['label' => 'PDO SQL Server driver', 'status' => $pdoSqlsrvOk, 'warning' => !$pdoSqlsrvOk],
             ['label' => 'JSON extension', 'status' => $jsonOk],
             ['label' => 'MySQLi extension', 'status' => $mysqliOk],
             ['label' => 'MBString extension', 'status' => $mbstringOk],
+            ['label' => 'cURL extension', 'status' => $curlOk],
+            ['label' => 'Image extension', 'status' => $imageExtensionOk, 'warning' => !$imageExtensionOk],
             ['label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'status' => $diskFree !== null],
             ['label' => 'Memory limit - ' . ($memoryLimit ?: 'Unknown'), 'status' => true],
         ];
@@ -395,9 +299,9 @@ class NewCommand extends Command
         }
 
         // Admin configuration (only after successful DB connection)
-        $inputs['admin']['username'] = $input->getOption('admin-username') ?: $this->askAdminUsername();
-        $inputs['admin']['email'] = $input->getOption('admin-email') ?: $this->askAdminEmail();
-        $inputs['admin']['password'] = $input->getOption('admin-password') ?: $this->askAdminPassword();
+        $inputs['admin']['username'] = ($input->getOption('admin-username') !== null) ? $input->getOption('admin-username') : $this->askAdminUsername();
+        $inputs['admin']['email'] = ($input->getOption('admin-email') !== null) ? $input->getOption('admin-email') : $this->askAdminEmail();
+        $inputs['admin']['password'] = ($input->getOption('admin-password') !== null) ? $input->getOption('admin-password') : $this->askAdminPassword();
 
         return $inputs;
     }
@@ -890,46 +794,59 @@ class NewCommand extends Command
     /**
      * Ask for admin username.
      */
-    /*protected function askAdminUsername($helper, InputInterface $input, OutputInterface $output): string
+    protected function askAdminUsername(): string
     {
-        $question = new Question('Admin username:', 'admin');
-        return $helper->ask($input, $output, $question);
+        $answer = $this->tui->ask('Enter your Admin username:', 'admin');
+
+        $this->tui->replaceLastLogs('<fg=green>✔</> Your Admin username: ' . $answer . '.', 2);
+        return $answer ?: 'admin';
     }
 
     /**
      * Ask for admin email.
      */
-    /*protected function askAdminEmail($helper, InputInterface $input, OutputInterface $output): string
+    protected function askAdminEmail(): string
     {
-        $question = new Question('Admin email:');
-        $question->setValidator(function ($value) {
-            if (empty($value)) {
-                throw new \RuntimeException('Email address is required.');
+        while (true) {
+            $answer = $this->tui->ask('Enter your Admin email:');
+
+            if (empty($answer)) {
+                $this->tui->replaceLastLogs('<fg=yellow>⚠</> Email address cannot be empty. Please try again.', 3);
+                continue;
             }
-            if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                throw new \RuntimeException('Please enter a valid email address.');
+            
+            if (!filter_var($answer, FILTER_VALIDATE_EMAIL)) {
+                $this->tui->replaceLastLogs('<fg=yellow>⚠</> Please enter a valid email address. Try again.', 3);
+                continue;
             }
-            return $value;
-        });
-        $answer = $helper->ask($input, $output, $question);
-        return $answer ?? '';
+
+            // Replace question, answer, and any warning messages (up to 3 lines)
+            $this->tui->replaceLastLogs('<fg=green>✔</> Your Admin email: ' . $answer . '.', 2);
+            return $answer;
+        }
     }
 
     /**
      * Ask for admin password.
      */
-    /*protected function askAdminPassword($helper, InputInterface $input, OutputInterface $output): string
+    protected function askAdminPassword(): string
     {
-        $question = new Question('Admin password:');
-        $question->setHidden(true);
-        $question->setValidator(function ($value) {
-            if (strlen($value) < 6) {
-                throw new \RuntimeException('Password must be at least 6 characters long.');
+        while (true) {
+            $answer = $this->tui->ask('Enter your Admin password:');
+
+            if (empty($answer)) {
+                $this->tui->replaceLastLogs('<fg=yellow>⚠</> Password cannot be empty. Please try again.', 3);
+                continue;
             }
-            return $value;
-        });
-        $result = $helper->ask($input, $output, $question);
-        return $result ?? '';
+            
+            if (strlen($answer) < 6) {
+                $this->tui->replaceLastLogs('<fg=yellow>⚠</> Password must be at least 6 characters long. Try again.', 3);
+                continue;
+            }
+
+            $this->tui->replaceLastLogs('<fg=green>✔</> Your Admin password: ' . $answer . '.', 2);
+            return $answer;
+        }
     }
 
     /**
