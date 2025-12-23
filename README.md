@@ -61,9 +61,11 @@ evo new my-project
 ```
 
 This command will:
-- Prompt you for database configuration
-- Prompt you for admin user credentials
-- Download and install Evolution CMS
+- Validate PHP version compatibility
+- Prompt you for database configuration (with connection testing)
+- Prompt you for admin user credentials and directory
+- Prompt you for installation language
+- Download and install Evolution CMS (latest compatible version or from specific branch)
 - Configure the database connection
 - Run migrations and seeders
 - Create the admin user
@@ -72,10 +74,12 @@ This command will:
 
 ```bash
 evo new my-project --preset=evolution
-evo new my-project --database=mysql
-evo new my-project --database-host=localhost --database-name=evo_db
+evo new my-project --db-type=mysql
+evo new my-project --db-host=localhost --db-name=evo_db
 evo new my-project --admin-username=admin --admin-email=admin@example.com
+evo new my-project --admin-directory=manager
 evo new my-project --language=en
+evo new my-project --branch=develop  # Install from specific Git branch
 evo new my-project --git  # Initialize a Git repository
 evo new my-project --force  # Force install even if directory exists
 ```
@@ -83,16 +87,18 @@ evo new my-project --force  # Force install even if directory exists
 ### Available Options
 
 - `--preset`: The preset to use (default: `evolution`)
-- `--database`: Database type (`mysql` or `pgsql`)
-- `--database-host`: Database host (default: `localhost`)
-- `--database-port`: Database port
-- `--database-name`: Database name
-- `--database-user`: Database user
-- `--database-password`: Database password
-- `--admin-username`: Admin username (default: `admin`)
+- `--db-type`: Database type (`mysql`, `pgsql`, `sqlite`, or `sqlsrv`)
+- `--db-host`: Database host (default: `localhost`, not used for SQLite)
+- `--db-port`: Database port (defaults: 3306 for MySQL, 5432 for PostgreSQL, 1433 for SQL Server)
+- `--db-name`: Database name (for SQLite: path to database file, default: `database.sqlite`)
+- `--db-user`: Database user (not used for SQLite)
+- `--db-password`: Database password (not used for SQLite)
+- `--admin-username`: Admin username
 - `--admin-email`: Admin email
 - `--admin-password`: Admin password
+- `--admin-directory`: Admin directory name (default: `manager`)
 - `--language`: Installation language (default: `en`)
+- `--branch`: Install from specific Git branch (e.g., `develop`, `nightly`, `main`) instead of latest release
 - `--git`: Initialize a Git repository and create initial commit
 - `--force`: Force install even if directory exists
 
@@ -120,10 +126,13 @@ You can create custom presets by extending the `Preset` class. See the `src/Pres
 - **Version Validation**: Validates PHP version requirements before installation starts
 - **Smart Version Selection**: Checks GitHub releases and composer.json requirements to determine compatibility
 - **Latest Compatible Version**: Always installs the newest version that works with your PHP setup
+- **Branch Installation**: Install from specific Git branches (develop, nightly, main) for development or testing
 
 ### Smart Database Configuration
 
-- **Automatic Port Detection**: Automatically uses correct default ports (3306 for MySQL, 5432 for PostgreSQL)
+- **Multiple Database Support**: Supports MySQL/MariaDB, PostgreSQL, SQLite, and SQL Server
+- **Automatic Port Detection**: Automatically uses correct default ports (3306 for MySQL, 5432 for PostgreSQL, 1433 for SQL Server)
+- **Connection Testing**: Tests database connection before proceeding with installation, with retry option
 - **Collation Resolution**: Intelligently handles database collations, including those not in the server's collation list
 - **Install Type Detection**: Automatically detects if this is a fresh install or an update
 - **Secure Configuration**: Creates database config files with proper permissions (read-only)
@@ -141,7 +150,7 @@ This installer incorporates best practices from the [Evolution CMS Docker implem
 
 - PHP 8.3+
 - Composer
-- MySQL or PostgreSQL
+- Database: MySQL 5.7+ / MariaDB 10.3+, PostgreSQL 10.0+, SQLite 3.26.0+, or SQL Server 2017+
 
 ### Installation for Development
 

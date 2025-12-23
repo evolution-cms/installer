@@ -359,7 +359,7 @@ GITIGNORE;
         $userEmail = $this->getGitConfig('user.email', $projectPath);
 
         if (!$userName) {
-            $this->setGitConfig('user.name', 'Evolution CMF Installer', $projectPath);
+            $this->setGitConfig('user.name', 'Evolution CMS Installer', $projectPath);
         }
         if (!$userEmail) {
             $this->setGitConfig('user.email', 'installer@evolution-cms.com', $projectPath);

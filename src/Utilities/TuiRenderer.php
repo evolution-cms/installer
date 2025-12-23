@@ -40,11 +40,81 @@ final class TuiRenderer
         $this->render(true);
     }
 
+    /**
+     * Clear all logs.
+     */
+    public function clearLogs(): void
+    {
+        $this->logs = [];
+        $this->activeInput = null;
+        $this->activeInputIndex = null;
+        $this->render(true);
+    }
+
     public function replaceLastLog(string $line): void
     {
         array_pop($this->logs);
         $this->logs[] = $line;
         $this->render(true);
+    }
+
+    /**
+     * Update the last log line with progress bar (for downloads, etc.).
+     * 
+     * @param string $message Base message
+     * @param int $current Current progress (bytes, items, etc.)
+     * @param int $total Total size (bytes, items, etc.)
+     * @param string $unit Unit to display (e.g., 'MB', 'files')
+     */
+    public function updateProgress(string $message, int $current, int $total, string $unit = 'MB'): void
+    {
+        if ($total === 0) {
+            $percentage = 0;
+            $barWidth = 0;
+        } else {
+            $percentage = min(100, round(($current / $total) * 100));
+            $barWidth = 20; // Width of progress bar
+            $filled = round(($percentage / 100) * $barWidth);
+        }
+
+        // Format current and total with appropriate unit
+        $formattedCurrent = $this->formatBytes($current, $unit);
+        $formattedTotal = $this->formatBytes($total, $unit);
+        
+        // Create progress bar
+        $bar = str_repeat('█', $filled ?? 0) . str_repeat('░', ($barWidth ?? 0) - ($filled ?? 0));
+        
+        // Combine message with progress bar
+        $progressLine = "{$message} [<fg=green>{$bar}</>] {$percentage}% ({$formattedCurrent}/{$formattedTotal})";
+        
+        // Replace last log if it's a progress line, otherwise add new
+        if (!empty($this->logs) && strpos(end($this->logs), $message) === 0) {
+            $this->replaceLastLog($progressLine);
+        } else {
+            $this->logs[] = $progressLine;
+            $this->render(true);
+        }
+    }
+    
+    /**
+     * Format bytes to human-readable format.
+     */
+    private function formatBytes(int $bytes, string $unit = 'MB'): string
+    {
+        if ($unit === 'MB') {
+            return round($bytes / 1024 / 1024, 2) . ' MB';
+        }
+        
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $unitIndex = 0;
+        $size = $bytes;
+        
+        while ($size >= 1024 && $unitIndex < count($units) - 1) {
+            $size /= 1024;
+            $unitIndex++;
+        }
+        
+        return round($size, 2) . ' ' . $units[$unitIndex];
     }
 
     /**
@@ -56,6 +126,20 @@ final class TuiRenderer
             array_pop($this->logs);
         }
         $this->logs[] = $line;
+        $this->render(true);
+    }
+
+    /**
+     * Replace the last N log lines with multiple new lines.
+     */
+    public function replaceLastLogsMultiple(array $lines, int $count): void
+    {
+        for ($i = 0; $i < $count && count($this->logs) > 0; $i++) {
+            array_pop($this->logs);
+        }
+        foreach ($lines as $line) {
+            $this->logs[] = $line;
+        }
         $this->render(true);
     }
 
@@ -228,7 +312,7 @@ final class TuiRenderer
             $this->output->writeln(strip_tags($log));
         }
     }
-
+    
     /**
      * Compose two multiline blocks side by side.
      * Left and right blocks are aligned by line count.
@@ -539,7 +623,7 @@ final class TuiRenderer
     }
 
     /**
-     * Contains title "Evolution CMF Installer" with logo and version.
+     * Contains title "Evolution CMS Installer" with logo and version.
      */
     private function logoVersionBlock(): string
     {
@@ -560,7 +644,7 @@ final class TuiRenderer
         $lines = [];
 
         // ── Top border with title ─────────────────────────────
-        $title = ' Evolution CMF Installer ';
+        $title = ' Evolution CMS Installer ';
         $titleLen = mb_strlen($title);
         $left = 2;
         $right = max(0, $contentWidth - $left - $titleLen);
@@ -649,7 +733,7 @@ final class TuiRenderer
         try {
             $client = new \GuzzleHttp\Client([
                 'base_uri' => 'https://api.github.com',
-                'timeout' => 3,
+                'timeout' => 25.0,
                 'http_errors' => false,
             ]);
 

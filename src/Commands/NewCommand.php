@@ -6,7 +6,10 @@ use EvolutionCMS\Installer\Presets\Preset;
 use EvolutionCMS\Installer\Utilities\Console;
 use EvolutionCMS\Installer\Utilities\SystemInfo;
 use EvolutionCMS\Installer\Utilities\TuiRenderer;
+use EvolutionCMS\Installer\Utilities\VersionResolver;
 use EvolutionCMS\Installer\Validators\PhpValidator;
+use GuzzleHttp\Client;
+use GuzzleHttp\TransferStats;
 use PDOException;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -24,8 +27,8 @@ class NewCommand extends Command
     protected array $steps = [
         'php' => ['label' => 'Step 1: Validate PHP version', 'completed' => false],
         'database' => ['label' => 'Step 2: Check database connection', 'completed' => false],
-        'download' => ['label' => 'Step 3: Download Evolution CMF', 'completed' => false],
-        'install' => ['label' => 'Step 4: Install Evolution CMF', 'completed' => false],
+        'download' => ['label' => 'Step 3: Download Evolution CMS', 'completed' => false],
+        'install' => ['label' => 'Step 4: Install Evolution CMS', 'completed' => false],
         'dependencies' => ['label' => 'Step 5: Install dependencies', 'completed' => false],
         'admin' => ['label' => 'Step 6: Create admin user', 'completed' => false],
         'finalize' => ['label' => 'Step 7: Finalize installation', 'completed' => false],
@@ -41,16 +44,18 @@ class NewCommand extends Command
             ->setDescription('Create a new Evolution CMS application')
             ->addArgument('name', InputArgument::OPTIONAL, 'The name of the application (use "." to install in current directory)', '.')
             ->addOption('preset', null, InputOption::VALUE_OPTIONAL, 'The preset to use', 'evolution')
-            ->addOption('database', null, InputOption::VALUE_OPTIONAL, 'The database type (mysql, pgsql, sqlite, sqlsrv)')
-            ->addOption('database-host', null, InputOption::VALUE_OPTIONAL, 'The database host (localhost)')
-            ->addOption('database-port', null, InputOption::VALUE_OPTIONAL, 'The database port')
-            ->addOption('database-name', null, InputOption::VALUE_OPTIONAL, 'The database name')
-            ->addOption('database-user', null, InputOption::VALUE_OPTIONAL, 'The database user')
-            ->addOption('database-password', null, InputOption::VALUE_OPTIONAL, 'The database password')
+            ->addOption('db-type', null, InputOption::VALUE_OPTIONAL, 'The database type (mysql, pgsql, sqlite, sqlsrv)')
+            ->addOption('db-host', null, InputOption::VALUE_OPTIONAL, 'The database host (localhost)')
+            ->addOption('db-port', null, InputOption::VALUE_OPTIONAL, 'The database port')
+            ->addOption('db-name', null, InputOption::VALUE_OPTIONAL, 'The database name')
+            ->addOption('db-user', null, InputOption::VALUE_OPTIONAL, 'The database user')
+            ->addOption('db-password', null, InputOption::VALUE_OPTIONAL, 'The database password')
             ->addOption('admin-username', null, InputOption::VALUE_OPTIONAL, 'The admin username')
             ->addOption('admin-email', null, InputOption::VALUE_OPTIONAL, 'The admin email')
             ->addOption('admin-password', null, InputOption::VALUE_OPTIONAL, 'The admin password')
-            ->addOption('language', null, InputOption::VALUE_OPTIONAL, 'The installation language', 'en')
+            ->addOption('admin-directory', null, InputOption::VALUE_OPTIONAL, 'The admin directory')
+            ->addOption('branch', null, InputOption::VALUE_OPTIONAL, 'Install from specific Git branch (e.g., develop, nightly, main) instead of latest release')
+            ->addOption('language', null, InputOption::VALUE_OPTIONAL, 'The installation language')
             ->addOption('git', null, InputOption::VALUE_NONE, 'Initialize a Git repository')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Force install even if directory exists');
     }
@@ -66,7 +71,6 @@ class NewCommand extends Command
         $this->tui->setSystemStatus($this->checkSystemStatus());
 
         $name = $input->getArgument('name') ?? '.';
-        $preset = $this->getPreset($input->getOption('preset'));
 
         // Normalize "." to current directory
         $installInCurrentDir = ($name === '.');
@@ -91,12 +95,17 @@ class NewCommand extends Command
         $this->tui->addLog("PHP version {$phpVersion} is supported.", 'success');
 
         $options = $this->gatherInputs($input, $output);
-        //$options['git'] = $input->getOption('git');
-        //$options['install_in_current_dir'] = $installInCurrentDir;
+        $options['git'] = $input->getOption('git');
+        $options['install_in_current_dir'] = $installInCurrentDir;
 
+        // Step 3: Download Evolution CMS
+        $branch = $input->getOption('branch');
+        $this->downloadEvolutionCMS($name, $options, $branch);
+
+        //$preset = $this->getPreset($input->getOption('preset'));
         //$preset->install($name, $options);
 
-        //Console::success("Evolution CMF application ready! Build something amazing.");
+        //Console::success("Evolution CMS application ready! Build something amazing.");
 
         return Command::SUCCESS;
     }
@@ -113,99 +122,7 @@ class NewCommand extends Command
     }
 
     /**
-     * Update TUI steps display (only Quest track block, not the whole screen).
-     */
-    /*protected function updateTuiSteps(): void
-    {
-        if ($this->tui !== null) {
-            // Use fullRender to ensure all blocks stay in correct positions
-            $this->tui->fullRender($this->logs);
-        }
-    }
-
-    /**
-     * Mark a step as completed.
-     */
-    /*protected function completeStep(int $stepNumber): void
-    {
-        if (isset($this->steps[$stepNumber - 1])) {
-            $this->steps[$stepNumber - 1]['completed'] = true;
-            $this->updateTuiSteps();
-        }
-    }
-
-    /**
-     * Print system status information.
-     */
-    /*protected function printSystemStatus(): void
-    {
-        $os = SystemInfo::getOS();
-        $phpVersion = SystemInfo::getPhpVersion();
-        $composerVersion = SystemInfo::getComposerVersion();
-        $diskFree = SystemInfo::getDiskFreeSpace();
-        $memoryLimit = SystemInfo::getMemoryLimit();
-
-        // Check PHP version compatibility
-        $phpOk = version_compare($phpVersion, '8.3.0', '>=');
-        $pdoOk = SystemInfo::hasExtension('pdo');
-        $jsonOk = SystemInfo::hasExtension('json');
-        $mysqliOk = SystemInfo::hasExtension('mysqli');
-        $mbstringOk = SystemInfo::hasExtension('mbstring');
-        $composerOk = $composerVersion !== null;
-
-        $this->printStatusItem('System status', true, true);
-        Console::line('');
-        
-        $this->printStatusItem($os, true);
-        $this->printStatusItem("PHP - {$phpVersion}", $phpOk);
-        $this->printStatusItem("Composer" . ($composerVersion ? " - {$composerVersion}" : ''), $composerOk);
-        $this->printStatusItem('PDO extension', $pdoOk);
-        $this->printStatusItem('JSON extension', $jsonOk);
-        $this->printStatusItem('MySQLi extension', $mysqliOk);
-        $this->printStatusItem('MBString extension', $mbstringOk);
-        
-        if ($diskFree) {
-            $this->printStatusItem("Disk free - {$diskFree}", true);
-        }
-        
-        if ($memoryLimit) {
-            $this->printStatusItem("Memory limit - {$memoryLimit}", true);
-        }
-    }
-
-    /**
-     * Print a status item with indicator.
-     *
-     * @param string $label
-     * @param bool $status
-     * @param bool $isHeader
-     */
-    /*protected function printStatusItem(string $label, bool $status, bool $isHeader = false): void
-    {
-        if ($isHeader) {
-            // Header without indicator
-            echo "\033[1m{$label}\033[0m";
-            echo PHP_EOL;
-            return;
-        }
-
-        $indicator = $status ? '●' : '▲';
-        $indicatorColor = $status ? "\033[0;32m" : "\033[0;33m";
-        $reset = "\033[0m";
-        
-        echo "  {$indicatorColor}{$indicator}{$reset} ";
-        
-        if (!$status) {
-            echo "\033[2m{$label}\033[0m";
-        } else {
-            echo $label;
-        }
-        
-        echo PHP_EOL;
-    }
-
-    /*
-     *
+     * Check system status information.
      */
     protected function checkSystemStatus(): array
     {
@@ -264,7 +181,6 @@ class NewCommand extends Command
         $inputs = [
             'database' => [],
             'admin' => [],
-            'language' => $input->getOption('language') ?: 'en',
         ];
 
         // Database configuration with connection retry loop
@@ -273,14 +189,14 @@ class NewCommand extends Command
         while (!$databaseConnected) {
             if ($firstAttempt && $this->hasAllDatabaseOptions($input)) {
                 // First attempt with command-line options
-                $inputs['database']['type'] = $input->getOption('database');
-                $inputs['database']['host'] = $input->getOption('database-host');
-                if ($input->getOption('database-port')) {
-                    $inputs['database']['port'] = $input->getOption('database-port');
+                $inputs['database']['type'] = $input->getOption('db-type');
+                $inputs['database']['host'] = $input->getOption('db-host');
+                if ($input->getOption('db-port')) {
+                    $inputs['database']['port'] = $input->getOption('db-port');
                 }
-                $inputs['database']['name'] = $input->getOption('database-name');
-                $inputs['database']['user'] = $input->getOption('database-user');
-                $inputs['database']['password'] = $input->getOption('database-password');
+                $inputs['database']['name'] = $input->getOption('db-name');
+                $inputs['database']['user'] = $input->getOption('db-user');
+                $inputs['database']['password'] = $input->getOption('db-password');
             } else {
                 // Ask for database credentials interactively (ignore command-line options on retry)
                 $inputs['database'] = $this->gatherDatabaseInputs($helper, $input, $output, $firstAttempt);
@@ -302,6 +218,12 @@ class NewCommand extends Command
         $inputs['admin']['username'] = ($input->getOption('admin-username') !== null) ? $input->getOption('admin-username') : $this->askAdminUsername();
         $inputs['admin']['email'] = ($input->getOption('admin-email') !== null) ? $input->getOption('admin-email') : $this->askAdminEmail();
         $inputs['admin']['password'] = ($input->getOption('admin-password') !== null) ? $input->getOption('admin-password') : $this->askAdminPassword();
+        $inputs['admin']['directory'] = ($input->getOption('admin-directory') !== null) ? $input->getOption('admin-directory') : $this->askAdminDirectory();
+        $inputs['language'] = ($input->getOption('language') !== null) ? $input->getOption('language') : $this->askLanguage();
+
+        // Mark Step 2 (database connection) as completed
+        $this->steps['database']['completed'] = true;
+        $this->tui->setQuestTrack($this->steps);
 
         return $inputs;
     }
@@ -311,11 +233,11 @@ class NewCommand extends Command
      */
     protected function hasAllDatabaseOptions(InputInterface $input): bool
     {
-        return $input->getOption('database') !== null
-            && $input->getOption('database-host') !== null
-            && $input->getOption('database-name') !== null
-            && $input->getOption('database-user') !== null
-            && $input->getOption('database-password') !== null;
+        return $input->getOption('db-type') !== null
+            && $input->getOption('db-host') !== null
+            && $input->getOption('db-name') !== null
+            && $input->getOption('db-user') !== null
+            && $input->getOption('db-password') !== null;
     }
 
     /**
@@ -326,34 +248,34 @@ class NewCommand extends Command
         $database = [];
         
         // Use command-line options if available, otherwise ask interactively
-        $database['type'] = ($useOptions && $input->getOption('database')) ? $input->getOption('database') : $this->askDatabaseType();
+        $database['type'] = ($useOptions && $input->getOption('db-type')) ? $input->getOption('db-type') : $this->askDatabaseType();
         
         // SQLite doesn't need host, port, user, password
         if ($database['type'] === 'sqlite') {
-            $database['name'] = ($useOptions && $input->getOption('database-name')) 
-                ? $input->getOption('database-name') 
+            $database['name'] = ($useOptions && $input->getOption('db-name')) 
+                ? $input->getOption('db-name') 
                 : $this->askDatabaseName('sqlite');
             // SQLite doesn't need these fields, but set defaults for compatibility
             $database['host'] = '';
             $database['user'] = '';
             $database['password'] = '';
         } else {
-            $database['host'] = ($useOptions && $input->getOption('database-host')) 
-                ? $input->getOption('database-host') 
+            $database['host'] = ($useOptions && $input->getOption('db-host')) 
+                ? $input->getOption('db-host') 
                 : $this->askDatabaseHost();
             
-            if ($input->getOption('database-port')) {
-                $database['port'] = $input->getOption('database-port');
+            if ($input->getOption('db-port')) {
+                $database['port'] = $input->getOption('db-port');
             }
             
-            $database['name'] = ($useOptions && $input->getOption('database-name')) 
-                ? $input->getOption('database-name') 
+            $database['name'] = ($useOptions && $input->getOption('db-name')) 
+                ? $input->getOption('db-name') 
                 : $this->askDatabaseName();
-            $database['user'] = ($useOptions && $input->getOption('database-user')) 
-                ? $input->getOption('database-user') 
+            $database['user'] = ($useOptions && $input->getOption('db-user')) 
+                ? $input->getOption('db-user') 
                 : $this->askDatabaseUser();
-            $database['password'] = ($useOptions && $input->getOption('database-password')) 
-                ? $input->getOption('database-password') 
+            $database['password'] = ($useOptions && $input->getOption('db-password')) 
+                ? $input->getOption('db-password') 
                 : $this->askDatabasePassword();
         }
 
@@ -411,153 +333,6 @@ class NewCommand extends Command
             system('stty sane');
         }
     }
-
-    /*protected function askDatabaseType($helper, InputInterface $input, OutputInterface $output): string
-    {
-        $this->tui->addLog("Which database driver do you want to use?", 'success');
-
-        $options = ['mysql', 'pgsql'];
-        $selectedIndex = 0;
-
-        // Display initial options with radio buttons
-        $this->updateDatabaseDriverOptions($selectedIndex);
-
-        // Use custom interactive selection via TuiRenderer
-        // Create key map for database driver selection (custom keys for mysql/pgsql)
-        $keyMap = [
-            '0' => 'select_0',  // Direct select mysql
-            '1' => 'select_1',  // Direct select pgsql
-            'm' => 'select_0',  // 'm' for mysql
-            'M' => 'select_0',
-            'p' => 'select_1',  // 'p' for pgsql
-            'P' => 'select_1',
-            'UP_ARROW' => 'toggle',
-            'DOWN_ARROW' => 'toggle',
-            'LEFT_ARROW' => 'toggle',
-            'RIGHT_ARROW' => 'toggle',
-            "\t" => 'toggle',  // TAB
-            'CTRL_P' => 'toggle',
-            'CTRL_N' => 'toggle',
-            'CTRL_F' => 'toggle',
-            'CTRL_B' => 'toggle',
-            'h' => 'toggle',
-            'j' => 'toggle',
-            'k' => 'toggle',
-            'l' => 'toggle',
-            'H' => 'toggle',
-            'J' => 'toggle',
-            'K' => 'toggle',
-            'L' => 'toggle',
-            "\n" => 'confirm',
-            "\r" => 'confirm',
-        ];
-
-        // Handle interactive selection with arrow keys using TuiRenderer
-        $answer = $this->tui?->handleInteractiveSelection(
-            $options,
-            $selectedIndex,
-            function($index) {
-                $this->updateDatabaseDriverOptions($index);
-                $this->logSection->write($this->logs ?? []);
-            },
-            $keyMap
-        ) ?? $options[$selectedIndex];
-
-        // Clear the input section after answer
-        $inputSection = $this->tui?->getInputSection();
-        if ($inputSection !== null) {
-            $inputSection->clear();
-        }
-
-        // Update Log Section with the final selected answer
-        $finalIndex = array_search($answer, $options, true);
-        if ($finalIndex === false) {
-            $finalIndex = 0;
-        }
-
-        $this->updateDatabaseDriverOptions($finalIndex);
-
-        // Add success message about selected database driver
-        $green = TuiRenderer::colorGreen();
-        $reset = TuiRenderer::colorReset();
-        $driverNames = ['mysql' => 'MySQL', 'pgsql' => 'PgSQL'];
-        $successMessage = $green . '✔' . $reset . ' Selected database driver: ' . $driverNames[$answer];
-
-        // Update log section
-        $msg = $this->tui->buildLogLine($successMessage);
-        $this->logSection->clear(2);
-        $this->logSection->writeln($msg);
-
-        return $answer;
-    }
-
-    /**
-     * Update database driver options display with radio buttons.
-     */
-    /*protected function updateDatabaseDriverOptions(int $selectedIndex): void
-    {
-        // Create options with radio buttons based on selection
-        // Selected option has brighter text, unselected has dimmer text
-        $mysqlOption = ($selectedIndex === 0) ?
-            ('<fg=green>●</> <fg=white;options=bold>mysql</>') :
-            ('<fg=gray>○ mysql</>');
-        $pgsqlOption = ($selectedIndex === 1) ?
-            ('<fg=green>●</> <fg=white;options=bold>pgsql</>') :
-            ('<fg=gray>○ pgsql</>');
-
-        $optionsLine = '  ' . $mysqlOption . ' ' . '<fg=gray>/</>' . ' ' . $pgsqlOption;
-
-        // Update or add the options line in logs
-        // Find if options line already exists (should be the last log entry before potential prompt)
-        $optionsLineIndex = -1;
-        for ($i = count($this->logs ?? []) - 1; $i >= 0; $i--) {
-            if (strpos($this->logs[$i], 'mysql') !== false || strpos($this->logs[$i], 'pgsql') !== false) {
-                $optionsLineIndex = $i;
-                break;
-            }
-        }
-
-        if ($optionsLineIndex >= 0) {
-            $this->tui->addLog($optionsLineIndex, 'ask');
-            $this->tui->addLog($optionsLine, 'ask');
-        } else {
-            $this->tui->addLog($optionsLine, 'ask');
-        }
-    }
-
-    /**
-     * Ask for database host.
-     */
-    /*protected function askDatabaseHost($helper, InputInterface $input, OutputInterface $output): string
-    {
-        $this->tui->addLog('Where is your database server located?', 'ask');
-        
-        // Use input section for prompt
-        /*$inputSection = $this->tui->getInputSection();
-        if ($inputSection !== null) {
-            $inputSection->clear();
-            $inputSection->write('localhost');
-        }*/
-        
-        // Use Question helper with default value
-        /*$question = new Question('', 'localhost');
-        $answer = $helper->ask($input, $output, $question);
-        var_dump($answer);die;
-        
-        // Clear input section after answer
-        /*if ($inputSection !== null) {
-            $inputSection->clear();
-        }
-        
-        // Display selected value
-        $green = TuiRenderer::colorGreen();
-        $successMessage = $green . '✔' . $reset . ' Database host: ' . $answer;
-        $msg = $this->tui->buildLogLine($successMessage);
-        $this->logSection->clear(2);
-        $this->logSection->writeln($msg);*/
-
-        //return $answer ?: 'localhost';
-    //}
 
     protected function askDatabaseHost(): string
     {
@@ -764,32 +539,6 @@ class NewCommand extends Command
         
         return false;
     }
-    
-    /**
-     * Update retry options display with radio buttons.
-     */
-    protected function updateRetryOptions(int $selectedIndex): void
-    {
-        $green = TuiRenderer::colorGreen();
-        $gray = TuiRenderer::colorWhite(); // Light gray for unselected
-        $brightWhite = TuiRenderer::colorBold(); // Bright white for selected text
-        $reset = TuiRenderer::colorReset();
-        
-        // Create options with radio buttons based on selection
-        // Selected option has brighter text, unselected has dimmer text
-        $tryAgainOption = ($selectedIndex === 0) ? 
-            ($green . '●' . $reset . ' ' . $brightWhite . 'Try again' . $reset) : 
-            ($gray . '○' . $reset . ' ' . $gray . 'Try again' . $reset);
-        $exitOption = ($selectedIndex === 1) ? 
-            ($green . '●' . $reset . ' ' . $brightWhite . 'Exit installation' . $reset) : 
-            ($gray . '○' . $reset . ' ' . $gray . 'Exit installation' . $reset);
-        
-        $optionsLine = '  ' . $tryAgainOption . ' ' . $gray . '/' . $reset . ' ' . $exitOption;
-        
-        // Update the options line in log section
-        $this->logSection->clear(1);
-        $this->logSection->writeln($optionsLine);
-    }
 
     /**
      * Ask for admin username.
@@ -847,6 +596,298 @@ class NewCommand extends Command
             $this->tui->replaceLastLogs('<fg=green>✔</> Your Admin password: ' . $answer . '.', 2);
             return $answer;
         }
+    }
+
+    /**
+     * Ask for admin directory.
+     */
+    protected function askAdminDirectory(): string
+    {
+        $answer = $this->tui->ask('Enter your Admin directory:', 'manager');
+
+        // Validate directory name (only alphanumeric, hyphen, underscore allowed)
+        $sanitized = preg_replace('/[^a-zA-Z0-9_-]/', '', $answer);
+        if (empty($sanitized)) {
+            $sanitized = 'manager';
+        }
+
+        $this->tui->replaceLastLogs('<fg=green>✔</> Your Admin directory: ' . $sanitized . '.', 2);
+        return $sanitized ?: 'manager';
+    }
+
+    /**
+     * Ask for installation language with interactive radio button selection.
+     */
+    protected function askLanguage(): string
+    {
+        $languageNames = [
+            'en' => 'English',
+            'uk' => 'Ukrainian',
+            'az' => 'Azerbaijani',
+            'be' => 'Belarusian',
+            'bg' => 'Bulgarian',
+            'cs' => 'Czech',
+            'da' => 'Danish',
+            'de' => 'German',
+            'es' => 'Spanish',
+            'fa' => 'Persian',
+            'fi' => 'Finnish',
+            'fr' => 'French',
+            'he' => 'Hebrew',
+            'it' => 'Italian',
+            'ja' => 'Japanese',
+            'nl' => 'Dutch',
+            'nn' => 'Norwegian',
+            'pl' => 'Polish',
+            'pt' => 'Portuguese',
+            'ru' => 'Russian',
+            'sv' => 'Swedish',
+            'zh' => 'Chinese',
+        ];
+        
+        $options = array_keys($languageNames);
+        $labels = array_values($languageNames);
+        
+        // Find default 'en' index
+        $defaultIndex = array_search('en', $options);
+        $active = $defaultIndex !== false ? $defaultIndex : 0;
+
+        // Display question
+        $this->tui->addLog('Which language do you want to use for installation?', 'ask');
+        
+        // Display initial radio options (vertical list)
+        $radioLines = $this->renderRadioVertical($options, $active, $labels);
+        foreach ($radioLines as $line) {
+            $this->tui->addLog($line);
+        }
+
+        // Store initial number of radio lines for updating
+        $radioLinesCount = count($radioLines);
+
+        // Raw input for arrow keys
+        system('stty -icanon -echo');
+        try {
+            while (true) {
+                $key = fread(STDIN, 3);
+
+                switch ($key) {
+                    case "\033[A": // ↑
+                        $active = max(0, $active - 1);
+                        break;
+
+                    case "\033[B": // ↓
+                        $active = min(count($options) - 1, $active + 1);
+                        break;
+
+                    case "\n": // Enter
+                        // Remove all radio button lines and show result
+                        $this->tui->replaceLastLogs('<fg=green>✔</> Selected language: ' . $labels[$active] . '.', $radioLinesCount + 1);
+                        return $options[$active];
+                }
+
+                // Update radio buttons display
+                $radioLines = $this->renderRadioVertical($options, $active, $labels);
+                // Replace all radio lines - remove old ones and add new ones
+                $this->tui->replaceLastLogsMultiple($radioLines, $radioLinesCount);
+            }
+        } finally {
+            system('stty sane');
+        }
+    }
+
+    /**
+     * Render radio buttons vertically (one per line).
+     */
+    protected function renderRadioVertical(array $options, int $active, array $labels): array
+    {
+        $lines = [];
+        foreach ($options as $i => $value) {
+            $label = $labels[$i] ?? $value;
+            
+            if ($i === $active) {
+                $lines[] = '  <fg=green>●</> <fg=white;options=bold>' . $label . '</> <fg=gray>(' . $value . ')</>';
+            } else {
+                $lines[] = '  <fg=gray>○</> ' . $label . ' <fg=gray>(' . $value . ')</>';
+            }
+        }
+        
+        return $lines;
+    }
+
+    /**
+     * Download Evolution CMS with compatible version check or from branch.
+     */
+    protected function downloadEvolutionCMS(string $name, array $options, ?string $branch = null): void
+    {
+        $this->tui->clearLogs();
+        $versionResolver = new VersionResolver();
+        $isCurrentDir = !empty($options['install_in_current_dir']);
+        $targetPath = $isCurrentDir ? $name : (getcwd() . '/' . $name);
+        
+        // If branch is specified, download from branch
+        if ($branch !== null) {
+            $branch = trim($branch);
+            $this->tui->addLog("Downloading Evolution CMS from branch: {$branch}...");
+            
+            $downloadUrl = $versionResolver->getBranchDownloadUrl($branch);
+            $displayName = $branch;
+        } else {
+            // Get latest compatible version
+            $this->tui->addLog('Finding compatible Evolution CMS version...');
+            $phpVersion = PHP_VERSION;
+            $version = $versionResolver->getLatestCompatibleVersion($phpVersion, true);
+            
+            if (!$version) {
+                $this->tui->replaceLastLogs('<fg=red>✗</> Could not find a compatible Evolution CMS version for PHP ' . $phpVersion . '.', 2);
+                throw new \RuntimeException("Could not find a compatible Evolution CMS version for PHP {$phpVersion}.");
+            }
+
+            // Remove 'v' prefix if present
+            $versionTag = ltrim($version, 'v');
+            $this->tui->replaceLastLogs('<fg=green>✔</> Found compatible version: ' . $version . '.', 2);
+            $this->tui->addLog("Downloading Evolution CMS {$versionTag}...");
+            
+            $downloadUrl = $versionResolver->getDownloadUrl($version);
+            $displayName = $versionTag;
+        }
+        
+        // Create temp file for download
+        $tempFile = sys_get_temp_dir() . '/evo-installer-' . uniqid() . '.zip';
+        
+        try {
+            // Download with progress
+            $this->downloadFile($downloadUrl, $tempFile);
+            
+            // Extract archive
+            $this->tui->addLog('Extracting archive...');
+            $this->extractZip($tempFile, $targetPath);
+            
+            // Clean up
+            @unlink($tempFile);
+            
+            // Mark step as completed
+            $this->steps['download']['completed'] = true;
+            $this->tui->setQuestTrack($this->steps);
+            
+            $sourceLabel = $branch ? "branch {$branch}" : "version {$displayName}";
+            $this->tui->addLog("Evolution CMS from {$sourceLabel} downloaded and extracted successfully!", 'success');
+        } catch (\Exception $e) {
+            // Clean up on error
+            @unlink($tempFile);
+            $this->tui->addLog("Failed to download Evolution CMS: " . $e->getMessage(), 'error');
+            throw $e;
+        }
+    }
+
+    /**
+     * Download file with progress bar.
+     */
+    protected function downloadFile(string $url, string $destination): void
+    {
+        $client = new Client(['timeout' => 300]);
+        
+        // First, get content length for progress tracking
+        $totalBytes = 0;
+        try {
+            $headResponse = $client->head($url, ['allow_redirects' => true]);
+            $totalBytes = (int) $headResponse->getHeaderLine('Content-Length');
+        } catch (\Exception $e) {
+            // If HEAD fails, we'll track progress from GET request
+        }
+        
+        $downloadedBytes = 0;
+        $lastUpdate = 0;
+        
+        // Download with on_stats callback for progress tracking
+        $response = $client->get($url, [
+            'sink' => $destination,
+            'on_stats' => function (TransferStats $stats) use (&$downloadedBytes, &$lastUpdate, $totalBytes) {
+                $downloadedBytes = $stats->getHandlerStat('size_download') ?: 0;
+                $totalSize = $totalBytes > 0 ? $totalBytes : ($stats->getHandlerStat('size_download') ?: 0);
+                
+                // Update progress every 100KB or every second
+                $now = microtime(true);
+                if ($totalSize > 0 && ($downloadedBytes - $lastUpdate > 100000 || $now - ($lastUpdate / 1000000) > 1)) {
+                    $this->tui->updateProgress('Downloading', $downloadedBytes, $totalSize);
+                    $lastUpdate = $downloadedBytes;
+                }
+            },
+        ]);
+        
+        // Final progress update
+        if ($totalBytes > 0) {
+            $this->tui->updateProgress('Downloading', $totalBytes, $totalBytes);
+        } else {
+            $actualSize = (int) $response->getHeaderLine('Content-Length');
+            if ($actualSize > 0) {
+                $this->tui->updateProgress('Downloading', $actualSize, $actualSize);
+            }
+        }
+
+        $this->tui->replaceLastLogs('<fg=green>✔</> Download completed.');
+    }
+
+    /**
+     * Extract ZIP archive.
+     */
+    protected function extractZip(string $zipFile, string $destination): void
+    {
+        if (!extension_loaded('zip')) {
+            throw new \RuntimeException('ZIP extension is required to extract the archive.');
+        }
+        
+        $zip = new \ZipArchive();
+        if ($zip->open($zipFile) !== true) {
+            throw new \RuntimeException("Failed to open ZIP archive: {$zipFile}");
+        }
+        
+        // Create destination directory if it doesn't exist
+        if (!is_dir($destination)) {
+            mkdir($destination, 0755, true);
+        }
+        
+        // Extract all files
+        $totalFiles = $zip->numFiles;
+        $extractedFiles = 0;
+        
+        for ($i = 0; $i < $totalFiles; $i++) {
+            $filename = $zip->getNameIndex($i);
+            
+            // Skip directory entries
+            if (substr($filename, -1) === '/') {
+                continue;
+            }
+            
+            // Remove source prefix from path (e.g., "evolution-3.3.0/" or "evolution-branch-name/" -> "")
+            $localPath = preg_replace('/^[^\/]+\//', '', $filename);
+            
+            if (empty($localPath)) {
+                continue;
+            }
+            
+            $targetPath = $destination . '/' . $localPath;
+            $targetDir = dirname($targetPath);
+            
+            // Create directory if needed
+            if (!is_dir($targetDir)) {
+                mkdir($targetDir, 0755, true);
+            }
+            
+            // Extract file
+            $content = $zip->getFromIndex($i);
+            if ($content !== false) {
+                file_put_contents($targetPath, $content);
+                $extractedFiles++;
+                
+                // Update progress every 10 files
+                if ($extractedFiles % 10 === 0 || $extractedFiles === $totalFiles) {
+                    $this->tui->updateProgress('Extracting', $extractedFiles, $totalFiles, 'files');
+                }
+            }
+        }
+        
+        $zip->close();
+        $this->tui->replaceLastLogs('<fg=green>✔</> Extracted ' . $extractedFiles . ' files.');
     }
 
     /**

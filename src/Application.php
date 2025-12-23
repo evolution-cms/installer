@@ -10,7 +10,7 @@ class Application extends ConsoleApplication
      */
     public function __construct()
     {
-        parent::__construct('Evolution CMF Installer', '1.0.0');
+        parent::__construct('Evolution CMS Installer', '1.0.0');
 
         $this->add(new NewCommand());
     }
@@ -20,6 +20,6 @@ class Application extends ConsoleApplication
      */
     public function getLongVersion(): string
     {
-        return parent::getLongVersion() . ' by <comment>Evolution CMF</comment>';
+        return parent::getLongVersion() . ' by <comment>Evolution CMS</comment>';
     }
 }

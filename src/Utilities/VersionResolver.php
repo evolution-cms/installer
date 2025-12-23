@@ -19,13 +19,16 @@ class VersionResolver
      * Get the latest compatible version of Evolution CMS for current PHP version.
      *
      * @param string|null $phpVersion PHP version (default: current version)
+     * @param bool $silent If true, suppress console output
      * @return string|null Latest compatible version tag or null
      */
-    public function getLatestCompatibleVersion(?string $phpVersion = null): ?string
+    public function getLatestCompatibleVersion(?string $phpVersion = null, bool $silent = false): ?string
     {
         $phpVersion = $phpVersion ?? PHP_VERSION;
         
-        Console::info("Checking compatible Evolution CMS versions for PHP {$phpVersion}...");
+        if (!$silent) {
+            Console::info("Checking compatible Evolution CMS versions for PHP {$phpVersion}...");
+        }
 
         try {
             $releases = $this->fetchReleases();
@@ -44,15 +47,21 @@ class VersionResolver
 
                 // Check if this version is compatible
                 if ($this->isCompatible($version, $phpVersion)) {
-                    Console::success("Found compatible version: {$version}");
+                    if (!$silent) {
+                        Console::success("Found compatible version: {$version}");
+                    }
                     return $version;
                 }
             }
 
-            Console::warning("No compatible version found for PHP {$phpVersion}.");
+            if (!$silent) {
+                Console::warning("No compatible version found for PHP {$phpVersion}.");
+            }
             return null;
         } catch (\Exception $e) {
-            Console::error("Failed to resolve version: " . $e->getMessage());
+            if (!$silent) {
+                Console::error("Failed to resolve version: " . $e->getMessage());
+            }
             return null;
         }
     }
@@ -67,7 +76,7 @@ class VersionResolver
     {
         $client = new Client([
             'base_uri' => self::GITHUB_API,
-            'timeout' => 10.0,
+            'timeout' => 25,
         ]);
 
         $response = $client->get("/repos/" . self::GITHUB_REPO . "/releases", [
@@ -115,10 +124,10 @@ class VersionResolver
                 return version_compare($phpVersion, '8.3.0', '>=');
             }
 
-            return $this->satisfiesVersion($phpVersion, $phpRequirement);
+                return $this->satisfiesVersion($phpVersion, $phpRequirement);
         } catch (\Exception $e) {
             // On error, default to checking if PHP is 8.3+
-            Console::warning("Could not verify compatibility for {$evoVersion}, assuming PHP 8.3+ required");
+            // Suppress warning in silent mode
             return version_compare($phpVersion, '8.3.0', '>=');
         }
     }
@@ -134,7 +143,7 @@ class VersionResolver
         try {
             $client = new Client([
                 'base_uri' => 'https://raw.githubusercontent.com',
-                'timeout' => 5.0,
+                'timeout' => 25,
             ]);
 
             // Try to get composer.json from the release tag
@@ -253,6 +262,17 @@ class VersionResolver
     }
 
     /**
+     * Get download URL for a specific branch.
+     *
+     * @param string $branch
+     * @return string
+     */
+    public function getBranchDownloadUrl(string $branch): string
+    {
+        return "https://github.com/" . self::GITHUB_REPO . "/archive/refs/heads/{$branch}.zip";
+    }
+
+    /**
      * Get latest version (without compatibility check).
      *
      * @return string|null
@@ -277,4 +297,3 @@ class VersionResolver
         }
     }
 }
-
