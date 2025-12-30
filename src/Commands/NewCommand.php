@@ -23,7 +23,7 @@ use Symfony\Component\Process\Process;
 class NewCommand extends Command
 {
     use ConfiguresDatabase;
-    
+
     protected ?OutputInterface $logSection = null;
     protected ?TuiRenderer $tui = null;
     protected array $steps = [
@@ -45,7 +45,7 @@ class NewCommand extends Command
             ->setName('new')
             ->setDescription('Create a new Evolution CMS application')
             ->addArgument('name', InputArgument::OPTIONAL, 'The name of the application (use "." to install in current directory)', '.')
-            ->addOption('preset', null, InputOption::VALUE_OPTIONAL, 'The preset to use', 'evolution')
+            ->addOption('preset', null, InputOption::VALUE_OPTIONAL, 'The preset to use')
             ->addOption('db-type', null, InputOption::VALUE_OPTIONAL, 'The database type (mysql, pgsql, sqlite, sqlsrv)')
             ->addOption('db-host', null, InputOption::VALUE_OPTIONAL, 'The database host (localhost)')
             ->addOption('db-port', null, InputOption::VALUE_OPTIONAL, 'The database port')
@@ -72,7 +72,7 @@ class NewCommand extends Command
 
         $this->tui = new TuiRenderer($output);
         $this->tui->setSystemStatus($this->checkSystemStatus());
-        
+
         $name = $input->getArgument('name') ?? '.';
 
         // Normalize "." to current directory
@@ -108,7 +108,23 @@ class NewCommand extends Command
         // Step 4: Install Evolution CMS (clean installation)
         $this->installEvolutionCMS($name, $options);
 
+        // Step 5: Install presets
+        $this->getPreset($input->getOption('preset'));
+
         $this->tui->addLog("Evolution CMS application ready! Build something amazing.", 'success');
+
+        // Show admin panel access information
+        $adminDirectory = $options['admin']['directory'] ?? 'manager';
+        $adminUsername = $options['admin']['username'] ?? 'admin';
+        $adminPassword = $options['admin']['password'] ?? '';
+        $baseUrl = $this->detectBaseUrl($name, $installInCurrentDir);
+        $adminUrl = "{$baseUrl}/{$adminDirectory}";
+
+        $this->tui->addLog("Admin panel: <fg=cyan>{$adminUrl}</>");
+        $this->tui->addLog("Username: <fg=yellow>{$adminUsername}</>");
+        if (!empty($adminPassword)) {
+            $this->tui->addLog("Password: <fg=yellow>{$adminPassword}</>");
+        }
 
         return Command::SUCCESS;
     }
@@ -148,13 +164,13 @@ class NewCommand extends Command
         $pdoMysqlOk = in_array('mysql', $availablePdoDrivers);
         $pdoPgsqlOk = in_array('pgsql', $availablePdoDrivers);
         $pdoSqlsrvOk = in_array('sqlsrv', $availablePdoDrivers);
-        
+
         // Additional extension checks
         $curlOk = SystemInfo::hasExtension('curl');
         $gdOk = SystemInfo::hasExtension('gd');
         $imagickOk = SystemInfo::hasExtension('imagick');
         $imageExtensionOk = $gdOk || $imagickOk; // At least one image extension
-        
+
         return [
             ['label' => $os, 'status' => true],
             ['label' => "PHP - {$phpVersion}", 'status' => $phpOk],
@@ -249,42 +265,42 @@ class NewCommand extends Command
     protected function gatherDatabaseInputs($helper, InputInterface $input, OutputInterface $output, bool $useOptions = true): array
     {
         $database = [];
-        
+
         // Use command-line options if available, otherwise ask interactively
         $database['type'] = ($useOptions && $input->getOption('db-type')) ? $input->getOption('db-type') : $this->askDatabaseType();
-        
+
         // SQLite doesn't need host, port, user, password
         if ($database['type'] === 'sqlite') {
-            $database['name'] = ($useOptions && $input->getOption('db-name')) 
-                ? $input->getOption('db-name') 
+            $database['name'] = ($useOptions && $input->getOption('db-name'))
+                ? $input->getOption('db-name')
                 : $this->askDatabaseName('sqlite');
             // SQLite doesn't need these fields, but set defaults for compatibility
             $database['host'] = '';
             $database['user'] = '';
             $database['password'] = '';
         } else {
-            $database['host'] = ($useOptions && $input->getOption('db-host')) 
-                ? $input->getOption('db-host') 
+            $database['host'] = ($useOptions && $input->getOption('db-host'))
+                ? $input->getOption('db-host')
                 : $this->askDatabaseHost();
-            
+
             if ($input->getOption('db-port')) {
                 $database['port'] = $input->getOption('db-port');
             }
-            
-            $database['name'] = ($useOptions && $input->getOption('db-name')) 
-                ? $input->getOption('db-name') 
+
+            $database['name'] = ($useOptions && $input->getOption('db-name'))
+                ? $input->getOption('db-name')
                 : $this->askDatabaseName();
-            $database['user'] = ($useOptions && $input->getOption('db-user')) 
-                ? $input->getOption('db-user') 
+            $database['user'] = ($useOptions && $input->getOption('db-user'))
+                ? $input->getOption('db-user')
                 : $this->askDatabaseUser();
-            $database['password'] = ($useOptions && $input->getOption('db-password')) 
-                ? $input->getOption('db-password') 
+            $database['password'] = ($useOptions && $input->getOption('db-password'))
+                ? $input->getOption('db-password')
                 : $this->askDatabasePassword();
         }
 
         // Set prefix (from option or default)
-        $database['prefix'] = ($useOptions && $input->getOption('db-prefix') !== null) 
-            ? $input->getOption('db-prefix') 
+        $database['prefix'] = ($useOptions && $input->getOption('db-prefix') !== null)
+            ? $input->getOption('db-prefix')
             : 'evo_';
 
         return $database;
@@ -301,14 +317,14 @@ class NewCommand extends Command
             'sqlite' => 'SQLite',
             'sqlsrv' => 'SQL Server'
         ];
-        
+
         $options = array_keys($driverNames);
         $labels = array_values($driverNames);
         $active = 0;
 
         // Display question in cyan without icon
         $this->tui->addLog('Which database driver do you want to use?', 'ask');
-        
+
         // Display initial radio options (force render to avoid throttle)
         $radioText = $this->tui->renderRadio($options, $active, $labels);
         $this->tui->addLog($radioText);
@@ -356,7 +372,7 @@ class NewCommand extends Command
 
     /**
      * Ask for database name.
-     * 
+     *
      * @param string|null $type Database type (for SQLite, asks for file path)
      */
     protected function askDatabaseName(?string $type = null): string
@@ -415,16 +431,16 @@ class NewCommand extends Command
 
     /**
      * Test database connection and display result in TUI.
-     * 
+     *
      * @return bool True if connection successful, false otherwise
      */
     protected function testDatabaseConnection(array $config): bool
     {
         $this->tui->addLog('Testing database connection...');
-        
+
         try {
             $type = $config['type'] ?? 'mysql';
-            
+
             // Check if PDO driver is available
             $availableDrivers = \PDO::getAvailableDrivers();
             $driverMap = [
@@ -433,7 +449,7 @@ class NewCommand extends Command
                 'sqlite' => 'sqlite',
                 'sqlsrv' => 'sqlsrv'
             ];
-            
+
             $requiredDriver = $driverMap[$type] ?? null;
             if ($requiredDriver && !in_array($requiredDriver, $availableDrivers)) {
                 $driverName = match($type) {
@@ -450,7 +466,7 @@ class NewCommand extends Command
                 );
                 return false;
             }
-            
+
             if ($type === 'sqlite') {
                 // SQLite: Connect directly to the database file
                 if (empty($config['name'])) {
@@ -463,19 +479,19 @@ class NewCommand extends Command
                 $configWithoutDb = $config;
                 unset($configWithoutDb['name']);
                 $this->createConnection($configWithoutDb);
-                
+
                 // If database name is provided, try to connect to it
                 if (!empty($config['name'])) {
                     $this->createConnection($config);
                 }
             }
-            
+
             // Display success message
             $this->tui->replaceLastLogs('<fg=green>✔</> Database connection successful!', 2);
             return true;
         } catch (PDOException $e) {
             $errorMessage = $e->getMessage();
-            
+
             // Improve error message for missing driver
             if (str_contains($errorMessage, 'could not find driver') || str_contains($errorMessage, 'driver not found')) {
                 $driverName = match($config['type'] ?? 'mysql') {
@@ -492,7 +508,7 @@ class NewCommand extends Command
                 };
                 $errorMessage = "PDO driver for {$driverName} is not installed. Please install PHP extension: {$extensionName}";
             }
-            
+
             $this->tui->replaceLastLogs('<fg=red>✗</> Database connection failed: ' . $errorMessage, 2);
             return false;
         }
@@ -500,7 +516,7 @@ class NewCommand extends Command
 
     /**
      * Ask user if they want to retry database connection or exit.
-     * 
+     *
      * @return bool True if user wants to retry, false if they want to exit
      */
     protected function askRetryDatabaseConnection(): bool
@@ -544,7 +560,7 @@ class NewCommand extends Command
         } finally {
             system('stty sane');
         }
-        
+
         return false;
     }
 
@@ -571,7 +587,7 @@ class NewCommand extends Command
                 $this->tui->replaceLastLogs('<fg=yellow>⚠</> Email address cannot be empty. Please try again.', 3);
                 continue;
             }
-            
+
             if (!filter_var($answer, FILTER_VALIDATE_EMAIL)) {
                 $this->tui->replaceLastLogs('<fg=yellow>⚠</> Please enter a valid email address. Try again.', 3);
                 continue;
@@ -595,7 +611,7 @@ class NewCommand extends Command
                 $this->tui->replaceLastLogs('<fg=yellow>⚠</> Password cannot be empty. Please try again.', 3);
                 continue;
             }
-            
+
             if (strlen($answer) < 6) {
                 $this->tui->replaceLastLogs('<fg=yellow>⚠</> Password must be at least 6 characters long. Try again.', 3);
                 continue;
@@ -652,17 +668,17 @@ class NewCommand extends Command
             'sv' => 'Swedish',
             'zh' => 'Chinese',
         ];
-        
+
         $options = array_keys($languageNames);
         $labels = array_values($languageNames);
-        
+
         // Find default 'en' index
         $defaultIndex = array_search('en', $options);
         $active = $defaultIndex !== false ? $defaultIndex : 0;
 
         // Display question
         $this->tui->addLog('Which language do you want to use for installation?', 'ask');
-        
+
         // Display initial radio options (vertical list)
         $radioLines = $this->renderRadioVertical($options, $active, $labels);
         foreach ($radioLines as $line) {
@@ -711,14 +727,14 @@ class NewCommand extends Command
         $lines = [];
         foreach ($options as $i => $value) {
             $label = $labels[$i] ?? $value;
-            
+
             if ($i === $active) {
                 $lines[] = '  <fg=green>●</> <fg=white;options=bold>' . $label . '</> <fg=gray>(' . $value . ')</>';
-        } else {
+            } else {
                 $lines[] = '  <fg=gray>○</> ' . $label . ' <fg=gray>(' . $value . ')</>';
             }
         }
-        
+
         return $lines;
     }
 
@@ -731,12 +747,12 @@ class NewCommand extends Command
         $versionResolver = new VersionResolver();
         $isCurrentDir = !empty($options['install_in_current_dir']);
         $targetPath = $isCurrentDir ? $name : (getcwd() . '/' . $name);
-        
+
         // If branch is specified, download from branch
         if ($branch !== null) {
             $branch = trim($branch);
             $this->tui->addLog("Downloading Evolution CMS from branch: {$branch}...");
-            
+
             $downloadUrl = $versionResolver->getBranchDownloadUrl($branch);
             $displayName = $branch;
         } else {
@@ -744,7 +760,7 @@ class NewCommand extends Command
             $this->tui->addLog('Finding compatible Evolution CMS version...');
             $phpVersion = PHP_VERSION;
             $version = $versionResolver->getLatestCompatibleVersion($phpVersion, true);
-            
+
             if (!$version) {
                 $this->tui->replaceLastLogs('<fg=red>✗</> Could not find a compatible Evolution CMS version for PHP ' . $phpVersion . '.', 2);
                 throw new \RuntimeException("Could not find a compatible Evolution CMS version for PHP {$phpVersion}.");
@@ -754,25 +770,25 @@ class NewCommand extends Command
             $versionTag = ltrim($version, 'v');
             $this->tui->replaceLastLogs('<fg=green>✔</> Found compatible version: ' . $version . '.', 2);
             $this->tui->addLog("Downloading Evolution CMS {$versionTag}...");
-            
+
             $downloadUrl = $versionResolver->getDownloadUrl($version);
             $displayName = $versionTag;
         }
-        
+
         // Create temp file for download
         $tempFile = sys_get_temp_dir() . '/evo-installer-' . uniqid() . '.zip';
-        
+
         try {
             // Download with progress
             $this->downloadFile($downloadUrl, $tempFile);
-            
+
             // Extract archive
             $this->tui->addLog('Extracting archive...');
             $this->extractZip($tempFile, $targetPath);
-            
+
             // Clean up
             @unlink($tempFile);
-            
+
             $sourceLabel = $branch ? "branch {$branch}" : "version {$displayName}";
             $this->tui->addLog("Evolution CMS from {$sourceLabel} downloaded and extracted successfully!", 'success');
 
@@ -793,7 +809,7 @@ class NewCommand extends Command
     protected function downloadFile(string $url, string $destination): void
     {
         $client = new Client(['timeout' => 300]);
-        
+
         // First, get content length for progress tracking
         $totalBytes = 0;
         try {
@@ -802,17 +818,17 @@ class NewCommand extends Command
         } catch (\Exception $e) {
             // If HEAD fails, we'll track progress from GET request
         }
-        
+
         $downloadedBytes = 0;
         $lastUpdate = 0;
-        
+
         // Download with on_stats callback for progress tracking
         $response = $client->get($url, [
             'sink' => $destination,
             'on_stats' => function (TransferStats $stats) use (&$downloadedBytes, &$lastUpdate, $totalBytes) {
                 $downloadedBytes = $stats->getHandlerStat('size_download') ?: 0;
                 $totalSize = $totalBytes > 0 ? $totalBytes : ($stats->getHandlerStat('size_download') ?: 0);
-                
+
                 // Update progress every 100KB or every second
                 $now = microtime(true);
                 if ($totalSize > 0 && ($downloadedBytes - $lastUpdate > 100000 || $now - ($lastUpdate / 1000000) > 1)) {
@@ -821,7 +837,7 @@ class NewCommand extends Command
                 }
             },
         ]);
-        
+
         // Final progress update
         if ($totalBytes > 0) {
             $this->tui->updateProgress('Downloading', $totalBytes, $totalBytes);
@@ -843,57 +859,57 @@ class NewCommand extends Command
         if (!extension_loaded('zip')) {
             throw new \RuntimeException('ZIP extension is required to extract the archive.');
         }
-        
+
         $zip = new \ZipArchive();
         if ($zip->open($zipFile) !== true) {
             throw new \RuntimeException("Failed to open ZIP archive: {$zipFile}");
         }
-        
+
         // Create destination directory if it doesn't exist
         if (!is_dir($destination)) {
             mkdir($destination, 0755, true);
         }
-        
+
         // Extract all files
         $totalFiles = $zip->numFiles;
         $extractedFiles = 0;
-        
+
         for ($i = 0; $i < $totalFiles; $i++) {
             $filename = $zip->getNameIndex($i);
-            
+
             // Skip directory entries
             if (substr($filename, -1) === '/') {
                 continue;
             }
-            
+
             // Remove source prefix from path (e.g., "evolution-3.5.0/" or "evolution-branch-name/" -> "")
             $localPath = preg_replace('/^[^\/]+\//', '', $filename);
-            
+
             if (empty($localPath)) {
                 continue;
             }
-            
+
             $targetPath = $destination . '/' . $localPath;
             $targetDir = dirname($targetPath);
-            
+
             // Create directory if needed
             if (!is_dir($targetDir)) {
                 mkdir($targetDir, 0755, true);
             }
-            
+
             // Extract file
             $content = $zip->getFromIndex($i);
             if ($content !== false) {
                 file_put_contents($targetPath, $content);
                 $extractedFiles++;
-                
+
                 // Update progress every 10 files
                 if ($extractedFiles % 10 === 0 || $extractedFiles === $totalFiles) {
                     $this->tui->updateProgress('Extracting', $extractedFiles, $totalFiles, 'files');
                 }
             }
         }
-        
+
         $zip->close();
         $this->tui->replaceLastLogs('<fg=green>✔</> Extracted ' . $extractedFiles . ' files.');
     }
@@ -923,6 +939,9 @@ class NewCommand extends Command
         // Step 4.4: Create admin user
         $this->createAdminUser($projectPath, $options);
 
+        // Step 4.5: Run database seeders
+        $this->runSeeders($projectPath);
+
         // Mark installation steps as completed
         $this->steps['install']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
@@ -938,7 +957,7 @@ class NewCommand extends Command
     protected function setupDatabase(string $projectPath, array $options): void
     {
         $this->tui->addLog('Setting up database...');
-        
+
         $dbConfig = $options['database'];
 
         // Ensure prefix is set (from option or default)
@@ -1028,6 +1047,149 @@ class NewCommand extends Command
     }
 
     /**
+     * Run database seeders.
+     *
+     * @param string $projectPath
+     * @return void
+     */
+    protected function runSeeders(string $projectPath): void
+    {
+        $this->tui->addLog('Running database seeders...');
+
+        $artisanScript = null;
+        foreach (['core/artisan', 'artisan'] as $candidate) {
+            if (file_exists($projectPath . '/' . $candidate)) {
+                $artisanScript = $candidate;
+                break;
+            }
+        }
+
+        if ($artisanScript === null) {
+            $this->tui->addLog('No artisan found. Skipping seeders (may need manual seeding).', 'warning');
+            return;
+        }
+
+        // Seeders are always in core/database/seeders
+        $seederDir = $projectPath . '/core/database/seeders';
+
+        if (!is_dir($seederDir)) {
+            $this->tui->addLog('No seeders directory found. Skipping seeders.', 'warning');
+            return;
+        }
+
+        // Define seeders in execution order
+        $seeders = [
+            'SystemSettingsTableSeeder',
+            'SystemEventnamesTableSeeder',
+            'SiteTemplatesTableSeeder',
+            'UserRolesTableSeeder',
+            'UserPermissionsTableSeeder',
+            'SiteContentTableSeeder',
+        ];
+
+        $sessionDir = $projectPath . '/core/storage/sessions';
+        if (!str_starts_with($artisanScript, 'core/')) {
+            $sessionDir = $projectPath . '/storage/sessions';
+        }
+        @mkdir($sessionDir, 0755, true);
+
+        $seederNamespace = 'EvolutionCMS\\Database\\Seeders\\';
+
+        foreach ($seeders as $seeder) {
+            $seederFile = $seederDir . '/' . $seeder . '.php';
+            if (!file_exists($seederFile)) {
+                $this->tui->addLog("Seeder {$seeder} not found. Skipping.", 'warning');
+                continue;
+            }
+
+            $this->tui->addLog("Running seeder: {$seeder}...");
+
+            $seederClass = $seederNamespace . $seeder;
+            $argv = ['artisan', 'db:seed', '--class', $seederClass, '--force'];
+            $phpCode =
+                'define("IN_INSTALL_MODE", true);' .
+                'define("EVO_CLI", true);' .
+                '$_SERVER["argv"]=' . var_export($argv, true) . ';' .
+                '$_SERVER["argc"]=count($_SERVER["argv"]);' .
+                'require ' . var_export($artisanScript, true) . ';';
+
+            $process = new Process([
+                'php',
+                '-d',
+                'session.save_path=' . $sessionDir,
+                '-r',
+                $phpCode,
+            ], $projectPath);
+            $process->setTimeout(120);
+
+            try {
+                $buffers = [
+                    Process::OUT => '',
+                    Process::ERR => '',
+                ];
+
+                $process->run(function ($type, $buffer) use (&$buffers) {
+                    $buffers[$type] .= $buffer;
+
+                    while (($pos = strpos($buffers[$type], "\n")) !== false) {
+                        $line = rtrim(substr($buffers[$type], 0, $pos), "\r");
+                        $buffers[$type] = substr($buffers[$type], $pos + 1);
+
+                        if ($line === '' || str_contains(strtolower($line), 'seeding')) {
+                            continue;
+                        }
+
+                        $lower = strtolower($line);
+                        $isErrorLine =
+                            str_contains($lower, 'fatal error') ||
+                            str_contains($lower, 'uncaught exception') ||
+                            str_contains($lower, 'error:') ||
+                            str_contains($lower, 'exception');
+
+                        if (!$isErrorLine && !str_contains($lower, 'database seeded')) {
+                            continue; // Hide normal output, only show errors
+                        }
+
+                        $this->tui->addLog($line, $isErrorLine ? 'error' : 'info');
+                    }
+                });
+
+                // Process remaining buffer
+                foreach ($buffers as $type => $tail) {
+                    $tail = trim($tail);
+                    if ($tail !== '') {
+                        $lower = strtolower($tail);
+                        $isErrorLine =
+                            str_contains($lower, 'fatal error') ||
+                            str_contains($lower, 'uncaught exception') ||
+                            str_contains($lower, 'error:') ||
+                            str_contains($lower, 'exception');
+
+                        if (!$isErrorLine && !str_contains($lower, 'database seeded')) {
+                            continue;
+                        }
+
+                        $this->tui->addLog($tail, $isErrorLine ? 'error' : 'info');
+                    }
+                }
+
+                if ($process->isSuccessful()) {
+                    $this->tui->replaceLastLogs("<fg=green>✔</> Seeder {$seeder} completed.", 2);
+                } else {
+                    $errorOutput = $buffers[Process::ERR] ?? $process->getErrorOutput();
+                    $this->tui->replaceLastLogs("<fg=red>✗</> Seeder {$seeder} failed: {$errorOutput}", 2);
+                    throw new \RuntimeException("Seeder {$seeder} failed.");
+                }
+            } catch (\Exception $e) {
+                $this->tui->replaceLastLogs("<fg=red>✗</> Seeder {$seeder} failed: " . $e->getMessage(), 2);
+                throw $e;
+            }
+        }
+
+        $this->tui->addLog('<fg=green>✔</> All seeders completed successfully.', 'success');
+    }
+
+    /**
      * Setup Composer dependencies.
      *
      * @param string $projectPath
@@ -1046,7 +1208,6 @@ class NewCommand extends Command
         }
 
         // Some releases may omit these directories; Composer and Evolution CMS expect them.
-        @mkdir($composerWorkDir . '/database/migrations', 0755, true);
         @mkdir($composerWorkDir . '/storage/bootstrap', 0755, true);
         @mkdir($composerWorkDir . '/storage/cache', 0755, true);
         @mkdir($composerWorkDir . '/storage/logs', 0755, true);
@@ -1054,18 +1215,56 @@ class NewCommand extends Command
 
         $this->tui->addLog('Composer working directory: ' . basename($composerWorkDir));
 
-        $localComposer = $composerWorkDir . '/vendor/bin/composer';
-        $localComposerOk = is_file($localComposer) && is_file($composerWorkDir . '/vendor/composer/composer/bin/composer');
-        $composerCommand = $localComposerOk ? ['php', 'vendor/bin/composer'] : ['composer'];
+        // Always use system composer
+        $composerCommand = ['composer'];
 
         try {
-            $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--no-scripts'], $composerWorkDir);
+            $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
             if ($process->isSuccessful()) {
                 $this->tui->addLog('Dependencies installed successfully.', 'success');
                 return;
             }
 
             $fullOutput = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
+
+            // Handle missing .git directory error (packages installed with --prefer-source)
+            if (str_contains($fullOutput, '.git directory is missing') || str_contains($fullOutput, 'see https://getcomposer.org/commit-deps')) {
+                $this->tui->addLog('Detected source-installed packages with missing .git. Removing vendor directory and reinstalling with --prefer-dist...', 'warning');
+
+                // Remove vendor directory to clear source-installed packages
+                $vendorDir = $composerWorkDir . '/vendor';
+                if (is_dir($vendorDir)) {
+                    $this->removeDirectory($vendorDir);
+                }
+
+                // Also remove composer.lock if it exists to force fresh install
+                $composerLock = $composerWorkDir . '/composer.lock';
+                if (file_exists($composerLock)) {
+                    @unlink($composerLock);
+                    $this->tui->addLog('Removed composer.lock to force fresh dependency resolution.');
+                }
+
+                // After removing vendor, we must use system composer
+                $composerCommand = ['composer'];
+
+                // Reinstall with prefer-dist
+                $reinstall = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
+                if ($reinstall->isSuccessful()) {
+                    $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
+                    return;
+                }
+
+                // If install fails, try update as fallback
+                $this->tui->addLog('Install failed. Trying composer update...', 'warning');
+                $update = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
+                if ($update->isSuccessful()) {
+                    $this->tui->addLog('Dependencies updated successfully.', 'success');
+                    return;
+                }
+
+                $updateOutput = $this->sanitizeComposerOutput($update->getOutput() . "\n" . $update->getErrorOutput());
+                throw new \RuntimeException(trim($updateOutput));
+            }
 
             // composer.lock may be generated for a newer PHP version; fall back to update to resolve a compatible set.
             if (str_contains($fullOutput, 'Your lock file does not contain a compatible set of packages')
@@ -1078,6 +1277,37 @@ class NewCommand extends Command
                 }
 
                 $updateOutput = $this->sanitizeComposerOutput($update->getOutput() . "\n" . $update->getErrorOutput());
+
+                // Check if update failed due to .git directory issue
+                if (str_contains($updateOutput, '.git directory is missing') || str_contains($updateOutput, 'see https://getcomposer.org/commit-deps')) {
+                    $this->tui->addLog('Update failed due to missing .git. Removing vendor and reinstalling...', 'warning');
+
+                    // Remove vendor directory to clear source-installed packages
+                    $vendorDir = $composerWorkDir . '/vendor';
+                    if (is_dir($vendorDir)) {
+                        $this->removeDirectory($vendorDir);
+                    }
+
+                    // Remove composer.lock to force fresh install
+                    $composerLock = $composerWorkDir . '/composer.lock';
+                    if (file_exists($composerLock)) {
+                        @unlink($composerLock);
+                    }
+
+                    // After removing vendor, we must use system composer
+                    $composerCommand = ['composer'];
+
+                    // Reinstall with prefer-dist
+                    $reinstall = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
+                    if ($reinstall->isSuccessful()) {
+                        $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
+                        return;
+                    }
+
+                    $reinstallOutput = $this->sanitizeComposerOutput($reinstall->getOutput() . "\n" . $reinstall->getErrorOutput());
+                    throw new \RuntimeException(trim($reinstallOutput));
+                }
+
                 throw new \RuntimeException(trim($updateOutput));
             }
 
@@ -1235,7 +1465,7 @@ class NewCommand extends Command
         $argv = ['artisan', 'migrate', '--force', '--path=' . $migrationPath];
         $phpCode =
             'define("IN_INSTALL_MODE", true);' .
-            'define("MODX_CLI", true);' .
+            'define("EVO_CLI", true);' .
             '$_SERVER["argv"]=' . var_export($argv, true) . ';' .
             '$_SERVER["argc"]=count($_SERVER["argv"]);' .
             'require ' . var_export($artisanScript, true) . ';';
@@ -1248,7 +1478,7 @@ class NewCommand extends Command
             $phpCode,
         ], $projectPath);
         $process->setTimeout(300);
-        
+
         try {
             $buffers = [
                 Process::OUT => '',
@@ -1317,7 +1547,7 @@ class NewCommand extends Command
         $argv = ['artisan', 'package:discover'];
         $phpCode =
             'define("IN_INSTALL_MODE", true);' .
-            'define("MODX_CLI", true);' .
+            'define("EVO_CLI", true);' .
             '$_SERVER["argv"]=' . var_export($argv, true) . ';' .
             '$_SERVER["argc"]=count($_SERVER["argv"]);' .
             'require ' . var_export($artisanScript, true) . ';';
@@ -1366,9 +1596,9 @@ class NewCommand extends Command
         }
 
         if ($process->isSuccessful()) {
-            $this->tui->addLog('Package discovery completed.', 'success');
+            $this->tui->replaceLastLogs('<fg=green>✔</> Package discovery completed.');
         } else {
-            $this->tui->addLog('Package discovery failed (you can run it manually later).', 'warning');
+            $this->tui->replaceLastLogs('<fg=red>✗</> Package discovery failed (you can run it manually later)');
         }
     }
 
@@ -1414,9 +1644,9 @@ class NewCommand extends Command
 
             $success = false;
             foreach ($commands as $cmd) {
-                $process = new \Symfony\Component\Process\Process($cmd, $projectPath);
+                $process = new Process($cmd, $projectPath);
                 $process->setTimeout(120);
-                
+
                 try {
                     $process->run();
                     if ($process->isSuccessful()) {
@@ -1430,7 +1660,7 @@ class NewCommand extends Command
             }
 
             if ($success) {
-                $this->tui->replaceLastLogs('<fg=green>✔</> Admin user created successfully.', 2);
+                $this->tui->replaceLastLogs('<fg=green>✔</> Admin user created successfully.');
             } else {
                 // Fallback: Create user directly in database
                 $this->createAdminUserDirectly($projectPath, $options);
@@ -1469,7 +1699,7 @@ class NewCommand extends Command
             $checkQuery = "SELECT id FROM {$tablePrefix}manager_users WHERE username = :username OR email = :email LIMIT 1";
             $stmt = $dbh->prepare($checkQuery);
             $stmt->execute([':username' => $username, ':email' => $email]);
-            
+
             if ($stmt->fetch()) {
                 $this->tui->replaceLastLogs('<fg=yellow>⚠</> Admin user already exists. Skipping creation.', 2);
                 return;
@@ -1494,15 +1724,10 @@ class NewCommand extends Command
     /**
      * Get preset instance.
      */
-    protected function getPreset(string $preset): Preset
+    protected function getPreset(string $preset)
     {
-        $presetClass = "EvolutionCMS\\Installer\\Presets\\" . ucfirst($preset) . "Preset";
-
-        if (!class_exists($presetClass)) {
-            throw new \RuntimeException("Preset [{$preset}] not found.");
-        }
-
-        return new $presetClass();
+        $this->steps['install']['presets'] = true;
+        $this->tui->setQuestTrack($this->steps);
     }
 
     protected function getDatabaseConfigForOperations(string $projectPath, array $dbConfig): array
@@ -1525,91 +1750,77 @@ class NewCommand extends Command
         $dbConfig['name'] = rtrim($projectPath, '/\\') . DIRECTORY_SEPARATOR . $name;
         return $dbConfig;
     }
-}
 
-/**
- * Filtered Output wrapper that suppresses standard ChoiceQuestion output
- * and tracks selection changes for updating radio buttons.
- */
-/*class FilteredOutput extends Output
-{
-    protected OutputInterface $output;
-    protected array $options;
-    protected $updateCallback;
-    protected int $currentSelection = 0;
-    
-    public function __construct(OutputInterface $output, array $options, callable $updateCallback)
+    /**
+     * Detect base URL for the installed application.
+     *
+     * @param string $projectName
+     * @param bool $installInCurrentDir
+     * @return string
+     */
+    protected function detectBaseUrl(string $projectName, bool $installInCurrentDir): string
     {
-        $this->output = $output;
-        $this->options = $options;
-        $this->updateCallback = $updateCallback;
-        parent::__construct($output->getVerbosity(), $output->isDecorated(), $output->getFormatter());
-    }
-    
-    protected function doWrite(string $message, bool $newline): void
-    {
-        // Filter out standard ChoiceQuestion options list ([0] mysql, [1] pgsql)
-        // ChoiceQuestion outputs options using escape sequences, so we need to filter carefully
-        $lines = explode("\n", $message);
-        $filtered = [];
-        
-        foreach ($lines as $line) {
-            // Skip lines that look like ChoiceQuestion numbered options
-            // Pattern: [0] mysql or [1] pgsql (may have ANSI codes)
-            $cleanLine = preg_replace('/\033\[[0-9;]*m/', '', $line); // Remove ANSI codes for matching
-            if (preg_match('/^\s*\[\d+\]\s+(mysql|pgsql)/i', $cleanLine, $matches)) {
-                // This is a standard option line - extract index and update selection
-                if (preg_match('/\[(\d+)\]/', $cleanLine, $indexMatch)) {
-                    $index = (int)$indexMatch[1];
-                    if ($index !== $this->currentSelection) {
-                        $this->currentSelection = $index;
-                        ($this->updateCallback)($index);
-                    }
+        // Try to detect from server environment variables (web request)
+        if (isset($_SERVER['HTTP_HOST']) && !empty($_SERVER['HTTP_HOST'])) {
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+            $host = $_SERVER['HTTP_HOST'];
+
+            // Remove port if it's standard (80 for http, 443 for https)
+            $port = $_SERVER['SERVER_PORT'] ?? null;
+            if ($port && $port != 80 && $port != 443) {
+                return "{$protocol}{$host}:{$port}";
+            }
+
+            return "{$protocol}{$host}";
+        }
+
+        // Try SERVER_NAME as fallback
+        if (isset($_SERVER['SERVER_NAME']) && !empty($_SERVER['SERVER_NAME'])) {
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+            return "{$protocol}{$_SERVER['SERVER_NAME']}";
+        }
+
+        // Try to detect from current directory or project name
+        if ($installInCurrentDir) {
+            $currentDir = basename(getcwd());
+            if ($currentDir && $currentDir !== '.' && $currentDir !== '..') {
+                // Common local development patterns
+                if (strpos($currentDir, '.local') !== false || strpos($currentDir, '.test') !== false) {
+                    return "http://{$currentDir}";
                 }
-                // Don't output this line - we have our custom radio buttons
-                continue;
             }
-            
-            // Suppress prompt lines starting with " > " or just ">"
-            if (preg_match('/^\s*>\s* /', $cleanLine)) {
-                // This is a prompt line, skip it
-                continue;
+        } else {
+            // Use project name as subdirectory if it looks like a domain
+            if ($projectName && (strpos($projectName, '.local') !== false || strpos($projectName, '.test') !== false)) {
+                return "http://{$projectName}";
             }
-            
-            // Suppress any lines containing both "[" and "]" with numbers (option lists)
-            if (preg_match('/\[\d+\]/', $cleanLine)) {
-                // Likely contains option numbering, skip it
-                continue;
-            }
-            
-            $filtered[] = $line;
         }
-        
-        // Only output if there's actual content (not just option lists)
-        if (!empty($filtered)) {
-            $filteredMessage = implode("\n", $filtered);
-            $this->output->write($filteredMessage, $newline);
-        }
+
+        // Default fallback
+        return 'http://localhost';
     }
-    
-    public function getStream()
+
+    /**
+     * Remove directory recursively.
+     *
+     * @param string $dir
+     * @return void
+     */
+    protected function removeDirectory(string $dir): void
     {
-        return $this->output->getStream();
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $files = array_diff(scandir($dir), ['.', '..']);
+        foreach ($files as $file) {
+            $path = $dir . '/' . $file;
+            if (is_dir($path)) {
+                $this->removeDirectory($path);
+            } else {
+                @unlink($path);
+            }
+        }
+        @rmdir($dir);
     }
 }
-
-/**
- * Null Output that suppresses all output.
- */
-/*class NullOutput extends Output
-{
-    protected function doWrite(string $message, bool $newline): void
-    {
-        // Suppress all output
-    }
-    
-    public function getStream()
-    {
-        return STDIN;
-    }
-}*/
