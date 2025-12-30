@@ -27,10 +27,18 @@ class CreatesDatabaseConfig
         $configPath = $projectPath . '/core/config/database/connections';
         
         if (!is_dir($configPath)) {
-            mkdir($configPath, 0755, true);
+            if (!mkdir($configPath, 0755, true) && !is_dir($configPath)) {
+                Console::error("Failed to create database configuration directory: {$configPath}");
+                return false;
+            }
         }
 
         $configFile = $configPath . '/default.php';
+
+        if (!file_exists($configFile) && !is_writable($configPath)) {
+            Console::error("Database configuration directory is not writable: {$configPath}");
+            return false;
+        }
         
         $configContent = $this->generateConfigContent([
             'driver' => $dbType,
@@ -46,13 +54,27 @@ class CreatesDatabaseConfig
             'engine' => $engine,
         ]);
 
-        if (file_put_contents($configFile, $configContent) === false) {
-            Console::error("Failed to create database configuration file.");
+        if (file_exists($configFile) && !is_writable($configFile)) {
+            @chmod($configFile, 0644);
+            if (!is_writable($configFile)) {
+                @unlink($configFile);
+            }
+        }
+
+        if (file_exists($configFile) && !is_writable($configFile)) {
+            Console::error("Database configuration file is not writable and couldn't be removed: {$configFile}");
             return false;
         }
 
-        // Set secure permissions (read-only for owner and group)
-        chmod($configFile, 0404);
+        if (file_put_contents($configFile, $configContent) === false) {
+            $error = error_get_last();
+            $details = $error['message'] ?? 'unknown error';
+            Console::error("Failed to create database configuration file: {$configFile} ({$details})");
+            return false;
+        }
+
+        // Restrict permissions (owner read/write only; best-effort on Windows mounts)
+        @chmod($configFile, 0600);
 
         Console::success("Database configuration created successfully!");
         return true;
@@ -66,46 +88,79 @@ class CreatesDatabaseConfig
      */
     protected function generateConfigContent(array $params): string
     {
-        $engineCode = $params['engine'] ? ", '{$params['engine']}'" : '';
-        $driver = $params['driver'];
-        
-        // SQLite doesn't need host, port, username, password
-        if ($driver === 'sqlite') {
-            return <<<PHP
-<?php
-return [
-    'driver' => env('DB_TYPE', '{$driver}'),
-    'database' => env('DB_DATABASE', '{$params['database']}'),
-    'prefix' => env('DB_PREFIX', '{$params['prefix']}'),
-    'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-    'options' => [
-        PDO::ATTR_STRINGIFY_FETCHES => true,
-    ]
-];
-PHP;
+        $rawDriver = (string) $params['driver'];
+        $driver = $this->escapePhpString($rawDriver);
+        $host = $this->escapePhpString((string) $params['host']);
+        $port = $this->escapePhpString((string) ($params['port'] ?? ''));
+        $rawDatabase = (string) $params['database'];
+        $database = $this->escapePhpString($rawDatabase);
+        $username = $this->escapePhpString((string) $params['username']);
+        $password = $this->escapePhpString((string) $params['password']);
+        $charset = $this->escapePhpString((string) $params['charset']);
+        $collation = $this->escapePhpString((string) $params['collation']);
+        $prefix = $this->escapePhpString((string) $params['prefix']);
+        $method = $this->escapePhpString((string) $params['method']);
+        $engine = $this->escapePhpString((string) $params['engine']);
+        $foreignKeysLine = $rawDriver === 'sqlite'
+            ? "    'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),\n"
+            : '';
+        $databaseDefault = "'{$database}'";
+        if ($rawDriver === 'sqlite' && !$this->isAbsolutePath($rawDatabase)) {
+            $rel = ltrim($rawDatabase, "/\\");
+            $rel = $this->escapePhpString($rel);
+            $databaseDefault = "dirname(__DIR__, 4) . '/{$rel}'";
         }
-        
+
         return <<<PHP
-<?php
-return [
+<?php return [
     'driver' => env('DB_TYPE', '{$driver}'),
-    'host' => env('DB_HOST', '{$params['host']}'),
-    'port' => env('DB_PORT', '{$params['port']}'),
-    'database' => env('DB_DATABASE', '{$params['database']}'),
-    'username' => env('DB_USERNAME', '{$params['username']}'),
-    'password' => env('DB_PASSWORD', '{$params['password']}'),
+    'host' => env('DB_HOST', '{$host}'),
+    'port' => env('DB_PORT', '{$port}'),
+    'database' => env('DB_DATABASE', {$databaseDefault}),
+    'username' => env('DB_USERNAME', '{$username}'),
+    'password' => env('DB_PASSWORD', '{$password}'),
     'unix_socket' => env('DB_SOCKET', ''),
-    'charset' => env('DB_CHARSET', '{$params['charset']}'),
-    'collation' => env('DB_COLLATION', '{$params['collation']}'),
-    'prefix' => env('DB_PREFIX', '{$params['prefix']}'),
-    'method' => env('DB_METHOD', '{$params['method']}'),
+    'charset' => env('DB_CHARSET', '{$charset}'),
+    'collation' => env('DB_COLLATION', '{$collation}'),
+    'prefix' => env('DB_PREFIX', '{$prefix}'),
+{$foreignKeysLine}    'method' => env('DB_METHOD', '{$method}'),
     'strict' => env('DB_STRICT', false),
-    'engine' => env('DB_ENGINE'{$engineCode}),
+    'engine' => env('DB_ENGINE', '{$engine}'),
     'options' => [
         PDO::ATTR_STRINGIFY_FETCHES => true,
     ]
 ];
 PHP;
+    }
+
+    protected function isAbsolutePath(string $path): bool
+    {
+        if ($path === '') {
+            return false;
+        }
+
+        if (str_starts_with($path, '/')) {
+            return true;
+        }
+
+        if (str_starts_with($path, '\\\\')) {
+            return true;
+        }
+
+        if (preg_match('/^[A-Za-z]:[\\\\\\/]/', $path) === 1) {
+            return true;
+        }
+
+        if (str_starts_with($path, 'file:') || str_starts_with($path, 'phar://')) {
+            return true;
+        }
+
+        return false;
+    }
+
+    protected function escapePhpString(string $value): string
+    {
+        return str_replace(["\\", "'"], ["\\\\", "\\'"], $value);
     }
 
     /**
@@ -164,7 +219,7 @@ PHP;
         }
 
         return match($charset) {
-            'utf8mb4' => 'utf8mb4_unicode_520_ci',
+            'utf8mb4' => $type === 'mysql' ? 'utf8mb4_0900_ai_ci' : 'utf8mb4_unicode_520_ci',
             'utf8' => 'utf8_general_ci',
             default => 'utf8mb4_unicode_520_ci',
         };
@@ -187,4 +242,3 @@ PHP;
         };
     }
 }
-

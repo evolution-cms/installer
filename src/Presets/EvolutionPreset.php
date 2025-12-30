@@ -40,7 +40,7 @@ class EvolutionPreset extends Preset
         $this->configureProject($name, $options);
 
         // Step 4: Install dependencies
-        $this->installDependencies($name);
+        $this->setupComposer($name);
 
         // Step 5: Initialize Git repository (if requested)
         if (!empty($options['git'])) {
@@ -138,18 +138,26 @@ class EvolutionPreset extends Preset
 
         // Resolve collation before creating database
         $dbh = $this->createConnection($dbConfigWithoutDb);
-        $recommendedCollation = $this->getRecommendedCollation($dbConfig['type']);
+        $serverVersion = null;
+        if ($dbConfig['type'] === 'mysql') {
+            try {
+                $serverVersion = $dbh->getAttribute(\PDO::ATTR_SERVER_VERSION);
+            } catch (\Throwable $e) {
+                // Best-effort only
+            }
+        }
+        $recommendedCollation = $this->getRecommendedCollation($dbConfig['type'], 'utf8mb4', $serverVersion);
         
         // Create database first (with recommended collation)
         $this->createDatabase($dbConfig, $recommendedCollation);
 
-        // Now connect to the database and resolve actual collation
-        $dbh = $this->createConnection($dbConfig);
-        $collation = $this->resolveCollation($dbh, $recommendedCollation);
+        // Use recommended collation directly (like Laravel does)
+        // Collation can be specified in migrations if needed
+        $collation = $recommendedCollation;
 
         Console::info("Using collation: {$collation}");
 
-        // Store resolved collation and charset in options for later use
+        // Store collation and charset in options for later use
         $options['database']['collation'] = $collation;
         $options['database']['charset'] = $this->getCharsetFromCollation($collation);
         $options['database']['port'] = $options['database']['port'] ?? $this->getDefaultPort($dbConfig['type']);
@@ -202,12 +210,12 @@ class EvolutionPreset extends Preset
     }
 
     /**
-     * Install dependencies.
+     * Setup Composer dependencies.
      *
      * @param string $name
      * @return void
      */
-    protected function installDependencies(string $name): void
+    protected function setupComposer(string $name): void
     {
         Console::info("Installing dependencies...");
 
@@ -420,4 +428,3 @@ GITIGNORE;
         $process->run();
     }
 }
-

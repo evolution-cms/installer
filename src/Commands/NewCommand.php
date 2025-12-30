@@ -3,6 +3,7 @@
 use AllowDynamicProperties;
 use EvolutionCMS\Installer\Concerns\ConfiguresDatabase;
 use EvolutionCMS\Installer\Presets\Preset;
+use EvolutionCMS\Installer\Process\CreatesDatabaseConfig;
 use EvolutionCMS\Installer\Utilities\Console;
 use EvolutionCMS\Installer\Utilities\SystemInfo;
 use EvolutionCMS\Installer\Utilities\TuiRenderer;
@@ -16,6 +17,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\Process;
 
 #[AllowDynamicProperties]
 class NewCommand extends Command
@@ -29,8 +31,8 @@ class NewCommand extends Command
         'database' => ['label' => 'Step 2: Check database connection', 'completed' => false],
         'download' => ['label' => 'Step 3: Download Evolution CMS', 'completed' => false],
         'install' => ['label' => 'Step 4: Install Evolution CMS', 'completed' => false],
-        'dependencies' => ['label' => 'Step 5: Install dependencies', 'completed' => false],
-        'admin' => ['label' => 'Step 6: Create admin user', 'completed' => false],
+        'presets' => ['label' => 'Step 5: Install presets', 'completed' => false],
+        'dependencies' => ['label' => 'Step 6: Install dependencies', 'completed' => false],
         'finalize' => ['label' => 'Step 7: Finalize installation', 'completed' => false],
     ];
 
@@ -50,6 +52,7 @@ class NewCommand extends Command
             ->addOption('db-name', null, InputOption::VALUE_OPTIONAL, 'The database name')
             ->addOption('db-user', null, InputOption::VALUE_OPTIONAL, 'The database user')
             ->addOption('db-password', null, InputOption::VALUE_OPTIONAL, 'The database password')
+            ->addOption('db-prefix', null, InputOption::VALUE_OPTIONAL, 'The database table prefix', 'evo_')
             ->addOption('admin-username', null, InputOption::VALUE_OPTIONAL, 'The admin username')
             ->addOption('admin-email', null, InputOption::VALUE_OPTIONAL, 'The admin email')
             ->addOption('admin-password', null, InputOption::VALUE_OPTIONAL, 'The admin password')
@@ -69,7 +72,7 @@ class NewCommand extends Command
 
         $this->tui = new TuiRenderer($output);
         $this->tui->setSystemStatus($this->checkSystemStatus());
-
+        
         $name = $input->getArgument('name') ?? '.';
 
         // Normalize "." to current directory
@@ -102,10 +105,10 @@ class NewCommand extends Command
         $branch = $input->getOption('branch');
         $this->downloadEvolutionCMS($name, $options, $branch);
 
-        //$preset = $this->getPreset($input->getOption('preset'));
-        //$preset->install($name, $options);
+        // Step 4: Install Evolution CMS (clean installation)
+        $this->installEvolutionCMS($name, $options);
 
-        //Console::success("Evolution CMS application ready! Build something amazing.");
+        $this->tui->addLog("Evolution CMS application ready! Build something amazing.", 'success');
 
         return Command::SUCCESS;
     }
@@ -278,6 +281,11 @@ class NewCommand extends Command
                 ? $input->getOption('db-password') 
                 : $this->askDatabasePassword();
         }
+
+        // Set prefix (from option or default)
+        $database['prefix'] = ($useOptions && $input->getOption('db-prefix') !== null) 
+            ? $input->getOption('db-prefix') 
+            : 'evo_';
 
         return $database;
     }
@@ -706,7 +714,7 @@ class NewCommand extends Command
             
             if ($i === $active) {
                 $lines[] = '  <fg=green>●</> <fg=white;options=bold>' . $label . '</> <fg=gray>(' . $value . ')</>';
-            } else {
+        } else {
                 $lines[] = '  <fg=gray>○</> ' . $label . ' <fg=gray>(' . $value . ')</>';
             }
         }
@@ -765,12 +773,12 @@ class NewCommand extends Command
             // Clean up
             @unlink($tempFile);
             
-            // Mark step as completed
-            $this->steps['download']['completed'] = true;
-            $this->tui->setQuestTrack($this->steps);
-            
             $sourceLabel = $branch ? "branch {$branch}" : "version {$displayName}";
             $this->tui->addLog("Evolution CMS from {$sourceLabel} downloaded and extracted successfully!", 'success');
+
+            // Mark Step 3 (Download Evolution CMS) as completed
+            $this->steps['download']['completed'] = true;
+            $this->tui->setQuestTrack($this->steps);
         } catch (\Exception $e) {
             // Clean up on error
             @unlink($tempFile);
@@ -858,7 +866,7 @@ class NewCommand extends Command
                 continue;
             }
             
-            // Remove source prefix from path (e.g., "evolution-3.3.0/" or "evolution-branch-name/" -> "")
+            // Remove source prefix from path (e.g., "evolution-3.5.0/" or "evolution-branch-name/" -> "")
             $localPath = preg_replace('/^[^\/]+\//', '', $filename);
             
             if (empty($localPath)) {
@@ -891,6 +899,599 @@ class NewCommand extends Command
     }
 
     /**
+     * Install Evolution CMS (clean installation).
+     *
+     * @param string $name
+     * @param array $options
+     * @return void
+     */
+    protected function installEvolutionCMS(string $name, array $options): void
+    {
+        $this->tui->clearLogs();
+        $isCurrentDir = !empty($options['install_in_current_dir']);
+        $projectPath = $isCurrentDir ? $name : (getcwd() . '/' . $name);
+
+        // Step 4.1: Setup database (create if needed, configure)
+        $this->setupDatabase($projectPath, $options);
+
+        // Step 4.2: Install dependencies via Composer
+        $this->setupComposer($projectPath);
+
+        // Step 4.3: Run database migrations
+        $this->runMigrations($projectPath);
+
+        // Step 4.4: Create admin user
+        $this->createAdminUser($projectPath, $options);
+
+        // Mark installation steps as completed
+        $this->steps['install']['completed'] = true;
+        $this->tui->setQuestTrack($this->steps);
+    }
+
+    /**
+     * Setup database: create if needed and configure.
+     *
+     * @param string $projectPath
+     * @param array $options
+     * @return void
+     */
+    protected function setupDatabase(string $projectPath, array $options): void
+    {
+        $this->tui->addLog('Setting up database...');
+        
+        $dbConfig = $options['database'];
+
+        // Ensure prefix is set (from option or default)
+        if (empty($dbConfig['prefix'])) {
+            $dbConfig['prefix'] = 'evo_';
+            $options['database']['prefix'] = 'evo_';
+        }
+
+        // Create database if needed
+        if (empty($dbConfig['name'])) {
+            throw new \RuntimeException("Database name is required.");
+        }
+
+        // Get charset and recommended collation (like Laravel does - simple and straightforward)
+        $charset = $this->getDefaultCharset($dbConfig['type']);
+        $serverVersion = null;
+        if ($dbConfig['type'] === 'mysql') {
+            try {
+                $dbConfigWithoutDb = $dbConfig;
+                unset($dbConfigWithoutDb['name']);
+                $dbh = $this->createConnection($dbConfigWithoutDb);
+                $serverVersion = $dbh->getAttribute(\PDO::ATTR_SERVER_VERSION);
+            } catch (\Throwable $e) {
+                // Best-effort: fall back to safe defaults when server version is unavailable
+            }
+        }
+        $recommendedCollation = $this->getRecommendedCollation($dbConfig['type'], $charset, $serverVersion);
+
+        // Create database with recommended collation
+        $dbConfigForOps = $this->getDatabaseConfigForOperations($projectPath, $dbConfig);
+        if ($this->createDatabase($dbConfigForOps, $recommendedCollation)) {
+            $this->tui->replaceLastLogs('<fg=green>✔</> Database created/verified successfully.', 2);
+        }
+
+        // Use recommended collation directly (like Laravel does)
+        // Collation can be specified in migrations if needed
+        $collation = $recommendedCollation;
+
+        // Store collation and charset in options for later use
+        $options['database']['collation'] = $collation;
+        $options['database']['charset'] = $this->getCharsetFromCollation($collation);
+        $options['database']['port'] = $options['database']['port'] ?? $this->getDefaultPort($dbConfig['type']);
+        // Prefix is already set above
+
+        // Create database configuration file
+        $this->tui->addLog('Creating database configuration...');
+        $createDbConfig = new CreatesDatabaseConfig();
+
+        if ($createDbConfig($projectPath, $options)) {
+            $this->tui->replaceLastLogs('<fg=green>✔</> Database configuration created.', 2);
+        } else {
+            throw new \RuntimeException("Failed to create database configuration.");
+        }
+    }
+
+    /**
+     * Get default port for database type.
+     *
+     * @param string $type
+     * @return int
+     */
+    protected function getDefaultPort(string $type): int
+    {
+        return match($type) {
+            'pgsql' => 5432,
+            'mysql' => 3306,
+            'sqlsrv' => 1433,
+            default => 3306,
+        };
+    }
+
+    /**
+     * Get default charset for database type.
+     *
+     * @param string $type
+     * @return string
+     */
+    protected function getDefaultCharset(string $type): string
+    {
+        return match($type) {
+            'pgsql' => 'utf8',
+            'mysql' => 'utf8mb4',
+            'sqlite' => 'utf8',
+            'sqlsrv' => 'utf8',
+            default => 'utf8mb4',
+        };
+    }
+
+    /**
+     * Setup Composer dependencies.
+     *
+     * @param string $projectPath
+     * @return void
+     */
+    protected function setupComposer(string $projectPath): void
+    {
+        $this->tui->addLog('Installing dependencies with Composer...');
+
+        $composerWorkDir = is_file($projectPath . '/core/composer.json') ? ($projectPath . '/core') : $projectPath;
+        $composerJson = $composerWorkDir . '/composer.json';
+
+        if (!file_exists($composerJson)) {
+            $this->tui->replaceLastLogs('<fg=yellow>⚠</> composer.json not found. Skipping dependency installation.', 2);
+            return;
+        }
+
+        // Some releases may omit these directories; Composer and Evolution CMS expect them.
+        @mkdir($composerWorkDir . '/database/migrations', 0755, true);
+        @mkdir($composerWorkDir . '/storage/bootstrap', 0755, true);
+        @mkdir($composerWorkDir . '/storage/cache', 0755, true);
+        @mkdir($composerWorkDir . '/storage/logs', 0755, true);
+        @mkdir($composerWorkDir . '/storage/sessions', 0755, true);
+
+        $this->tui->addLog('Composer working directory: ' . basename($composerWorkDir));
+
+        $localComposer = $composerWorkDir . '/vendor/bin/composer';
+        $localComposerOk = is_file($localComposer) && is_file($composerWorkDir . '/vendor/composer/composer/bin/composer');
+        $composerCommand = $localComposerOk ? ['php', 'vendor/bin/composer'] : ['composer'];
+
+        try {
+            $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--no-scripts'], $composerWorkDir);
+            if ($process->isSuccessful()) {
+                $this->tui->addLog('Dependencies installed successfully.', 'success');
+                return;
+            }
+
+            $fullOutput = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
+
+            // composer.lock may be generated for a newer PHP version; fall back to update to resolve a compatible set.
+            if (str_contains($fullOutput, 'Your lock file does not contain a compatible set of packages')
+                || str_contains($fullOutput, 'requires php >=8.4')) {
+                $this->tui->addLog('composer.lock is not compatible with current PHP. Running composer update...', 'warning');
+                $update = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
+                if ($update->isSuccessful()) {
+                    $this->tui->addLog('Dependencies updated successfully.', 'success');
+                    return;
+                }
+
+                $updateOutput = $this->sanitizeComposerOutput($update->getOutput() . "\n" . $update->getErrorOutput());
+                throw new \RuntimeException(trim($updateOutput));
+            }
+
+            throw new \RuntimeException(trim($fullOutput));
+        } catch (\Exception $e) {
+            $this->tui->addLog('Failed to install dependencies: ' . $e->getMessage(), 'error');
+            throw new \RuntimeException("Failed to install dependencies. Please run 'composer install' (or 'composer update') manually.");
+        }
+    }
+
+    protected function runComposer(array $composerCommand, array $args, string $workingDir): Process
+    {
+        $process = new Process([
+            ...$composerCommand,
+            ...$args,
+            '--no-interaction',
+            '--no-ansi',
+            '--no-progress',
+        ], $workingDir);
+        $process->setTimeout(600);
+
+        $buffers = [
+            Process::OUT => '',
+            Process::ERR => '',
+        ];
+
+        $process->run(function ($type, $buffer) use (&$buffers) {
+            $buffers[$type] .= $buffer;
+
+            while (($pos = strpos($buffers[$type], "\n")) !== false) {
+                $line = rtrim(substr($buffers[$type], 0, $pos), "\r");
+                $buffers[$type] = substr($buffers[$type], $pos + 1);
+
+                if ($line === '') {
+                    continue;
+                }
+
+                $lower = strtolower($line);
+
+                // Suppress noisy PHP deprecation notices coming from system Composer/Symfony packages.
+                if (str_starts_with($lower, 'deprecation notice:') || str_starts_with($lower, 'php deprecated:')) {
+                    continue;
+                }
+
+                $isErrorLine =
+                    str_contains($lower, 'fatal error') ||
+                    str_contains($lower, 'uncaught exception') ||
+                    str_contains($lower, 'error:') ||
+                    str_contains($lower, 'exception');
+
+                $this->tui->addLog($line, $isErrorLine ? 'error' : 'info');
+            }
+        });
+
+        foreach ($buffers as $type => $tail) {
+            $tail = trim($tail);
+            if ($tail === '') {
+                continue;
+            }
+
+            $lower = strtolower($tail);
+            if (str_starts_with($lower, 'deprecation notice:') || str_starts_with($lower, 'php deprecated:')) {
+                continue;
+            }
+
+            $isErrorLine =
+                str_contains($lower, 'fatal error') ||
+                str_contains($lower, 'uncaught exception') ||
+                str_contains($lower, 'error:') ||
+                str_contains($lower, 'exception');
+
+            $this->tui->addLog($tail, $isErrorLine ? 'error' : 'info');
+        }
+
+        return $process;
+    }
+
+    protected function sanitizeComposerOutput(string $output): string
+    {
+        $lines = preg_split('/\\R/', $output) ?: [];
+        $filtered = [];
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '') {
+                continue;
+            }
+            $lower = strtolower($trimmed);
+            if (str_starts_with($lower, 'deprecation notice:') || str_starts_with($lower, 'php deprecated:')) {
+                continue;
+            }
+            $filtered[] = $trimmed;
+        }
+        return implode("\n", $filtered);
+    }
+
+    /**
+     * Run database migrations.
+     *
+     * @param string $projectPath
+     * @return void
+     */
+    protected function runMigrations(string $projectPath): void
+    {
+        $this->tui->addLog('Running database migrations...');
+
+        $artisanScript = null;
+        foreach (['core/artisan', 'artisan'] as $candidate) {
+            if (file_exists($projectPath . '/' . $candidate)) {
+                $artisanScript = $candidate;
+                break;
+            }
+        }
+
+        if ($artisanScript === null) {
+            $this->tui->addLog('No artisan found. Skipping migrations (may need manual installation).', 'warning');
+            return;
+        }
+
+        $isCoreArtisan = str_starts_with($artisanScript, 'core/');
+        $migrationSources = $isCoreArtisan
+            ? [
+                ['dir' => $projectPath . '/core/database/migrations', 'path' => 'database/migrations'],
+                ['dir' => $projectPath . '/install/stubs/migrations', 'path' => '../install/stubs/migrations'],
+            ]
+            : [
+                ['dir' => $projectPath . '/core/database/migrations', 'path' => 'core/database/migrations'],
+                ['dir' => $projectPath . '/install/stubs/migrations', 'path' => 'install/stubs/migrations'],
+            ];
+
+        $migrationPath = null;
+        foreach ($migrationSources as $source) {
+            if (!is_dir($source['dir'])) {
+                continue;
+            }
+            if (glob($source['dir'] . '/*.php') === []) {
+                continue;
+            }
+            $migrationPath = $source['path'];
+            break;
+        }
+
+        if ($migrationPath === null) {
+            $this->tui->addLog('No migrations found. Skipping migrations.', 'warning');
+            return;
+        }
+
+        $this->tui->addLog("Using migrations from: {$migrationPath}");
+
+        $sessionDir = $projectPath . '/core/storage/sessions';
+        if (!str_starts_with($artisanScript, 'core/')) {
+            $sessionDir = $projectPath . '/storage/sessions';
+        }
+        @mkdir($sessionDir, 0755, true);
+
+        $argv = ['artisan', 'migrate', '--force', '--path=' . $migrationPath];
+        $phpCode =
+            'define("IN_INSTALL_MODE", true);' .
+            'define("MODX_CLI", true);' .
+            '$_SERVER["argv"]=' . var_export($argv, true) . ';' .
+            '$_SERVER["argc"]=count($_SERVER["argv"]);' .
+            'require ' . var_export($artisanScript, true) . ';';
+
+        $process = new Process([
+            'php',
+            '-d',
+            'session.save_path=' . $sessionDir,
+            '-r',
+            $phpCode,
+        ], $projectPath);
+        $process->setTimeout(300);
+        
+        try {
+            $buffers = [
+                Process::OUT => '',
+                Process::ERR => '',
+            ];
+
+            $process->run(function ($type, $buffer) use (&$buffers) {
+                $buffers[$type] .= $buffer;
+
+                while (($pos = strpos($buffers[$type], "\n")) !== false) {
+                    $line = rtrim(substr($buffers[$type], 0, $pos), "\r");
+                    $buffers[$type] = substr($buffers[$type], $pos + 1);
+
+                    if ($line === '') {
+                        continue;
+                    }
+
+                    $lower = strtolower($line);
+                    $isErrorLine =
+                        str_contains($lower, 'fatal error') ||
+                        str_contains($lower, 'uncaught exception') ||
+                        str_contains($lower, 'error:') ||
+                        str_contains($lower, 'exception');
+
+                    $this->tui->addLog($line, $isErrorLine ? 'error' : 'info');
+                }
+            });
+
+            foreach ($buffers as $type => $tail) {
+                $tail = trim($tail);
+                if ($tail !== '') {
+                    $lower = strtolower($tail);
+                    $isErrorLine =
+                        str_contains($lower, 'fatal error') ||
+                        str_contains($lower, 'uncaught exception') ||
+                        str_contains($lower, 'error:') ||
+                        str_contains($lower, 'exception');
+
+                    $this->tui->addLog($tail, $isErrorLine ? 'error' : 'info');
+                }
+            }
+
+            if ($process->isSuccessful()) {
+                $this->tui->addLog('Database migrations completed.', 'success');
+                $this->runPackageDiscovery($projectPath, $artisanScript);
+            } else {
+                $errorOutput = $process->getErrorOutput();
+                throw new \RuntimeException("Migration failed: " . $errorOutput);
+            }
+        } catch (\Exception $e) {
+            $this->tui->addLog('Migration failed: ' . $e->getMessage(), 'error');
+            throw new \RuntimeException("Failed to run migrations. Please run 'php core/artisan migrate' manually.");
+        }
+    }
+
+    protected function runPackageDiscovery(string $projectPath, string $artisanScript): void
+    {
+        $this->tui->addLog('Running package discovery...');
+
+        $sessionDir = $projectPath . '/core/storage/sessions';
+        if (!str_starts_with($artisanScript, 'core/')) {
+            $sessionDir = $projectPath . '/storage/sessions';
+        }
+        @mkdir($sessionDir, 0755, true);
+
+        $argv = ['artisan', 'package:discover'];
+        $phpCode =
+            'define("IN_INSTALL_MODE", true);' .
+            'define("MODX_CLI", true);' .
+            '$_SERVER["argv"]=' . var_export($argv, true) . ';' .
+            '$_SERVER["argc"]=count($_SERVER["argv"]);' .
+            'require ' . var_export($artisanScript, true) . ';';
+
+        $process = new Process([
+            'php',
+            '-d',
+            'session.save_path=' . $sessionDir,
+            '-r',
+            $phpCode,
+        ], $projectPath);
+        $process->setTimeout(300);
+
+        $buffers = [
+            Process::OUT => '',
+            Process::ERR => '',
+        ];
+
+        $process->run(function ($type, $buffer) use (&$buffers) {
+            $buffers[$type] .= $buffer;
+
+            while (($pos = strpos($buffers[$type], "\n")) !== false) {
+                $line = rtrim(substr($buffers[$type], 0, $pos), "\r");
+                $buffers[$type] = substr($buffers[$type], $pos + 1);
+
+                if ($line === '') {
+                    continue;
+                }
+
+                $lower = strtolower($line);
+                $isErrorLine =
+                    str_contains($lower, 'fatal error') ||
+                    str_contains($lower, 'uncaught exception') ||
+                    str_contains($lower, 'error:') ||
+                    str_contains($lower, 'exception');
+
+                $this->tui->addLog($line, $isErrorLine ? 'error' : 'info');
+            }
+        });
+
+        foreach ($buffers as $tail) {
+            $tail = trim($tail);
+            if ($tail !== '') {
+                $this->tui->addLog($tail);
+            }
+        }
+
+        if ($process->isSuccessful()) {
+            $this->tui->addLog('Package discovery completed.', 'success');
+        } else {
+            $this->tui->addLog('Package discovery failed (you can run it manually later).', 'warning');
+        }
+    }
+
+    /**
+     * Create admin user.
+     *
+     * @param string $projectPath
+     * @param array $options
+     * @return void
+     */
+    protected function createAdminUser(string $projectPath, array $options): void
+    {
+        $this->tui->addLog('Creating admin user...');
+
+        $adminConfig = $options['admin'];
+        $username = $adminConfig['username'] ?? 'admin';
+        $email = $adminConfig['email'] ?? 'admin@example.com';
+        $password = $adminConfig['password'] ?? '';
+        $adminDirectory = $adminConfig['directory'] ?? 'manager';
+
+        // Check if artisan exists
+        $artisanScript = null;
+        foreach (['core/artisan', 'artisan'] as $candidate) {
+            if (file_exists($projectPath . '/' . $candidate)) {
+                $artisanScript = $candidate;
+                break;
+            }
+        }
+
+        if ($artisanScript !== null) {
+            $sessionDir = $projectPath . '/core/storage/sessions';
+            if (!str_starts_with($artisanScript, 'core/')) {
+                $sessionDir = $projectPath . '/storage/sessions';
+            }
+            @mkdir($sessionDir, 0755, true);
+
+            // Use artisan command to create admin user
+            // Try common Evolution CMS artisan commands
+            $commands = [
+                ['php', '-d', 'session.save_path=' . $sessionDir, $artisanScript, 'evo:install', '--username', $username, '--email', $email, '--password', $password, '--admin-dir', $adminDirectory],
+                ['php', '-d', 'session.save_path=' . $sessionDir, $artisanScript, 'evolution:install', '--username', $username, '--email', $email, '--password', $password, '--admin-dir', $adminDirectory],
+            ];
+
+            $success = false;
+            foreach ($commands as $cmd) {
+                $process = new \Symfony\Component\Process\Process($cmd, $projectPath);
+                $process->setTimeout(120);
+                
+                try {
+                    $process->run();
+                    if ($process->isSuccessful()) {
+                        $success = true;
+                        break;
+                    }
+                } catch (\Exception $e) {
+                    // Try next command
+                    continue;
+                }
+            }
+
+            if ($success) {
+                $this->tui->replaceLastLogs('<fg=green>✔</> Admin user created successfully.', 2);
+            } else {
+                // Fallback: Create user directly in database
+                $this->createAdminUserDirectly($projectPath, $options);
+            }
+        } else {
+            // Fallback: Create user directly in database
+            $this->createAdminUserDirectly($projectPath, $options);
+        }
+    }
+
+    /**
+     * Create admin user directly in database (fallback method).
+     *
+     * @param string $projectPath
+     * @param array $options
+     * @return void
+     */
+    protected function createAdminUserDirectly(string $projectPath, array $options): void
+    {
+        try {
+            $dbConfig = $options['database'];
+            $adminConfig = $options['admin'];
+            $tablePrefix = $dbConfig['prefix'] ?? 'evo_';
+
+            $username = $adminConfig['username'] ?? 'admin';
+            $email = $adminConfig['email'] ?? 'admin@example.com';
+            $password = $adminConfig['password'] ?? '';
+
+            // Create database connection
+            $dbh = $this->createConnection($this->getDatabaseConfigForOperations($projectPath, $dbConfig));
+
+            // Hash password (MD5 for Evolution CMS legacy compatibility, or bcrypt)
+            $hashedPassword = md5($password);
+
+            // Check if user already exists
+            $checkQuery = "SELECT id FROM {$tablePrefix}manager_users WHERE username = :username OR email = :email LIMIT 1";
+            $stmt = $dbh->prepare($checkQuery);
+            $stmt->execute([':username' => $username, ':email' => $email]);
+            
+            if ($stmt->fetch()) {
+                $this->tui->replaceLastLogs('<fg=yellow>⚠</> Admin user already exists. Skipping creation.', 2);
+                return;
+            }
+
+            // Insert admin user
+            $insertQuery = "INSERT INTO {$tablePrefix}manager_users (username, password, email, createdon, internalKey) VALUES (:username, :password, :email, :createdon, 1)";
+            $stmt = $dbh->prepare($insertQuery);
+            $stmt->execute([
+                ':username' => $username,
+                ':password' => $hashedPassword,
+                ':email' => $email,
+                ':createdon' => time(),
+            ]);
+
+            $this->tui->replaceLastLogs('<fg=green>✔</> Admin user created successfully.', 2);
+        } catch (\Exception $e) {
+            $this->tui->replaceLastLogs('<fg=yellow>⚠</> Could not create admin user automatically: ' . $e->getMessage() . '. You may need to create it manually.', 2);
+        }
+    }
+
+    /**
      * Get preset instance.
      */
     protected function getPreset(string $preset): Preset
@@ -902,6 +1503,27 @@ class NewCommand extends Command
         }
 
         return new $presetClass();
+    }
+
+    protected function getDatabaseConfigForOperations(string $projectPath, array $dbConfig): array
+    {
+        if (($dbConfig['type'] ?? null) !== 'sqlite') {
+            return $dbConfig;
+        }
+
+        $name = (string) ($dbConfig['name'] ?? '');
+        if ($name === '' || $name === ':memory:' || str_starts_with($name, 'file:')) {
+            return $dbConfig;
+        }
+
+        $isAbsoluteUnix = str_starts_with($name, '/');
+        $isAbsoluteWindows = (bool) preg_match('/^[A-Za-z]:[\\\\\\/]/', $name);
+        if ($isAbsoluteUnix || $isAbsoluteWindows) {
+            return $dbConfig;
+        }
+
+        $dbConfig['name'] = rtrim($projectPath, '/\\') . DIRECTORY_SEPARATOR . $name;
+        return $dbConfig;
     }
 }
 

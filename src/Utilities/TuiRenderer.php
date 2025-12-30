@@ -78,14 +78,21 @@ final class TuiRenderer
         }
 
         // Format current and total with appropriate unit
-        $formattedCurrent = $this->formatBytes($current, $unit);
-        $formattedTotal = $this->formatBytes($total, $unit);
+        if ($unit === 'files') {
+            // For files, just show numbers with "files" text
+            $formattedCurrent = number_format($current) . ' files';
+            $formattedTotal = number_format($total) . ' files';
+        } else {
+            // For bytes/MB, use formatBytes
+            $formattedCurrent = $this->formatBytes($current, $unit);
+            $formattedTotal = $this->formatBytes($total, $unit);
+        }
         
         // Create progress bar
         $bar = str_repeat('█', $filled ?? 0) . str_repeat('░', ($barWidth ?? 0) - ($filled ?? 0));
         
         // Combine message with progress bar
-        $progressLine = "{$message} [<fg=green>{$bar}</>] {$percentage}% ({$formattedCurrent}/{$formattedTotal})";
+        $progressLine = "{$message} [<fg=green>{$bar}</>] {$percentage}% ({$formattedCurrent} / {$formattedTotal})";
         
         // Replace last log if it's a progress line, otherwise add new
         if (!empty($this->logs) && strpos(end($this->logs), $message) === 0) {
