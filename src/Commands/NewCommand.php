@@ -1093,7 +1093,7 @@ class NewCommand extends Command
         }
         @mkdir($sessionDir, 0755, true);
 
-        $seederNamespace = 'EvolutionCMS\\Database\\Seeders\\';
+        $seederNamespace = 'Database\\Seeders\\';
 
         foreach ($seeders as $seeder) {
             $seederFile = $seederDir . '/' . $seeder . '.php';
@@ -1105,10 +1105,24 @@ class NewCommand extends Command
             $this->tui->addLog("Running seeder: {$seeder}...");
 
             $seederClass = $seederNamespace . $seeder;
+            // Use absolute path for seeder file
+            $seederFileAbsolute = realpath($seederFile) ?: $seederFile;
+            $bootstrapPath = $projectPath . '/core/bootstrap.php';
+            if (!file_exists($bootstrapPath)) {
+                $bootstrapPath = $projectPath . '/bootstrap.php';
+            }
+
+            // Use artisan to properly initialize the environment
             $argv = ['artisan', 'db:seed', '--class', $seederClass, '--force'];
             $phpCode =
                 'define("IN_INSTALL_MODE", true);' .
                 'define("EVO_CLI", true);' .
+                'chdir(' . var_export($projectPath, true) . ');' .
+                'require_once ' . var_export($bootstrapPath, true) . ';' .
+                'require_once ' . var_export($seederFileAbsolute, true) . ';' .
+                'if (!class_exists(' . var_export($seederClass, true) . ')) {' .
+                '    throw new RuntimeException("Seeder class not found: " . ' . var_export($seederClass, true) . ');' .
+                '}' .
                 '$_SERVER["argv"]=' . var_export($argv, true) . ';' .
                 '$_SERVER["argc"]=count($_SERVER["argv"]);' .
                 'require ' . var_export($artisanScript, true) . ';';
@@ -1135,7 +1149,7 @@ class NewCommand extends Command
                         $line = rtrim(substr($buffers[$type], 0, $pos), "\r");
                         $buffers[$type] = substr($buffers[$type], $pos + 1);
 
-                        if ($line === '' || str_contains(strtolower($line), 'seeding')) {
+                        if ($line === '') {
                             continue;
                         }
 
@@ -1144,12 +1158,11 @@ class NewCommand extends Command
                             str_contains($lower, 'fatal error') ||
                             str_contains($lower, 'uncaught exception') ||
                             str_contains($lower, 'error:') ||
-                            str_contains($lower, 'exception');
+                            str_contains($lower, 'exception') ||
+                            str_contains($lower, 'failed') ||
+                            str_contains($lower, 'warning:');
 
-                        if (!$isErrorLine && !str_contains($lower, 'database seeded')) {
-                            continue; // Hide normal output, only show errors
-                        }
-
+                        // Show all output for debugging
                         $this->tui->addLog($line, $isErrorLine ? 'error' : 'info');
                     }
                 });
@@ -1163,11 +1176,9 @@ class NewCommand extends Command
                             str_contains($lower, 'fatal error') ||
                             str_contains($lower, 'uncaught exception') ||
                             str_contains($lower, 'error:') ||
-                            str_contains($lower, 'exception');
-
-                        if (!$isErrorLine && !str_contains($lower, 'database seeded')) {
-                            continue;
-                        }
+                            str_contains($lower, 'exception') ||
+                            str_contains($lower, 'failed') ||
+                            str_contains($lower, 'warning:');
 
                         $this->tui->addLog($tail, $isErrorLine ? 'error' : 'info');
                     }
@@ -1176,9 +1187,14 @@ class NewCommand extends Command
                 if ($process->isSuccessful()) {
                     $this->tui->replaceLastLogs("<fg=green>✔</> Seeder {$seeder} completed.", 2);
                 } else {
-                    $errorOutput = $buffers[Process::ERR] ?? $process->getErrorOutput();
-                    $this->tui->replaceLastLogs("<fg=red>✗</> Seeder {$seeder} failed: {$errorOutput}", 2);
-                    throw new \RuntimeException("Seeder {$seeder} failed.");
+                    $errorOutput = trim($buffers[Process::ERR] ?? $process->getErrorOutput());
+                    $stdOutput = trim($buffers[Process::OUT] ?? $process->getOutput());
+                    $fullError = !empty($errorOutput) ? $errorOutput : $stdOutput;
+                    if (empty($fullError)) {
+                        $fullError = "Process exited with code " . $process->getExitCode();
+                    }
+                    $this->tui->addLog("<fg=red>✗</> Seeder {$seeder} failed: {$fullError}", 'error');
+                    throw new \RuntimeException("Seeder {$seeder} failed: {$fullError}");
                 }
             } catch (\Exception $e) {
                 $this->tui->replaceLastLogs("<fg=red>✗</> Seeder {$seeder} failed: " . $e->getMessage(), 2);
@@ -1186,7 +1202,7 @@ class NewCommand extends Command
             }
         }
 
-        $this->tui->addLog('<fg=green>✔</> All seeders completed successfully.', 'success');
+        $this->tui->addLog('All seeders completed successfully.', 'success');
     }
 
     /**
@@ -1724,7 +1740,7 @@ class NewCommand extends Command
     /**
      * Get preset instance.
      */
-    protected function getPreset(string $preset)
+    protected function getPreset(?string $preset)
     {
         $this->steps['install']['presets'] = true;
         $this->tui->setQuestTrack($this->steps);
