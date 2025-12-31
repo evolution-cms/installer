@@ -118,7 +118,7 @@ class NewCommand extends Command
         // Step 7: Finalize installation
         $this->finalizeInstallation($name, $options);
 
-        $this->tui->addLog("Evolution CMS application ready! Build something amazing.", 'success');
+        $this->tui->addLog("<fg=green>Evolution CMS application ready! Build something amazing.</>", 'success');
 
         // Show admin panel access information
         $adminDirectory = $options['admin']['directory'] ?? 'manager';
@@ -937,17 +937,17 @@ class NewCommand extends Command
         // Step 4.1: Setup database (create if needed, configure)
         $this->setupDatabase($projectPath, $options);
 
+        // Persist DB/admin variables for the core bootstrap (core/custom/.env)
+        $this->writeCoreCustomEnv($projectPath, $options);
+
         // Step 4.2: Install dependencies via Composer
         $this->setupComposer($projectPath);
 
         // Step 4.3: Run database migrations
-        $this->runMigrations($projectPath);
+        $this->runMigrations($projectPath, $options);
 
-        // Step 4.4: Create admin user
-        $this->createAdminUser($projectPath, $options);
-
-        // Step 4.5: Run database seeders
-        $this->runSeeders($projectPath);
+        // Step 4.4: Run database seeders (roles/permissions/templates)
+        $this->runSeeders($projectPath, $options);
 
         // Mark installation steps as completed
         $this->steps['install']['completed'] = true;
@@ -1059,7 +1059,7 @@ class NewCommand extends Command
      * @param string $projectPath
      * @return void
      */
-    protected function runSeeders(string $projectPath): void
+    protected function runSeeders(string $projectPath, array $options): void
     {
         $this->tui->addLog('Running database seeders...');
 
@@ -1091,6 +1091,7 @@ class NewCommand extends Command
             'SiteTemplatesTableSeeder',
             'UserRolesTableSeeder',
             'UserPermissionsTableSeeder',
+            'AdminUserTableSeeder',
             'SiteContentTableSeeder',
         ];
 
@@ -1142,6 +1143,11 @@ class NewCommand extends Command
                 $phpCode,
             ], $projectPath);
             $process->setTimeout(120);
+            $process->setEnv([
+                ...$this->buildProcessEnv(),
+                ...$this->buildDatabaseEnv($projectPath, $options['database'] ?? []),
+                ...$this->buildAdminEnv($options['admin'] ?? []),
+            ]);
 
             try {
                 $buffers = [
@@ -1429,6 +1435,105 @@ class NewCommand extends Command
         return $env;
     }
 
+    protected function buildDatabaseEnv(string $projectPath, array $dbConfig): array
+    {
+        $dbConfigForOps = $this->getDatabaseConfigForOperations($projectPath, $dbConfig);
+
+        return array_filter([
+            'DB_TYPE' => isset($dbConfigForOps['type']) ? (string) $dbConfigForOps['type'] : null,
+            'DB_HOST' => (string) ($dbConfigForOps['host'] ?? ''),
+            'DB_PORT' => isset($dbConfigForOps['port']) ? (string) $dbConfigForOps['port'] : null,
+            'DB_DATABASE' => isset($dbConfigForOps['name']) ? (string) $dbConfigForOps['name'] : null,
+            'DB_USERNAME' => (string) ($dbConfigForOps['user'] ?? ''),
+            'DB_PASSWORD' => (string) ($dbConfigForOps['password'] ?? ''),
+            'DB_PREFIX' => (string) ($dbConfigForOps['prefix'] ?? 'evo_'),
+            'DB_CHARSET' => isset($dbConfigForOps['charset']) ? (string) $dbConfigForOps['charset'] : null,
+            'DB_COLLATION' => isset($dbConfigForOps['collation']) ? (string) $dbConfigForOps['collation'] : null,
+        ], static fn($v) => $v !== null);
+    }
+
+    protected function buildAdminEnv(array $adminConfig): array
+    {
+        return array_filter([
+            'EVO_ADMIN_USERNAME' => isset($adminConfig['username']) ? (string) $adminConfig['username'] : null,
+            'EVO_ADMIN_EMAIL' => isset($adminConfig['email']) ? (string) $adminConfig['email'] : null,
+            'EVO_ADMIN_PASSWORD' => isset($adminConfig['password']) ? (string) $adminConfig['password'] : null,
+        ], static fn($v) => $v !== null);
+    }
+
+    protected function writeCoreCustomEnv(string $projectPath, array $options): void
+    {
+        $customDir = $projectPath . '/core/custom';
+        if (!is_dir($customDir) && !@mkdir($customDir, 0755, true) && !is_dir($customDir)) {
+            $this->tui?->addLog("Could not create directory: {$customDir}", 'warning');
+            return;
+        }
+
+        $envFile = $customDir . '/.env';
+
+        $vars = [
+            ...$this->buildDatabaseEnv($projectPath, $options['database'] ?? []),
+            ...$this->buildAdminEnv($options['admin'] ?? []),
+        ];
+
+        if ($vars === []) {
+            return;
+        }
+
+        $existing = '';
+        if (is_file($envFile) && is_readable($envFile)) {
+            $existing = (string) file_get_contents($envFile);
+        }
+
+        $lines = $existing !== '' ? preg_split('/\\R/', $existing) : [];
+        if (!is_array($lines)) {
+            $lines = [];
+        }
+
+        $linesUpdated = [];
+        $replaced = [];
+        foreach ($lines as $line) {
+            $newLine = $line;
+            foreach ($vars as $key => $value) {
+                if (isset($replaced[$key])) {
+                    continue;
+                }
+                if (preg_match('/^\\s*' . preg_quote($key, '/') . '\\s*=/', $line) === 1) {
+                    $newLine = $key . '=' . $this->envQuote($value);
+                    $replaced[$key] = true;
+                    break;
+                }
+            }
+            $linesUpdated[] = $newLine;
+        }
+
+        if ($linesUpdated !== [] && trim((string) end($linesUpdated)) !== '') {
+            $linesUpdated[] = '';
+        }
+
+        foreach ($vars as $key => $value) {
+            if (isset($replaced[$key])) {
+                continue;
+            }
+            $linesUpdated[] = $key . '=' . $this->envQuote($value);
+        }
+
+        $content = implode("\n", $linesUpdated);
+        if ($content !== '' && !str_ends_with($content, "\n")) {
+            $content .= "\n";
+        }
+
+        if (@file_put_contents($envFile, $content) === false) {
+            $this->tui?->addLog("Could not write env file: {$envFile}", 'warning');
+        }
+    }
+
+    protected function envQuote(string $value): string
+    {
+        $escaped = str_replace(["\\", "\""], ["\\\\", "\\\""], $value);
+        return "\"{$escaped}\"";
+    }
+
     /**
      * Resolve Composer command to run.
      *
@@ -1546,7 +1651,7 @@ class NewCommand extends Command
      * @param string $projectPath
      * @return void
      */
-    protected function runMigrations(string $projectPath): void
+    protected function runMigrations(string $projectPath, array $options): void
     {
         $this->tui->addLog('Running database migrations...');
 
@@ -1615,6 +1720,10 @@ class NewCommand extends Command
             $phpCode,
         ], $projectPath);
         $process->setTimeout(300);
+        $process->setEnv([
+            ...$this->buildProcessEnv(),
+            ...$this->buildDatabaseEnv($projectPath, $options['database'] ?? []),
+        ]);
 
         try {
             $buffers = [
@@ -1775,14 +1884,16 @@ class NewCommand extends Command
             // Use artisan command to create admin user
             // Try common Evolution CMS artisan commands
             $commands = [
-                ['php', '-d', 'session.save_path=' . $sessionDir, $artisanScript, 'evo:install', '--username', $username, '--email', $email, '--password', $password, '--admin-dir', $adminDirectory],
-                ['php', '-d', 'session.save_path=' . $sessionDir, $artisanScript, 'evolution:install', '--username', $username, '--email', $email, '--password', $password, '--admin-dir', $adminDirectory],
+                [PHP_BINARY ?: 'php', '-d', 'session.save_path=' . $sessionDir, $artisanScript, 'evo:install', '--username', $username, '--email', $email, '--password', $password, '--admin-dir', $adminDirectory],
+                [PHP_BINARY ?: 'php', '-d', 'session.save_path=' . $sessionDir, $artisanScript, 'evolution:install', '--username', $username, '--email', $email, '--password', $password, '--admin-dir', $adminDirectory],
             ];
 
             $success = false;
+            $lastError = '';
             foreach ($commands as $cmd) {
                 $process = new Process($cmd, $projectPath);
                 $process->setTimeout(120);
+                $process->setEnv($this->buildProcessEnv());
 
                 try {
                     $process->run();
@@ -1790,8 +1901,10 @@ class NewCommand extends Command
                         $success = true;
                         break;
                     }
+                    $lastError = trim($process->getOutput() . "\n" . $process->getErrorOutput());
                 } catch (\Exception $e) {
                     // Try next command
+                    $lastError = $e->getMessage();
                     continue;
                 }
             }
@@ -1800,6 +1913,10 @@ class NewCommand extends Command
                 $this->tui->replaceLastLogs('<fg=green>✔</> Admin user created successfully.');
             } else {
                 // Fallback: Create user directly in database
+                if ($lastError !== '') {
+                    $this->tui->addLog('Admin creation via artisan failed, falling back to direct DB insert.', 'warning');
+                    $this->tui->addLog($lastError, 'warning');
+                }
                 $this->createAdminUserDirectly($projectPath, $options);
             }
         } else {
@@ -1817,10 +1934,11 @@ class NewCommand extends Command
      */
     protected function createAdminUserDirectly(string $projectPath, array $options): void
     {
+        $this->tui->addLog('Creating admin user directly in the database...', 'info');
+
         try {
             $dbConfig = $options['database'];
             $adminConfig = $options['admin'];
-            $tablePrefix = $dbConfig['prefix'] ?? 'evo_';
 
             $username = $adminConfig['username'] ?? 'admin';
             $email = $adminConfig['email'] ?? 'admin@example.com';
@@ -1829,33 +1947,339 @@ class NewCommand extends Command
             // Create database connection
             $dbh = $this->createConnection($this->getDatabaseConfigForOperations($projectPath, $dbConfig));
 
-            // Hash password (MD5 for Evolution CMS legacy compatibility, or bcrypt)
-            $hashedPassword = md5($password);
+            [$usersTable, $tablePrefix] = $this->resolveUsersTableAndPrefix($dbh, $dbConfig['prefix'] ?? 'evo_');
+
+            $hashedPassword = $this->hashAdminPasswordForTable($dbh, $usersTable, $password);
 
             // Check if user already exists
-            $checkQuery = "SELECT id FROM {$tablePrefix}manager_users WHERE username = :username OR email = :email LIMIT 1";
-            $stmt = $dbh->prepare($checkQuery);
-            $stmt->execute([':username' => $username, ':email' => $email]);
+            $userColumns = $this->getTableColumns($dbh, $usersTable);
+
+            $loginColumn = null;
+            foreach (['username', 'name', 'login'] as $candidate) {
+                if (in_array($candidate, $userColumns, true)) {
+                    $loginColumn = $candidate;
+                    break;
+                }
+            }
+            if ($loginColumn === null) {
+                throw new \RuntimeException("Users table {$usersTable} does not have a supported login column (expected username/name/login).");
+            }
+
+            $hasEmail = in_array('email', $userColumns, true);
+            if ($hasEmail) {
+                $stmt = $dbh->prepare("SELECT * FROM {$usersTable} WHERE ({$loginColumn} = :login OR email = :email)");
+                $stmt->execute([':login' => $username, ':email' => $email]);
+            } else {
+                $stmt = $dbh->prepare("SELECT * FROM {$usersTable} WHERE {$loginColumn} = :login");
+                $stmt->execute([':login' => $username]);
+            }
 
             if ($stmt->fetch()) {
                 $this->tui->replaceLastLogs('<fg=yellow>⚠</> Admin user already exists. Skipping creation.', 2);
                 return;
             }
 
-            // Insert admin user
-            $insertQuery = "INSERT INTO {$tablePrefix}manager_users (username, password, email, createdon, internalKey) VALUES (:username, :password, :email, :createdon, 1)";
-            $stmt = $dbh->prepare($insertQuery);
-            $stmt->execute([
-                ':username' => $username,
-                ':password' => $hashedPassword,
-                ':email' => $email,
-                ':createdon' => time(),
-            ]);
+            $now = time();
+
+            $internalKey = null;
+            if (in_array('internalKey', $userColumns, true)) {
+                $max = $dbh->query("SELECT MAX(internalKey) FROM {$usersTable}")->fetchColumn();
+                $internalKey = max(1, ((int) $max) + 1);
+            }
+
+            $insertData = [
+                $loginColumn => $username,
+                'password' => $hashedPassword,
+                'createdon' => $now,
+                'created_at' => date('Y-m-d H:i:s', $now),
+                'updated_at' => date('Y-m-d H:i:s', $now),
+            ];
+            if ($hasEmail) {
+                $insertData['email'] = $email;
+            }
+            if ($internalKey !== null) {
+                $insertData['internalKey'] = $internalKey;
+            }
+
+            $this->insertRowByAvailableColumns($dbh, $usersTable, $userColumns, $insertData);
+
+            $userKeyColumn = null;
+            $userKeyValue = null;
+            if ($internalKey !== null) {
+                $userKeyColumn = 'internalKey';
+                $userKeyValue = $internalKey;
+            } elseif (in_array('id', $userColumns, true)) {
+                $lastInsertId = $dbh->lastInsertId();
+                if ($lastInsertId !== '' && $lastInsertId !== '0') {
+                    $userKeyColumn = 'id';
+                    $userKeyValue = (int) $lastInsertId;
+                }
+            }
+
+            if ($userKeyColumn !== null && $userKeyValue !== null) {
+                $this->ensureUserAttributes($dbh, $tablePrefix, $userKeyColumn, $userKeyValue, $username, $email, $now);
+            }
 
             $this->tui->replaceLastLogs('<fg=green>✔</> Admin user created successfully.', 2);
         } catch (\Exception $e) {
-            $this->tui->replaceLastLogs('<fg=yellow>⚠</> Could not create admin user automatically: ' . $e->getMessage() . '. You may need to create it manually.', 2);
+            $this->tui->replaceLastLogs('<fg=red>✗</> Could not create admin user automatically: ' . $e->getMessage(), 2);
+            throw $e;
         }
+    }
+
+    /**
+     * Resolve manager users table name and actual prefix.
+     *
+     * @return array{0:string,1:string} [$usersTable, $prefix]
+     */
+    protected function resolveUsersTableAndPrefix(\PDO $dbh, string $preferredPrefix): array
+    {
+        $suffixes = ['users'];
+        $tables = $this->listDatabaseTables($dbh);
+
+        $candidates = [];
+        foreach ($suffixes as $suffix) {
+            $candidates[] = $preferredPrefix . $suffix;
+            $candidates[] = $suffix;
+        }
+
+        foreach ($tables as $table) {
+            foreach ($suffixes as $suffix) {
+                if (str_ends_with($table, $suffix)) {
+                    $candidates[] = $table;
+                }
+            }
+        }
+
+        $candidates = array_values(array_unique(array_filter($candidates, static fn($t) => is_string($t) && $t !== '')));
+
+        $best = null;
+        $bestScore = -1;
+        foreach ($candidates as $candidate) {
+            if (!in_array($candidate, $tables, true)) {
+                continue;
+            }
+
+            $columns = $this->getTableColumns($dbh, $candidate);
+            $hasLoginColumn = in_array('username', $columns, true) || in_array('name', $columns, true) || in_array('login', $columns, true);
+            if (!$hasLoginColumn || !in_array('password', $columns, true)) {
+                continue;
+            }
+
+            $score = 0;
+            if ($candidate === $preferredPrefix . 'users') {
+                $score += 90;
+            } elseif ($candidate === 'users') {
+                $score += 70;
+            }
+
+            if (in_array('email', $columns, true)) {
+                $score += 5;
+            }
+            if (in_array('internalKey', $columns, true)) {
+                $score += 5;
+            }
+            if (in_array('createdon', $columns, true) || in_array('created_at', $columns, true)) {
+                $score += 2;
+            }
+
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = $candidate;
+            }
+        }
+
+        if ($best === null) {
+            throw new \RuntimeException('Could not find users table.');
+        }
+
+        foreach ($suffixes as $suffix) {
+            if (str_ends_with($best, $suffix)) {
+                return [$best, substr($best, 0, -strlen($suffix))];
+            }
+        }
+
+        return [$best, $preferredPrefix];
+    }
+
+    protected function hashAdminPasswordForTable(\PDO $dbh, string $usersTable, string $password): string
+    {
+        $columns = $this->getTableColumns($dbh, $usersTable);
+
+        if (in_array('internalKey', $columns, true) || in_array('createdon', $columns, true)) {
+            return md5($password);
+        }
+
+        if (in_array('remember_token', $columns, true) || in_array('email_verified_at', $columns, true) || in_array('created_at', $columns, true)) {
+            return password_hash($password, PASSWORD_BCRYPT);
+        }
+
+        return md5($password);
+    }
+
+    protected function listDatabaseTables(\PDO $dbh): array
+    {
+        $driver = $dbh->getAttribute(\PDO::ATTR_DRIVER_NAME);
+
+        return match ($driver) {
+            'mysql' => array_map(
+                static fn(array $row) => (string) reset($row),
+                $dbh->query('SHOW TABLES')->fetchAll(\PDO::FETCH_NUM)
+            ),
+            'pgsql' => array_map(
+                static fn(array $row) => (string) $row[0],
+                $dbh->query("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")->fetchAll(\PDO::FETCH_NUM)
+            ),
+            'sqlite' => array_map(
+                static fn(array $row) => (string) $row[0],
+                $dbh->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(\PDO::FETCH_NUM)
+            ),
+            'sqlsrv' => array_map(
+                static fn(array $row) => (string) $row[0],
+                $dbh->query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'")->fetchAll(\PDO::FETCH_NUM)
+            ),
+            default => [],
+        };
+    }
+
+    /**
+     * @return string[]
+     */
+    protected function getTableColumns(\PDO $dbh, string $table): array
+    {
+        $stmt = $dbh->query("SELECT * FROM {$table} WHERE 1=0");
+        $columns = [];
+        for ($i = 0; $i < $stmt->columnCount(); $i++) {
+            $meta = $stmt->getColumnMeta($i);
+            if (is_array($meta) && isset($meta['name']) && is_string($meta['name']) && $meta['name'] !== '') {
+                $columns[] = $meta['name'];
+            }
+        }
+
+        if ($columns !== []) {
+            return $columns;
+        }
+
+        $driver = $dbh->getAttribute(\PDO::ATTR_DRIVER_NAME);
+        $fallback = match ($driver) {
+            'mysql' => $dbh->prepare('SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t'),
+            'pgsql' => $dbh->prepare("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = :t"),
+            'sqlsrv' => $dbh->prepare('SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = :t'),
+            default => null,
+        };
+
+        if ($fallback !== null) {
+            $fallback->execute([':t' => $table]);
+            return array_map(static fn($r) => (string) $r[0], $fallback->fetchAll(\PDO::FETCH_NUM));
+        }
+
+        if ($driver === 'sqlite') {
+            $rows = $dbh->query('PRAGMA table_info(' . $table . ')')->fetchAll(\PDO::FETCH_ASSOC);
+            $cols = [];
+            foreach ($rows as $row) {
+                if (isset($row['name'])) {
+                    $cols[] = (string) $row['name'];
+                }
+            }
+            return $cols;
+        }
+
+        return [];
+    }
+
+    /**
+     * Insert row using only columns that exist in the target table.
+     *
+     * @param array<string, mixed> $data
+     */
+    protected function insertRowByAvailableColumns(\PDO $dbh, string $table, array $columns, array $data): void
+    {
+        $insertColumns = [];
+        $params = [];
+        foreach ($data as $col => $value) {
+            if (!in_array($col, $columns, true)) {
+                continue;
+            }
+            $insertColumns[] = $col;
+            $params[':' . $col] = $value;
+        }
+
+        if ($insertColumns === []) {
+            throw new \RuntimeException("No writable columns found for insert into {$table}.");
+        }
+
+        $placeholders = array_map(static fn(string $c) => ':' . $c, $insertColumns);
+        $sql = "INSERT INTO {$table} (" . implode(', ', $insertColumns) . ') VALUES (' . implode(', ', $placeholders) . ')';
+        $stmt = $dbh->prepare($sql);
+        $stmt->execute($params);
+    }
+
+    protected function ensureUserAttributes(\PDO $dbh, string $prefix, string $userKeyColumn, int $userKeyValue, string $username, string $email, int $now): void
+    {
+        $candidateTables = [
+            $prefix . 'user_attributes',
+        ];
+
+        $tables = $this->listDatabaseTables($dbh);
+        $attributesTable = null;
+        foreach ($candidateTables as $candidate) {
+            if (in_array($candidate, $tables, true)) {
+                $attributesTable = $candidate;
+                break;
+            }
+        }
+
+        if ($attributesTable === null) {
+            return;
+        }
+
+        $columns = $this->getTableColumns($dbh, $attributesTable);
+        $linkColumn = null;
+
+        if ($userKeyColumn === 'id') {
+            // Evolution CMS classic schema links user_attributes.internalKey -> users.id.
+            // Do NOT default to "id" when it exists: it's typically the PK of user_attributes itself.
+            foreach (['internalKey', 'user_id', 'userId', 'userid', 'id'] as $candidate) {
+                if (in_array($candidate, $columns, true)) {
+                    $linkColumn = $candidate;
+                    break;
+                }
+            }
+        } elseif (in_array($userKeyColumn, $columns, true)) {
+            $linkColumn = $userKeyColumn;
+        }
+        if ($linkColumn === null) {
+            return;
+        }
+
+        $stmt = $dbh->prepare("SELECT * FROM {$attributesTable} WHERE {$linkColumn} = :k");
+        $stmt->execute([':k' => $userKeyValue]);
+        if ($stmt->fetch()) {
+            return;
+        }
+
+        $roleId = 1;
+        $rolesTable = $prefix . 'user_roles';
+        if (in_array($rolesTable, $tables, true)) {
+            try {
+                $roleStmt = $dbh->query("SELECT MIN(id) FROM {$rolesTable}");
+                $roleId = (int) ($roleStmt->fetchColumn() ?: 1);
+            } catch (\Throwable $e) {
+                // Keep default role id
+            }
+        }
+
+        $data = [
+            $linkColumn => $userKeyValue,
+            'fullname' => $username,
+            'email' => $email,
+            'role' => $roleId,
+            'createdon' => $now,
+            'created_at' => date('Y-m-d H:i:s', $now),
+            'updated_at' => date('Y-m-d H:i:s', $now),
+        ];
+
+        $this->insertRowByAvailableColumns($dbh, $attributesTable, $columns, $data);
     }
 
     /**
@@ -2030,6 +2454,20 @@ class NewCommand extends Command
             }
         }
 
+        // Rename ht.access to .htaccess
+        $htaccessSource = $projectPath . '/ht.access';
+        $htaccessTarget = $projectPath . '/.htaccess';
+        if (file_exists($htaccessSource)) {
+            if (file_exists($htaccessTarget)) {
+                @unlink($htaccessTarget);
+            }
+            if (@rename($htaccessSource, $htaccessTarget)) {
+                $this->tui->addLog('Renamed ht.access to .htaccess.', 'info');
+            } else {
+                $this->tui->addLog('Failed to rename ht.access to .htaccess.', 'warning');
+            }
+        }
+
         // Clean up seeders directory (remove files inside, keep directory)
         $seedersDir = $projectPath . '/core/database/seeders';
         if (is_dir($seedersDir)) {
@@ -2049,6 +2487,16 @@ class NewCommand extends Command
                 $this->tui->addLog("Removed {$removedCount} file(s) from seeders directory.", 'info');
             }
         }
+
+        // Create installation marker with current unix timestamp
+        $installMarker = $projectPath . '/core/.install';
+        $timestamp = (string) time() . "\n";
+        if (@file_put_contents($installMarker, $timestamp) === false) {
+            $this->tui->addLog('Failed to create installation marker: core/.install', 'error');
+            throw new \RuntimeException('Failed to create installation marker file core/.install.');
+        }
+        @chmod($installMarker, 0644);
+        $this->tui->addLog('Created installation marker: core/.install', 'info');
 
         $this->steps['finalize']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
