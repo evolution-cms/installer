@@ -760,7 +760,7 @@ final class TuiRenderer
         }
 
         // Default version if API fails
-        $cachedVersion = '3.3.0';
+        $cachedVersion = '3.5.0';
         return $cachedVersion;
     }
 }

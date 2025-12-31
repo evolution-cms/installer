@@ -336,7 +336,7 @@ class NewCommand extends Command
         $this->tui->addLog($radioText);
 
         // raw input
-        system('stty -icanon -echo');
+        $this->setSttyMode('-icanon -echo');
         try {
             while (true) {
                 $key = fread(STDIN, 3);
@@ -360,7 +360,7 @@ class NewCommand extends Command
                 $this->tui->replaceLastLog($this->tui->renderRadio($options, $active, $labels));
             }
         } finally {
-            system('stty sane');
+            $this->setSttyMode('sane');
         }
     }
 
@@ -538,7 +538,7 @@ class NewCommand extends Command
         $this->tui->addLog($radioText);
 
         // raw input
-        system('stty -icanon -echo');
+        $this->setSttyMode('-icanon -echo');
         try {
             while (true) {
                 $key = fread(STDIN, 3);
@@ -564,7 +564,7 @@ class NewCommand extends Command
                 $this->tui->replaceLastLog($this->tui->renderRadio($options, $active));
             }
         } finally {
-            system('stty sane');
+            $this->setSttyMode('sane');
         }
 
         return false;
@@ -721,7 +721,7 @@ class NewCommand extends Command
                 $this->tui->replaceLastLogsMultiple($radioLines, $radioLinesCount);
             }
         } finally {
-            system('stty sane');
+            $this->setSttyMode('sane');
         }
     }
 
@@ -1939,6 +1939,33 @@ class NewCommand extends Command
         $this->steps['finalize']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
         $this->tui->addLog('Installation finalized successfully.', 'success');
+    }
+
+    /**
+     * Set stty mode safely (handle disabled system() function).
+     */
+    protected function setSttyMode(string $mode): void
+    {
+        if (!function_exists('shell_exec')) {
+            return;
+        }
+
+        $disabled = ini_get('disable_functions');
+        if ($disabled && stripos($disabled, 'shell_exec') !== false) {
+            return;
+        }
+
+        // Use shell_exec instead of system to avoid output issues
+        // For SSH, we need to ensure stty works with the terminal
+        if (function_exists('posix_isatty') && !@posix_isatty(STDIN)) {
+            // Not a TTY, stty won't work
+            return;
+        }
+
+        // Set stty mode and ensure it takes effect
+        @shell_exec('stty ' . escapeshellarg($mode) . ' < /dev/tty 2>/dev/null');
+        // Also try without /dev/tty redirect (for some SSH setups)
+        @shell_exec('stty ' . escapeshellarg($mode) . ' 2>/dev/null');
     }
 
     protected function removeDirectory(string $dir): void
