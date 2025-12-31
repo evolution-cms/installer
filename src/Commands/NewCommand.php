@@ -109,7 +109,13 @@ class NewCommand extends Command
         $this->installEvolutionCMS($name, $options);
 
         // Step 5: Install presets
-        $this->getPreset($input->getOption('preset'));
+        $this->installPreset($input->getOption('preset'));
+
+        // Step 6: Install dependencies
+        $this->installDependencies($name, $options);
+
+        // Step 7: Finalize installation
+        $this->finalizeInstallation($name, $options);
 
         $this->tui->addLog("Evolution CMS application ready! Build something amazing.", 'success');
 
@@ -1738,12 +1744,57 @@ class NewCommand extends Command
     }
 
     /**
-     * Get preset instance.
+     * Install preset.
      */
-    protected function getPreset(?string $preset)
+    protected function installPreset(?string $preset): void
     {
-        $this->steps['install']['presets'] = true;
+        $this->steps['presets']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
+
+        if ($preset === null) {
+            return;
+        }
+    }
+
+    /**
+     * Install/update dependencies with Composer.
+     */
+    protected function installDependencies(string $name, array $options): void
+    {
+        $this->tui->addLog('Updating dependencies with Composer...');
+
+        $isCurrentDir = !empty($options['install_in_current_dir']);
+        $projectPath = $isCurrentDir ? $name : (getcwd() . '/' . $name);
+
+        $composerWorkDir = is_file($projectPath . '/core/composer.json') ? ($projectPath . '/core') : $projectPath;
+        $composerJson = $composerWorkDir . '/composer.json';
+
+        if (!file_exists($composerJson)) {
+            $this->tui->addLog('composer.json not found. Skipping dependency update.', 'warning');
+            $this->steps['dependencies']['completed'] = true;
+            $this->tui->setQuestTrack($this->steps);
+            return;
+        }
+
+        // Always use system composer for update
+        $composerCommand = ['composer'];
+
+        try {
+            $process = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
+
+            if ($process->isSuccessful()) {
+                $this->tui->addLog('Dependencies updated successfully.', 'success');
+                $this->steps['dependencies']['completed'] = true;
+                $this->tui->setQuestTrack($this->steps);
+                return;
+            }
+
+            $fullOutput = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
+            throw new \RuntimeException(trim($fullOutput));
+        } catch (\Exception $e) {
+            $this->tui->addLog('Failed to update dependencies: ' . $e->getMessage(), 'error');
+            throw new \RuntimeException("Failed to update dependencies. Please run 'composer update' manually.");
+        }
     }
 
     protected function getDatabaseConfigForOperations(string $projectPath, array $dbConfig): array
@@ -1822,6 +1873,74 @@ class NewCommand extends Command
      * @param string $dir
      * @return void
      */
+    /**
+     * Finalize installation: clean up installation files and directories.
+     */
+    protected function finalizeInstallation(string $name, array $options): void
+    {
+        $this->tui->addLog('Finalizing installation...');
+
+        $isCurrentDir = !empty($options['install_in_current_dir']);
+        $projectPath = $isCurrentDir ? $name : (getcwd() . '/' . $name);
+
+        // Remove install directory
+        $installDir = $projectPath . '/install';
+        if (is_dir($installDir)) {
+            $this->removeDirectory($installDir);
+            $this->tui->addLog('Removed install directory.', 'info');
+        }
+
+        // Remove composer.json from root (not the one in core/)
+        $rootComposerJson = $projectPath . '/composer.json';
+        if (file_exists($rootComposerJson) && !is_dir($rootComposerJson)) {
+            @unlink($rootComposerJson);
+            $this->tui->addLog('Removed root composer.json.', 'info');
+        }
+
+        // Remove config.php.example
+        $configExample = $projectPath . '/config.php.example';
+        if (file_exists($configExample)) {
+            @unlink($configExample);
+            $this->tui->addLog('Removed config.php.example.', 'info');
+        }
+
+        // Rename sample-robots.txt to robots.txt
+        $sampleRobots = $projectPath . '/sample-robots.txt';
+        $robotsTxt = $projectPath . '/robots.txt';
+        if (file_exists($sampleRobots)) {
+            if (file_exists($robotsTxt)) {
+                @unlink($robotsTxt);
+            }
+            if (@rename($sampleRobots, $robotsTxt)) {
+                $this->tui->addLog('Renamed sample-robots.txt to robots.txt.', 'info');
+            }
+        }
+
+        // Clean up seeders directory (remove files inside, keep directory)
+        $seedersDir = $projectPath . '/core/database/seeders';
+        if (is_dir($seedersDir)) {
+            $files = array_diff(scandir($seedersDir), ['.', '..']);
+            $removedCount = 0;
+            foreach ($files as $file) {
+                $filePath = $seedersDir . '/' . $file;
+                if (is_file($filePath)) {
+                    @unlink($filePath);
+                    $removedCount++;
+                } elseif (is_dir($filePath)) {
+                    $this->removeDirectory($filePath);
+                    $removedCount++;
+                }
+            }
+            if ($removedCount > 0) {
+                $this->tui->addLog("Removed {$removedCount} file(s) from seeders directory.", 'info');
+            }
+        }
+
+        $this->steps['finalize']['completed'] = true;
+        $this->tui->setQuestTrack($this->steps);
+        $this->tui->addLog('Installation finalized successfully.', 'success');
+    }
+
     protected function removeDirectory(string $dir): void
     {
         if (!is_dir($dir)) {
