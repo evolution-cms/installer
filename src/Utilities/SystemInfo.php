@@ -198,6 +198,17 @@ class SystemInfo
     }
 
     /**
+     * Get Composer executable path/command if available.
+     *
+     * Returns either a full path (preferred) or the string "composer" if it is
+     * available in PATH. Returns null if Composer cannot be found.
+     */
+    public static function getComposerExecutable(): ?string
+    {
+        return self::findComposerExecutable();
+    }
+
+    /**
      * Find Composer executable path.
      *
      * @return string|null

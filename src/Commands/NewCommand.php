@@ -26,6 +26,7 @@ class NewCommand extends Command
 
     protected ?OutputInterface $logSection = null;
     protected ?TuiRenderer $tui = null;
+    protected array $composerCommandCache = [];
     protected array $steps = [
         'php' => ['label' => 'Step 1: Validate PHP version', 'completed' => false],
         'database' => ['label' => 'Step 2: Check database connection', 'completed' => false],
@@ -695,7 +696,7 @@ class NewCommand extends Command
         $radioLinesCount = count($radioLines);
 
         // Raw input for arrow keys
-        system('stty -icanon -echo');
+        $this->setSttyMode('-icanon -echo');
         try {
             while (true) {
                 $key = fread(STDIN, 3);
@@ -1237,8 +1238,7 @@ class NewCommand extends Command
 
         $this->tui->addLog('Composer working directory: ' . basename($composerWorkDir));
 
-        // Always use system composer
-        $composerCommand = ['composer'];
+        $composerCommand = $this->resolveComposerCommand($composerWorkDir);
 
         try {
             $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
@@ -1265,9 +1265,6 @@ class NewCommand extends Command
                     @unlink($composerLock);
                     $this->tui->addLog('Removed composer.lock to force fresh dependency resolution.');
                 }
-
-                // After removing vendor, we must use system composer
-                $composerCommand = ['composer'];
 
                 // Reinstall with prefer-dist
                 $reinstall = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
@@ -1316,9 +1313,6 @@ class NewCommand extends Command
                         @unlink($composerLock);
                     }
 
-                    // After removing vendor, we must use system composer
-                    $composerCommand = ['composer'];
-
                     // Reinstall with prefer-dist
                     $reinstall = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
                     if ($reinstall->isSuccessful()) {
@@ -1350,6 +1344,7 @@ class NewCommand extends Command
             '--no-progress',
         ], $workingDir);
         $process->setTimeout(600);
+        $process->setEnv($this->buildProcessEnv());
 
         $buffers = [
             Process::OUT => '',
@@ -1405,6 +1400,126 @@ class NewCommand extends Command
         }
 
         return $process;
+    }
+
+    protected function buildProcessEnv(): array
+    {
+        $env = $_ENV ?? [];
+
+        $path = getenv('PATH');
+        if (!$path && isset($_SERVER['PATH'])) {
+            $path = $_SERVER['PATH'];
+        }
+        if (!$path) {
+            $path = '/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin';
+        }
+
+        $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? '/root');
+        if (function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
+            $userInfo = @posix_getpwuid(posix_geteuid());
+            if ($userInfo && isset($userInfo['dir'])) {
+                $home = $userInfo['dir'];
+            }
+        }
+
+        $env['PATH'] = $path;
+        $env['HOME'] = $home;
+        $env['COMPOSER_ALLOW_SUPERUSER'] ??= '1';
+
+        return $env;
+    }
+
+    /**
+     * Resolve Composer command to run.
+     *
+     * Prefers system Composer if available; otherwise bootstraps a local
+     * `composer.phar` inside the project to avoid requiring server-wide setup.
+     */
+    protected function resolveComposerCommand(string $composerWorkDir): array
+    {
+        if (isset($this->composerCommandCache[$composerWorkDir])) {
+            return $this->composerCommandCache[$composerWorkDir];
+        }
+
+        $composerExecutable = SystemInfo::getComposerExecutable();
+        if ($composerExecutable !== null) {
+            return $this->composerCommandCache[$composerWorkDir] = [$composerExecutable];
+        }
+
+        $localComposer = $this->bootstrapLocalComposer($composerWorkDir);
+        if ($localComposer !== null) {
+            return $this->composerCommandCache[$composerWorkDir] = $localComposer;
+        }
+
+        throw new \RuntimeException(
+            "Composer executable not found. Install Composer on the server or place `composer.phar` in {$composerWorkDir}/.evo-installer/ and re-run."
+        );
+    }
+
+    /**
+     * Download and install a local Composer PHAR under the project directory.
+     *
+     * @return array{0:string,1:string}|null
+     */
+    protected function bootstrapLocalComposer(string $composerWorkDir): ?array
+    {
+        $installerDir = rtrim($composerWorkDir, '/') . '/.evo-installer';
+        @mkdir($installerDir, 0755, true);
+
+        $composerPhar = $installerDir . '/composer.phar';
+        if (is_file($composerPhar)) {
+            return [PHP_BINARY ?: 'php', $composerPhar];
+        }
+
+        $this->tui->addLog('Composer not found. Trying to download a local composer.phar...', 'warning');
+
+        try {
+            $client = new Client(['timeout' => 60, 'allow_redirects' => true]);
+            $expectedSig = trim((string) $client->get('https://composer.github.io/installer.sig')->getBody());
+            $installerBody = (string) $client->get('https://getcomposer.org/installer')->getBody();
+        } catch (\Exception $e) {
+            $this->tui->addLog('Failed to download Composer installer: ' . $e->getMessage(), 'warning');
+            return null;
+        }
+
+        if ($expectedSig === '' || $installerBody === '') {
+            $this->tui->addLog('Composer installer download returned empty content.', 'warning');
+            return null;
+        }
+
+        $setupFile = $installerDir . '/composer-setup.php';
+        if (@file_put_contents($setupFile, $installerBody) === false) {
+            $this->tui->addLog('Failed to write Composer installer to disk.', 'warning');
+            return null;
+        }
+
+        $actualSig = @hash_file('sha384', $setupFile);
+        if (!$actualSig || !hash_equals($expectedSig, $actualSig)) {
+            @unlink($setupFile);
+            $this->tui->addLog('Composer installer signature mismatch. Aborting download.', 'error');
+            return null;
+        }
+
+        $process = new Process([
+            PHP_BINARY ?: 'php',
+            $setupFile,
+            '--no-ansi',
+            '--install-dir=' . $installerDir,
+            '--filename=composer.phar',
+        ], $composerWorkDir, $this->buildProcessEnv());
+        $process->setTimeout(120);
+        $process->run();
+
+        @unlink($setupFile);
+
+        if (!$process->isSuccessful() || !is_file($composerPhar)) {
+            $output = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
+            $this->tui->addLog('Local Composer install failed: ' . trim($output), 'warning');
+            return null;
+        }
+
+        $this->tui->addLog('Local composer.phar installed: ' . $composerPhar, 'success');
+        return [PHP_BINARY ?: 'php', $composerPhar];
     }
 
     protected function sanitizeComposerOutput(string $output): string
@@ -1776,8 +1891,7 @@ class NewCommand extends Command
             return;
         }
 
-        // Always use system composer for update
-        $composerCommand = ['composer'];
+        $composerCommand = $this->resolveComposerCommand($composerWorkDir);
 
         try {
             $process = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
@@ -1962,10 +2076,18 @@ class NewCommand extends Command
             return;
         }
 
+        $mode = trim($mode);
+        if ($mode === '') {
+            return;
+        }
+
+        $modeTokens = preg_split('/\\s+/', $mode) ?: [];
+        $modeArgs = implode(' ', array_map('escapeshellarg', $modeTokens));
+
         // Set stty mode and ensure it takes effect
-        @shell_exec('stty ' . escapeshellarg($mode) . ' < /dev/tty 2>/dev/null');
+        @shell_exec('stty ' . $modeArgs . ' < /dev/tty 2>/dev/null');
         // Also try without /dev/tty redirect (for some SSH setups)
-        @shell_exec('stty ' . escapeshellarg($mode) . ' 2>/dev/null');
+        @shell_exec('stty ' . $modeArgs . ' 2>/dev/null');
     }
 
     protected function removeDirectory(string $dir): void
