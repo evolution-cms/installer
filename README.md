@@ -160,6 +160,70 @@ cd installer
 composer install
 ```
 
+### Local Development (Built-in PHP Server)
+
+For local development and quick testing, you can run Evolution CMS using PHP’s built-in web server.  
+This approach does **not require Apache, Nginx, or PHP-FPM** and is intended for development purposes only.
+
+#### Requirements
+
+- PHP 8.3+
+- SQLite or a running database server (MySQL / PostgreSQL)
+- Installed project via `evo new`
+
+#### Running the Development Server
+
+Navigate to your Evolution CMS project root and run:
+
+```bash
+php -S localhost:8000
+```
+
+Then open your browser at:
+
+http://localhost:8000
+
+#### Recommended Entry Point (Router Script)
+
+To ensure correct handling of friendly URLs, static assets, and the manager interface, it is strongly recommended to use a router script.
+
+Create a file named `router.php` in the project root:
+
+```php
+<?php
+$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$file = __DIR__ . $path;
+
+if ($path !== '/' && file_exists($file) && !is_dir($file)) {
+    return false;
+}
+
+require __DIR__ . '/index.php';
+```
+
+Start the server using the router:
+
+```bash
+php -S localhost:8000 router.php
+```
+
+#### Using SQLite for Fast Local Setup
+
+For the fastest local development experience, SQLite is recommended:
+
+```bash
+evo new my-project --db-type=sqlite
+```
+
+This allows you to start the project instantly without running a database server.
+
+#### Important Notes
+
+- Do not use the built-in PHP server in production
+- No HTTPS support
+- Single-threaded, no process manager
+- Intended for local development, debugging, and testing only
+
 ### Running Tests
 
 Install dependencies first:

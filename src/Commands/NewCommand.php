@@ -2421,6 +2421,9 @@ class NewCommand extends Command
         $isCurrentDir = !empty($options['install_in_current_dir']);
         $projectPath = $isCurrentDir ? $name : (getcwd() . '/' . $name);
 
+        $this->removeInstallerAdminEnvVars($projectPath);
+        $this->removeCoreCustomExampleFiles($projectPath);
+
         // Remove install directory
         $installDir = $projectPath . '/install';
         if (is_dir($installDir)) {
@@ -2501,6 +2504,135 @@ class NewCommand extends Command
         $this->steps['finalize']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
         $this->tui->addLog('Installation finalized successfully.', 'success');
+    }
+
+    /**
+     * Removes all `*.example` files from `core/custom` (best-effort).
+     *
+     * Installer may place example configs in `core/custom`. These files should not remain in production.
+     */
+    protected function removeCoreCustomExampleFiles(string $projectPath): void
+    {
+        $customDir = rtrim($projectPath, '/') . '/core/custom';
+        if (!is_dir($customDir)) {
+            return;
+        }
+
+        $removed = 0;
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($customDir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            /** @var \SplFileInfo $item */
+            if (!$item->isFile()) {
+                continue;
+            }
+            $path = $item->getPathname();
+            if (str_ends_with($path, '.example')) {
+                if (@unlink($path)) {
+                    $removed++;
+                }
+            }
+        }
+
+        if ($removed > 0) {
+            $this->tui?->addLog("Removed {$removed} .example file(s) from core/custom.", 'info');
+        }
+    }
+
+    /**
+     * Removes temporary installer-only admin seed variables from `.env` files.
+     *
+     * The installer uses `EVO_ADMIN_USERNAME`, `EVO_ADMIN_EMAIL`, `EVO_ADMIN_PASSWORD`
+     * to seed the initial manager user. These values should not remain in `.env`
+     * after installation.
+     */
+    protected function removeInstallerAdminEnvVars(string $projectPath): void
+    {
+        $keys = ['EVO_ADMIN_USERNAME', 'EVO_ADMIN_EMAIL', 'EVO_ADMIN_PASSWORD'];
+        $envFiles = [
+            $projectPath . '/.env',
+            $projectPath . '/core/custom/.env',
+        ];
+
+        foreach ($envFiles as $envFile) {
+            $this->removeEnvKeysFromFile($envFile, $keys);
+        }
+
+        // If env cache exists, remove it so it can be rebuilt without the installer-only vars.
+        $envCache = $projectPath . '/core/storage/cache/env.php';
+        if (is_file($envCache)) {
+            @unlink($envCache);
+        }
+    }
+
+    /**
+     * Removes specified keys from a dotenv file (best-effort, atomic write).
+     *
+     * @param string $envFile
+     * @param array<int, string> $keys
+     * @return void
+     */
+    protected function removeEnvKeysFromFile(string $envFile, array $keys): void
+    {
+        if (!is_file($envFile) || !is_readable($envFile)) {
+            return;
+        }
+
+        $original = (string) @file_get_contents($envFile);
+        if ($original === '') {
+            return;
+        }
+
+        $lines = preg_split('/\\R/', $original);
+        if (!is_array($lines)) {
+            return;
+        }
+
+        $patterns = array_map(
+            static fn(string $k): string => '/^\\s*(?:export\\s+)?' . preg_quote($k, '/') . '\\s*=.*$/',
+            $keys
+        );
+
+        $changed = false;
+        $filtered = [];
+        foreach ($lines as $line) {
+            $remove = false;
+            foreach ($patterns as $pattern) {
+                if (preg_match($pattern, $line) === 1) {
+                    $remove = true;
+                    $changed = true;
+                    break;
+                }
+            }
+            if (!$remove) {
+                $filtered[] = $line;
+            }
+        }
+
+        if (!$changed) {
+            return;
+        }
+
+        $content = implode("\n", $filtered);
+        if ($content !== '' && !str_ends_with($content, "\n")) {
+            $content .= "\n";
+        }
+
+        $tmp = $envFile . '.tmp';
+        if (@file_put_contents($tmp, $content, LOCK_EX) === false) {
+            $this->tui?->addLog("Failed to update env file (installer cleanup): {$envFile}", 'warning');
+            @unlink($tmp);
+            return;
+        }
+
+        if (!@rename($tmp, $envFile)) {
+            $this->tui?->addLog("Failed to replace env file (installer cleanup): {$envFile}", 'warning');
+            @unlink($tmp);
+            return;
+        }
     }
 
     /**
