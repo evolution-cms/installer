@@ -8,8 +8,8 @@
  * It should be made executable: chmod +x bin/evo
  */
 
-if (file_exists(dirname(__DIR__) . '/vendor/autoload.php')) {
-    require dirname(__DIR__) . '/vendor/autoload.php';
+if (file_exists(dirname(__DIR__) . '/vendor-php/autoload.php')) {
+    require dirname(__DIR__) . '/vendor-php/autoload.php';
 } else {
     echo "Please run 'composer install' to install dependencies." . PHP_EOL;
     exit(1);

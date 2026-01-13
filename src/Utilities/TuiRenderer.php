@@ -13,6 +13,7 @@ final class TuiRenderer
     private array $steps = [];
     private array $systemStatus = [];
     private ?string $activeInput = null;
+    private bool $plainLogDirty = false;
 
     private bool $fixedRendered = false;
     private int $fixedLines = 0;
@@ -37,6 +38,7 @@ final class TuiRenderer
         };
 
         $this->logs[] = $icon . ($type == 'ask' ? "<fg=cyan>{$message}</>" : $message);
+        $this->plainLogDirty = true;
         $this->render(true);
     }
 
@@ -48,6 +50,7 @@ final class TuiRenderer
         $this->logs = [];
         $this->activeInput = null;
         $this->activeInputIndex = null;
+        $this->plainLogDirty = false;
         $this->render(true);
     }
 
@@ -55,6 +58,7 @@ final class TuiRenderer
     {
         array_pop($this->logs);
         $this->logs[] = $line;
+        $this->plainLogDirty = true;
         $this->render(true);
     }
 
@@ -99,6 +103,7 @@ final class TuiRenderer
             $this->replaceLastLog($progressLine);
         } else {
             $this->logs[] = $progressLine;
+            $this->plainLogDirty = true;
             $this->render(true);
         }
     }
@@ -133,6 +138,7 @@ final class TuiRenderer
             array_pop($this->logs);
         }
         $this->logs[] = $line;
+        $this->plainLogDirty = true;
         $this->render(true);
     }
 
@@ -147,6 +153,7 @@ final class TuiRenderer
         foreach ($lines as $line) {
             $this->logs[] = $line;
         }
+        $this->plainLogDirty = true;
         $this->render(true);
     }
 
@@ -315,6 +322,11 @@ final class TuiRenderer
 
     private function renderPlain(): void
     {
+        if (!$this->plainLogDirty) {
+            return;
+        }
+        $this->plainLogDirty = false;
+
         if ($log = end($this->logs)) {
             $this->output->writeln(strip_tags($log));
         }

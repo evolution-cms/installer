@@ -57,7 +57,7 @@ If you see the version, installation was successful!
 ### Create a new Evolution CMS project
 
 ```bash
-evo new my-project
+evo install my-project
 ```
 
 This command will:
@@ -73,15 +73,15 @@ This command will:
 ### Command Options
 
 ```bash
-evo new my-project --preset=evolution
-evo new my-project --db-type=mysql
-evo new my-project --db-host=localhost --db-name=evo_db
-evo new my-project --admin-username=admin --admin-email=admin@example.com
-evo new my-project --admin-directory=manager
-evo new my-project --language=en
-evo new my-project --branch=develop  # Install from specific Git branch
-evo new my-project --git  # Initialize a Git repository
-evo new my-project --force  # Force install even if directory exists
+evo install my-project --preset=evolution
+evo install my-project --db-type=mysql
+evo install my-project --db-host=localhost --db-name=evo_db
+evo install my-project --admin-username=admin --admin-email=admin@example.com
+evo install my-project --admin-directory=manager
+evo install my-project --language=en
+evo install my-project --branch=develop  # Install from specific Git branch
+evo install my-project --git  # Initialize a Git repository
+evo install my-project --force  # Force install even if directory exists
 ```
 
 ### Available Options
@@ -109,9 +109,9 @@ evo new my-project --force  # Force install even if directory exists
 Standard Evolution CMS installation with all core features.
 
 ```bash
-evo new my-project
+evo install my-project
 # or
-evo new my-project --preset=evolution
+evo install my-project --preset=evolution
 ```
 
 ### Custom Presets
@@ -160,6 +160,26 @@ cd installer
 composer install
 ```
 
+### Run installer via Go (TUI)
+
+Requirements: Go (see `go` version in `go.mod`).
+
+From `installer/`:
+
+```bash
+go run ./cmd/evo install
+# or
+make install
+```
+
+Other commands:
+
+```bash
+go run ./cmd/evo doctor
+go run ./cmd/evo version
+go run ./cmd/evo install -f
+```
+
 ### Local Development (Built-in PHP Server)
 
 For local development and quick testing, you can run Evolution CMS using PHP’s built-in web server.  
@@ -169,7 +189,7 @@ This approach does **not require Apache, Nginx, or PHP-FPM** and is intended for
 
 - PHP 8.3+
 - SQLite or a running database server (MySQL / PostgreSQL)
-- Installed project via `evo new`
+- Installed project via `evo install`
 
 #### Running the Development Server
 
@@ -212,7 +232,7 @@ php -S localhost:8000 router.php
 For the fastest local development experience, SQLite is recommended:
 
 ```bash
-evo new my-project --db-type=sqlite
+evo install my-project --db-type=sqlite
 ```
 
 This allows you to start the project instantly without running a database server.

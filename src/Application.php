@@ -1,7 +1,8 @@
 <?php namespace EvolutionCMS\Installer;
 
 use Symfony\Component\Console\Application as ConsoleApplication;
-use EvolutionCMS\Installer\Commands\NewCommand;
+use EvolutionCMS\Installer\Commands\InstallCommand;
+use EvolutionCMS\Installer\Commands\SystemStatusCommand;
 
 class Application extends ConsoleApplication
 {
@@ -12,7 +13,8 @@ class Application extends ConsoleApplication
     {
         parent::__construct('Evolution CMS Installer', '1.0.0');
 
-        $this->add(new NewCommand());
+        $this->add(new InstallCommand());
+        $this->add(new SystemStatusCommand());
     }
 
     /**

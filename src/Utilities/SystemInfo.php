@@ -383,4 +383,95 @@ class SystemInfo
 
         return sprintf('%.1f %s free', round($free, 1), $units[$unitIndex]);
     }
+
+    /**
+     * Returns a stable JSON-serializable system status for the Go TUI adapter.
+     *
+     * @return array{status:string,items:array<int,array{key:string,label:string,level:string,details?:string}>}
+     */
+    public static function systemStatusJson(): array
+    {
+        $os = self::getOS();
+        $phpVersion = self::getPhpVersion();
+        $composerVersion = self::getComposerVersion();
+        $diskFree = self::getDiskFreeSpace();
+        $memoryLimit = self::getMemoryLimit();
+
+        $phpOk = version_compare($phpVersion, '8.3.0', '>=');
+        $pdoOk = self::hasExtension('pdo');
+        $jsonOk = self::hasExtension('json');
+        $mysqliOk = self::hasExtension('mysqli');
+        $mbstringOk = self::hasExtension('mbstring');
+        $composerOk = $composerVersion !== null;
+
+        $availablePdoDrivers = [];
+        if ($pdoOk && class_exists(\PDO::class)) {
+            try {
+                $availablePdoDrivers = \PDO::getAvailableDrivers();
+            } catch (\Throwable $e) {
+                $availablePdoDrivers = [];
+            }
+        }
+
+        $pdoSqliteOk = in_array('sqlite', $availablePdoDrivers, true);
+        $pdoMysqlOk = in_array('mysql', $availablePdoDrivers, true);
+        $pdoPgsqlOk = in_array('pgsql', $availablePdoDrivers, true);
+        $pdoSqlsrvOk = in_array('sqlsrv', $availablePdoDrivers, true);
+
+        $curlOk = self::hasExtension('curl');
+        $gdOk = self::hasExtension('gd');
+        $imagickOk = self::hasExtension('imagick');
+        $imageOk = $gdOk || $imagickOk;
+        $imageLabel = 'Image extension';
+        if ($imageOk) {
+            $installed = [];
+            if ($gdOk) {
+                $installed[] = 'GD';
+            }
+            if ($imagickOk) {
+                $installed[] = 'Imagick';
+            }
+            if (!empty($installed)) {
+                $imageLabel .= ' - ' . implode(', ', $installed);
+            }
+        } else {
+            $imageLabel .= ' - GD/Imagick';
+        }
+
+        $items = [
+            ['key' => 'os', 'label' => $os, 'level' => 'ok'],
+            ['key' => 'php', 'label' => "PHP - {$phpVersion}", 'level' => $phpOk ? 'ok' : 'error'],
+            ['key' => 'composer', 'label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'level' => $composerOk ? 'ok' : 'warn'],
+            ['key' => 'pdo', 'label' => 'PDO extension', 'level' => $pdoOk ? 'ok' : 'error'],
+            // DB drivers: if unavailable, mark as warning (optional until user chooses a DB).
+            ['key' => 'pdo_mysql', 'label' => 'PDO MySQL driver', 'level' => $pdoMysqlOk ? 'ok' : 'warn'],
+            ['key' => 'pdo_pgsql', 'label' => 'PDO PostgreSQL driver', 'level' => $pdoPgsqlOk ? 'ok' : 'warn'],
+            ['key' => 'pdo_sqlite', 'label' => 'PDO SQLite driver', 'level' => $pdoSqliteOk ? 'ok' : 'warn'],
+            ['key' => 'pdo_sqlsrv', 'label' => 'PDO SQL Server driver', 'level' => $pdoSqlsrvOk ? 'ok' : 'warn'],
+            ['key' => 'json', 'label' => 'JSON extension', 'level' => $jsonOk ? 'ok' : 'error'],
+            ['key' => 'mysqli', 'label' => 'MySQLi extension', 'level' => $mysqliOk ? 'ok' : 'error'],
+            ['key' => 'mbstring', 'label' => 'MBString extension', 'level' => $mbstringOk ? 'ok' : 'error'],
+            ['key' => 'curl', 'label' => 'cURL extension', 'level' => $curlOk ? 'ok' : 'warn'],
+            ['key' => 'image', 'label' => $imageLabel, 'level' => $imageOk ? 'ok' : 'warn'],
+            ['key' => 'disk_free', 'label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'level' => $diskFree !== null ? 'ok' : 'warn'],
+            ['key' => 'memory_limit', 'label' => 'Memory limit - ' . ($memoryLimit ?: 'Unknown'), 'level' => 'ok'],
+        ];
+
+        $overall = 'ok';
+        foreach ($items as $it) {
+            if ($it['level'] === 'error') {
+                $overall = 'error';
+                break;
+            }
+            if ($it['level'] === 'warn') {
+                $overall = 'warn';
+            }
+        }
+
+        return [
+            'status' => $overall,
+            'overall' => $overall,
+            'items' => $items,
+        ];
+    }
 }
