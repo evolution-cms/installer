@@ -7,6 +7,10 @@
 /.cache/
 /.phpunit.cache/
 .phpunit.result.cache
+.php-cs-fixer.cache
+.php-cs-fixer.php
+/.phpstan.cache/
+/.psalm/cache/
 
 # Local config / env
 .env
@@ -16,6 +20,9 @@ phpunit.xml
 # IDE / OS junk
 .idea/
 .vscode/
+.vs/
+.fleet/
+*.iml
 .DS_Store
 Thumbs.db
 Desktop.ini
@@ -40,6 +47,8 @@ composer.lock
 composer.phar
 
 # Go build artifacts
+go.work
+go.work.sum
 *.exe
 *.dll
 *.so
