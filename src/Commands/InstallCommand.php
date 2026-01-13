@@ -233,7 +233,8 @@ class InstallCommand extends Command
         $inputs['admin']['username'] = ($input->getOption('admin-username') !== null) ? $input->getOption('admin-username') : $this->askAdminUsername();
         $inputs['admin']['email'] = ($input->getOption('admin-email') !== null) ? $input->getOption('admin-email') : $this->askAdminEmail();
         $inputs['admin']['password'] = ($input->getOption('admin-password') !== null) ? $input->getOption('admin-password') : $this->askAdminPassword();
-        $inputs['admin']['directory'] = ($input->getOption('admin-directory') !== null) ? $input->getOption('admin-directory') : $this->askAdminDirectory();
+        $adminDirectoryInput = ($input->getOption('admin-directory') !== null) ? $input->getOption('admin-directory') : $this->askAdminDirectory();
+        $inputs['admin']['directory'] = $this->sanitizeAdminDirectory($adminDirectoryInput);
         $inputs['language'] = ($input->getOption('language') !== null) ? $input->getOption('language') : $this->askLanguage();
 
         // Mark Step 2 (database connection) as completed
@@ -625,14 +626,22 @@ class InstallCommand extends Command
     {
         $answer = $this->tui->ask('Enter your Admin directory:', 'manager');
 
-        // Validate directory name (only alphanumeric, hyphen, underscore allowed)
-        $sanitized = preg_replace('/[^a-zA-Z0-9_-]/', '', $answer);
-        if (empty($sanitized)) {
-            $sanitized = 'manager';
-        }
+        $sanitized = $this->sanitizeAdminDirectory($answer);
 
         $this->tui->replaceLastLogs('<fg=green>✔</> Your Admin directory: ' . $sanitized . '.', 2);
-        return $sanitized ?: 'manager';
+        return $sanitized;
+    }
+
+    protected function sanitizeAdminDirectory(?string $value): string
+    {
+        $value = trim((string) $value);
+
+        // Only alphanumeric, hyphen, underscore allowed.
+        $sanitized = preg_replace('/[^a-zA-Z0-9_-]/', '', $value);
+        if (!is_string($sanitized) || $sanitized === '') {
+            return 'manager';
+        }
+        return $sanitized;
     }
 
     /**
@@ -1571,6 +1580,11 @@ class InstallCommand extends Command
         $vars = [
             ...$this->buildDatabaseEnv($projectPath, $options['database'] ?? []),
         ];
+
+        $adminDir = $this->sanitizeAdminDirectory($options['admin']['directory'] ?? null);
+        if ($adminDir !== 'manager') {
+            $vars['MGR_DIR'] = $adminDir;
+        }
 
         if ($vars === []) {
             return;
@@ -2648,6 +2662,7 @@ class InstallCommand extends Command
 
         $this->removeInstallerAdminEnvVars($projectPath);
         $this->removeCoreCustomExampleFiles($projectPath);
+        $this->applyManagerDirectory($projectPath, $options);
 
         // Remove install directory
         $installDir = $projectPath . '/install';
@@ -2729,6 +2744,35 @@ class InstallCommand extends Command
         $this->steps['finalize']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
         $this->tui->addLog('Installation finalized successfully.', 'success');
+    }
+
+    protected function applyManagerDirectory(string $projectPath, array $options): void
+    {
+        $adminDir = $this->sanitizeAdminDirectory($options['admin']['directory'] ?? null);
+        if ($adminDir === 'manager') {
+            return;
+        }
+
+        $source = rtrim($projectPath, '/\\') . DIRECTORY_SEPARATOR . 'manager';
+        $target = rtrim($projectPath, '/\\') . DIRECTORY_SEPARATOR . $adminDir;
+
+        if (is_dir($target)) {
+            if (is_dir($source)) {
+                $this->tui?->addLog("Cannot rename manager directory: target already exists: {$target}", 'warning');
+            }
+            return;
+        }
+        if (!is_dir($source)) {
+            $this->tui?->addLog("Admin directory rename skipped: source directory not found: {$source}", 'warning');
+            return;
+        }
+
+        if (@rename($source, $target)) {
+            $this->tui?->addLog("Renamed manager directory to {$adminDir}.", 'info');
+            return;
+        }
+
+        $this->tui?->addLog("Failed to rename manager directory to {$adminDir}.", 'warning');
     }
 
     /**

@@ -387,7 +387,7 @@ class SystemInfo
     /**
      * Returns a stable JSON-serializable system status for the Go TUI adapter.
      *
-     * @return array{status:string,items:array<int,array{key:string,label:string,level:string,details?:string}>}
+     * @return array{status:string,overall:string,items:array<int,array{key:string,label:string,level:string,details?:string}>}
      */
     public static function systemStatusJson(): array
     {

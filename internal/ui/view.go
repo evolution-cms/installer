@@ -97,13 +97,25 @@ func (m *Model) confirmQuitModal(height int) string {
 		return ""
 	}
 
+	padX := 2
+	padY := 1
+	if w < 20 {
+		padX = 1
+	}
+	if height < 10 {
+		padY = 0
+	}
+
+	availW := max(0, w-2*padX)
+	availH := max(0, height-2*padY)
+
 	boxW := 66
-	if w < boxW {
-		boxW = max(30, w-4)
+	if availW < boxW {
+		boxW = max(30, availW-4)
 	}
 	boxH := 9
-	if height < boxH {
-		boxH = max(7, height)
+	if availH < boxH {
+		boxH = max(7, availH)
 	}
 
 	msg := "Do you really want to abort installation?"
@@ -129,7 +141,11 @@ func (m *Model) confirmQuitModal(height int) string {
 
 	content := truncatePlain(msg, panelContentWidth(boxW))
 	content = content + "\n\n" + truncateANSI(options, panelContentWidth(boxW)) + "\n\n" + truncateANSI(hint, panelContentWidth(boxW))
-	return panel("Confirm exit", content, boxW, boxH)
+	p := panel("Confirm exit", content, boxW, boxH)
+	if padX == 0 && padY == 0 {
+		return p
+	}
+	return lipgloss.NewStyle().Padding(padY, padX).Render(p)
 }
 
 func overlayAt(base string, baseW int, baseH int, overlay string, x int, y int) string {

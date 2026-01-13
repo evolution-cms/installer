@@ -1,6 +1,6 @@
 {
   "name": "evolution-cms/installer",
-  "description": "Evolution CMS Installer - CLI tool for creating new Evolution CMS projects",
+  "description": "Evolution CMS Installer - CLI tool for installing Evolution CMS projects",
   "type": "project",
   "keywords": [
     "evolution-cms",
@@ -60,14 +60,15 @@
     }
   },
   "config": {
+    "vendor-dir": "vendor-php",
     "sort-packages": true,
     "allow-plugins": {
       "symfony/flex": true
     }
   },
   "scripts": {
-    "test": "vendor/bin/phpunit",
-    "test-coverage": "vendor/bin/phpunit --coverage-text --coverage-html=build/coverage --coverage-filter=src || echo 'Note: Code coverage requires Xdebug or PCOV extension. Install it to see coverage reports.'"
+    "test": "vendor-php/bin/phpunit",
+    "test-coverage": "vendor-php/bin/phpunit --coverage-text --coverage-html=build/coverage --coverage-filter=src || echo 'Note: Code coverage requires Xdebug or PCOV extension. Install it to see coverage reports.'"
   },
   "scripts-descriptions": {
     "test": "Run PHPUnit tests",

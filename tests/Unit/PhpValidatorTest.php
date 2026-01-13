@@ -27,7 +27,9 @@ class PhpValidatorTest extends TestCase
 
     public function testValidateWithUnsupportedVersion(): void
     {
+        ob_start();
         $result = $this->validator->validate('8.2.0');
+        ob_end_clean();
         $this->assertFalse($result);
     }
 
@@ -57,4 +59,3 @@ class PhpValidatorTest extends TestCase
         $this->assertTrue($result);
     }
 }
-

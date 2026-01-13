@@ -1,12 +1,51 @@
+# Dependencies
 /vendor/
 /vendor-php/
-composer.lock
+/node_modules/
+
+# Local caches
+/.cache/
+/.phpunit.cache/
+.phpunit.result.cache
+
+# Local config / env
+.env
+.env.*
+phpunit.xml
+
+# IDE / OS junk
 .idea/
 .vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
 *.swp
 *.swo
 *~
-.DS_Store
-.phpunit.result.cache
-.phpunit.cache/
+
+# Logs / temp
+*.log
+*.tmp
+tmp/
+.tmp/
+
+# Coverage / build output
+/build/
+/dist/
 build/coverage/
+coverage*
+
+# Composer (this repo doesn't commit lockfile)
+composer.lock
+composer.phar
+
+# Go build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+*.pprof
+*.coverprofile

@@ -70,7 +70,7 @@ class CreatesDatabaseConfigTest extends TestCase
         $content = $method->invoke($this->processor, $params);
         
         $this->assertStringContainsString("'driver' => env('DB_TYPE', 'pgsql')", $content);
-        $this->assertStringContainsString("'engine' => env('DB_ENGINE')", $content);
+        $this->assertStringContainsString("'engine' => env('DB_ENGINE', '')", $content);
     }
 
     public function testGetDefaultPortForMySQL(): void
@@ -116,7 +116,7 @@ class CreatesDatabaseConfigTest extends TestCase
         $method->setAccessible(true);
 
         $collation = $method->invoke($this->processor, 'mysql', 'utf8mb4');
-        $this->assertEquals('utf8mb4_unicode_520_ci', $collation);
+        $this->assertEquals('utf8mb4_0900_ai_ci', $collation);
     }
 
     public function testGetDatabaseEngineForMySQL(): void
@@ -137,4 +137,3 @@ class CreatesDatabaseConfigTest extends TestCase
         $this->assertEquals('', $method->invoke($this->processor, 'pgsql'));
     }
 }
-

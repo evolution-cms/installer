@@ -11,19 +11,23 @@ class VersionResolverTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->resolver = new VersionResolver();
+        $this->resolver = new class () extends VersionResolver {
+            protected function fetchReleases(): array
+            {
+                return [
+                    ['tag_name' => 'v3.5.0-beta', 'prerelease' => true],
+                    ['tag_name' => 'v3.5.0', 'prerelease' => false],
+                    ['tag_name' => 'v3.4.9', 'prerelease' => false],
+                ];
+            }
+        };
     }
 
     public function testGetLatestVersion(): void
     {
-        // This will make actual HTTP request, so it might fail in tests
-        // But we can test the structure
         $version = $this->resolver->getLatestVersion();
         
-        // If version is found, it should match version pattern
-        if ($version !== null) {
-            $this->assertMatchesRegularExpression('/^v?\d+\.\d+\.\d+/', $version);
-        }
+        $this->assertSame('v3.5.0', $version);
     }
 
     public function testGetDownloadUrl(): void
@@ -88,4 +92,3 @@ class VersionResolverTest extends TestCase
         $this->assertFalse($method->invoke($this->resolver, '3.3.0'));
     }
 }
-

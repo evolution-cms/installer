@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/evolution-cms/installer/internal/domain"
@@ -13,10 +14,10 @@ import (
 )
 
 type DetectOptions struct {
-	MaxPages         int
-	CacheTTL         time.Duration
+	MaxPages          int
+	CacheTTL          time.Duration
 	IncludePrerelease bool
-	OnPageFetched    func(page int)
+	OnPageFetched     func(page int)
 }
 
 func DetectHighestStable(ctx context.Context, owner string, repo string, opts DetectOptions) (domain.ReleaseInfo, bool, error) {
@@ -68,20 +69,29 @@ type cacheFile struct {
 	Release domain.ReleaseInfo `json:"release"`
 }
 
-func cachePath() (string, error) {
+func cachePath(repo string) (string, error) {
 	dir, err := os.UserCacheDir()
 	if err != nil || dir == "" {
 		home, herr := os.UserHomeDir()
 		if herr != nil {
-			return "", err
+			return "", herr
 		}
 		dir = filepath.Join(home, ".cache")
 	}
-	return filepath.Join(dir, "evo-installer", "release.json"), nil
+	repo = strings.TrimSpace(repo)
+	if repo == "" {
+		repo = "unknown"
+	}
+	safe := strings.NewReplacer("/", "_", "\\", "_", " ", "_", ":", "_").Replace(repo)
+	safe = strings.Trim(safe, "_")
+	if safe == "" {
+		safe = "unknown"
+	}
+	return filepath.Join(dir, "evo-installer", "release-"+safe+".json"), nil
 }
 
 func readCache(repo string, ttl time.Duration) (domain.ReleaseInfo, bool) {
-	path, err := cachePath()
+	path, err := cachePath(repo)
 	if err != nil {
 		return domain.ReleaseInfo{}, false
 	}
@@ -107,7 +117,7 @@ func readCache(repo string, ttl time.Duration) (domain.ReleaseInfo, bool) {
 }
 
 func writeCache(info domain.ReleaseInfo) error {
-	path, err := cachePath()
+	path, err := cachePath(info.Repo)
 	if err != nil {
 		return err
 	}

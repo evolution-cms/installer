@@ -90,6 +90,7 @@ func runInstall(ctx context.Context, args []string) int {
 	return runTUI(ctx, ui.ModeInstall, &installengine.Options{
 		Force:          *force,
 		Dir:            installDir,
+		SelfVersion:    Version,
 		Branch:         strings.TrimSpace(*branch),
 		DBType:         strings.ToLower(strings.TrimSpace(*dbType)),
 		DBHost:         strings.TrimSpace(*dbHost),

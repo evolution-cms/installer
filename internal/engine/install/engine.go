@@ -25,6 +25,8 @@ type Options struct {
 	Force bool
 	Dir   string
 
+	SelfVersion string
+
 	Branch string
 
 	DBType     string
@@ -117,7 +119,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			},
 		})
 
-		releaseInfo, cached, err := release.DetectHighestStable(ctx, "evolution-cms", "evolution", release.DetectOptions{
+		releaseInfo, _, err := release.DetectHighestStable(ctx, "evolution-cms", "evolution", release.DetectOptions{
 			MaxPages: 3,
 			CacheTTL: time.Hour,
 			OnPageFetched: func(page int) {
@@ -160,7 +162,6 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 				tag = "v" + releaseInfo.HighestVersion
 			}
 			msg := "Highest stable release: " + tag
-			_ = cached
 			_ = emit(domain.Event{
 				Type:     domain.EventLog,
 				StepID:   releaseStepID,
@@ -259,6 +260,10 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 				Severity: domain.SeverityInfo,
 				Payload:  domain.StepDonePayload{OK: true},
 			})
+		}
+
+		if e.maybeOfferSelfUpdate(ctx, emit, actions) {
+			return
 		}
 
 		workDir := strings.TrimSpace(e.opt.Dir)
@@ -887,9 +892,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 				return
 			}
 		}
-		if strings.TrimSpace(adminDir) == "" {
-			adminDir = "manager"
-		}
+		adminDir = sanitizeAdminDir(adminDir)
 		_ = emit(domain.Event{
 			Type:     domain.EventLog,
 			StepID:   dbStepID,
@@ -991,6 +994,7 @@ type phpNewOptions struct {
 
 var consoleTagRe = regexp.MustCompile(`<[^>]+>`)
 var plainProgressLineRe = regexp.MustCompile(`^([A-Za-z][A-Za-z ]+)\s+\[[^\]]+\]\s+(\d{1,3})%\s*(\([^)]*\))?\s*$`)
+var adminDirSanitizeRe = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
 func stripConsoleTags(s string) string {
 	return consoleTagRe.ReplaceAllString(s, "")
@@ -1016,6 +1020,18 @@ func parsePlainProgressLine(line string) (label string, pct int, tail string, ok
 	}
 	tail = strings.TrimSpace(m[3])
 	return label, pct, tail, true
+}
+
+func sanitizeAdminDir(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "manager"
+	}
+	s = adminDirSanitizeRe.ReplaceAllString(s, "")
+	if s == "" {
+		return "manager"
+	}
+	return s
 }
 
 func shouldSuppressPHPSubprocessLine(line string) bool {
@@ -1405,6 +1421,154 @@ func askInput(ctx context.Context, emit func(domain.Event) bool, actions <-chan 
 			return a.Text, true
 		}
 	}
+}
+
+func (e *Engine) maybeOfferSelfUpdate(ctx context.Context, emit func(domain.Event) bool, actions <-chan domain.Action) bool {
+	const stepID = "check_installer_update"
+
+	current := strings.TrimSpace(e.opt.SelfVersion)
+	if current == "" || strings.EqualFold(current, "dev") || strings.EqualFold(current, "unknown") {
+		return false
+	}
+	curMaj, curMin, curPatch, ok := parseVersionForCompare(current)
+	if !ok {
+		return false
+	}
+
+	info, _, err := release.DetectHighestStable(ctx, "evolution-cms", "installer", release.DetectOptions{
+		MaxPages: 3,
+		CacheTTL: 12 * time.Hour,
+	})
+	if err != nil || info.HighestVersion == "" {
+		return false
+	}
+
+	newMaj, newMin, newPatch, ok := parseVersionForCompare(info.HighestVersion)
+	if !ok {
+		return false
+	}
+	if cmpSemver(newMaj, newMin, newPatch, curMaj, curMin, curPatch) <= 0 {
+		return false
+	}
+
+	tag := strings.TrimSpace(info.Tag)
+	if tag == "" {
+		tag = "v" + info.HighestVersion
+	}
+
+	cmdStr := "go install github.com/evolution-cms/installer/cmd/evo@" + tag
+
+	_ = emit(domain.Event{
+		Type:     domain.EventLog,
+		StepID:   stepID,
+		Source:   "install",
+		Severity: domain.SeverityInfo,
+		Payload: domain.LogPayload{
+			Message: fmt.Sprintf("New installer version available: %s (current %s).", tag, current),
+		},
+	})
+	_ = emit(domain.Event{
+		Type:     domain.EventLog,
+		StepID:   stepID,
+		Source:   "install",
+		Severity: domain.SeverityInfo,
+		Payload: domain.LogPayload{
+			Message: "Recommended update command: " + cmdStr,
+		},
+	})
+
+	if actions == nil {
+		return false
+	}
+
+	updateEnabled := true
+	reason := ""
+	if _, lookErr := exec.LookPath("go"); lookErr != nil {
+		updateEnabled = false
+		reason = "Go not found in PATH"
+	}
+
+	choice, okSel := askSelect(ctx, emit, actions, stepID, domain.QuestionState{
+		Active: true,
+		ID:     "self_update",
+		Kind:   domain.QuestionSelect,
+		Prompt: "A new installer version is available. Update now?",
+		Options: []domain.QuestionOption{
+			{ID: "update", Label: "Update now (" + cmdStr + ")", Enabled: updateEnabled, Reason: reason},
+			{ID: "skip", Label: "Continue without updating", Enabled: true},
+		},
+		Selected: 1,
+	})
+	if !okSel || choice != "update" {
+		return false
+	}
+
+	_ = emit(domain.Event{
+		Type:     domain.EventLog,
+		StepID:   stepID,
+		Source:   "install",
+		Severity: domain.SeverityInfo,
+		Payload: domain.LogPayload{
+			Message: "Updating installer…",
+		},
+	})
+
+	cmd := exec.CommandContext(ctx, "go", "install", "github.com/evolution-cms/installer/cmd/evo@"+tag)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		_ = emit(domain.Event{
+			Type:     domain.EventWarning,
+			StepID:   stepID,
+			Source:   "install",
+			Severity: domain.SeverityWarn,
+			Payload: domain.LogPayload{
+				Message: "Self-update failed; continuing installation.",
+				Fields:  map[string]string{"error": err.Error(), "output": strings.TrimSpace(string(out))},
+			},
+		})
+		return false
+	}
+
+	_ = emit(domain.Event{
+		Type:     domain.EventLog,
+		StepID:   stepID,
+		Source:   "install",
+		Severity: domain.SeverityInfo,
+		Payload: domain.LogPayload{
+			Message: "✔ Installer updated. Please restart the installer to use the new version.",
+		},
+	})
+
+	return true
+}
+
+func parseVersionForCompare(s string) (major int, minor int, patch int, ok bool) {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "v")
+	s = strings.TrimPrefix(s, "V")
+	return parseSemverPrefix(s)
+}
+
+func cmpSemver(aMaj int, aMin int, aPatch int, bMaj int, bMin int, bPatch int) int {
+	if aMaj != bMaj {
+		if aMaj < bMaj {
+			return -1
+		}
+		return 1
+	}
+	if aMin != bMin {
+		if aMin < bMin {
+			return -1
+		}
+		return 1
+	}
+	if aPatch != bPatch {
+		if aPatch < bPatch {
+			return -1
+		}
+		return 1
+	}
+	return 0
 }
 
 func validatePHPVersion(ctx context.Context) (string, bool, error) {

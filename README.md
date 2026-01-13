@@ -246,25 +246,30 @@ This allows you to start the project instantly without running a database server
 
 ### Running Tests
 
-Install dependencies first:
-
 ```bash
 composer install
-```
-
-Then run tests:
-
-```bash
 composer test
 ```
 
-Run tests with coverage:
+Or run PHPUnit directly:
+
+```bash
+vendor-php/bin/phpunit
+```
+
+Go unit tests:
+
+```bash
+go test ./...
+```
+
+Run PHP tests with coverage:
 
 ```bash
 composer test-coverage
 ```
 
-**Note:** Code coverage requires either Xdebug or PCOV PHP extension to be installed:
+Note: Code coverage requires either Xdebug or PCOV PHP extension to be installed:
 
 - **Xdebug**: `pecl install xdebug` or install via your OS package manager
 - **PCOV**: `pecl install pcov` (faster alternative to Xdebug for coverage only)
