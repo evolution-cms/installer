@@ -215,10 +215,11 @@ class SystemInfo
      */
     private static function findComposerExecutable(): ?string
     {
-        // Get home directory first
-        $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? '/root');
+        if (self::isExecutableAvailable('composer')) {
+            return 'composer';
+        }
 
-        // Try to get actual user home from posix_getpwuid if available
+        $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? '/root');
         if (function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
             $userInfo = @posix_getpwuid(posix_geteuid());
             if ($userInfo && isset($userInfo['dir'])) {
@@ -226,43 +227,11 @@ class SystemInfo
             }
         }
 
-        // Try reading .bash_aliases for composer alias FIRST (most reliable for Hestia)
-        $bashAliases = $home . '/.bash_aliases';
-        if (file_exists($bashAliases) && is_readable($bashAliases)) {
-            $content = @file_get_contents($bashAliases);
-            if ($content) {
-                // Try multiple regex patterns to match alias
-                $patterns = [
-                    '/alias\s+composer\s*=\s*["\']?([^"\'\s]+)["\']?/',  // alias composer=/path
-                    '/alias\s+composer\s*=\s*["\']([^"\']+)["\']/',      // alias composer="/path"
-                    '/composer\s*=\s*([^\s]+)/',                          // composer=/path (without alias keyword)
-                ];
-
-                foreach ($patterns as $pattern) {
-                    if (preg_match($pattern, $content, $matches)) {
-                        $aliasPath = trim($matches[1]);
-                        // Expand ~ to home directory
-                        if (str_starts_with($aliasPath, '~')) {
-                            $aliasPath = $home . substr($aliasPath, 1);
-                        }
-                        // Remove quotes if present
-                        $aliasPath = trim($aliasPath, '"\'');
-                        if ($aliasPath && file_exists($aliasPath) && is_executable($aliasPath)) {
-                            return $aliasPath;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Try common locations (especially /home/user/.composer/composer)
         $commonPaths = [
-            $home . '/.composer/composer',  // Direct composer installation (your case)
+            $home . '/.config/composer/vendor/bin/composer',
             '/usr/local/bin/composer',
             '/usr/bin/composer',
             '/bin/composer',
-            $home . '/.composer/vendor/bin/composer',
-            $home . '/.config/composer/vendor/bin/composer',
             '/opt/hestia/bin/composer',
             '/usr/local/hestia/bin/composer',
         ];
@@ -270,67 +239,6 @@ class SystemInfo
         foreach ($commonPaths as $path) {
             if ($path && file_exists($path) && is_executable($path)) {
                 return $path;
-            }
-        }
-
-        // Try using 'which' command with bash (for Hestia and similar environments)
-        if (function_exists('shell_exec')) {
-            $disabled = ini_get('disable_functions');
-            if (!$disabled || stripos($disabled, 'shell_exec') === false) {
-                $commands = [
-                    'bash -c "source ' . escapeshellarg($home . '/.bash_aliases') . ' 2>/dev/null; which composer 2>/dev/null"',
-                    'bash -c "source ' . escapeshellarg($home . '/.bashrc') . ' 2>/dev/null; which composer 2>/dev/null"',
-                    'bash -c "source ' . escapeshellarg($home . '/.profile') . ' 2>/dev/null; which composer 2>/dev/null"',
-                    'bash -c "export PATH=$PATH:/usr/local/bin:/usr/bin:/bin; which composer 2>/dev/null"',
-                    'which composer 2>/dev/null',
-                ];
-
-                foreach ($commands as $cmd) {
-                    $which = @shell_exec($cmd);
-                    if ($which) {
-                        $which = trim($which);
-                        if (!empty($which) && file_exists($which) && is_executable($which)) {
-                            return $which;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Try direct 'composer' command first
-        if (self::isExecutableAvailable('composer')) {
-            return 'composer';
-        }
-
-        $commonPaths = [
-            $home . '/.composer/composer',  // Direct composer installation
-            '/usr/local/bin/composer',
-            '/usr/bin/composer',
-            '/bin/composer',
-            $home . '/.composer/vendor/bin/composer',
-            $home . '/.config/composer/vendor/bin/composer',
-            '/opt/hestia/bin/composer',
-            '/usr/local/hestia/bin/composer',
-        ];
-
-        foreach ($commonPaths as $path) {
-            if ($path && file_exists($path) && is_executable($path)) {
-                return $path;
-            }
-        }
-
-
-        // Try using 'whereis' command
-        if (function_exists('shell_exec')) {
-            $disabled = ini_get('disable_functions');
-            if (!$disabled || stripos($disabled, 'shell_exec') === false) {
-                $whereis = @shell_exec('whereis -b composer 2>/dev/null');
-                if ($whereis && preg_match('/composer:\s+(\S+)/', $whereis, $matches)) {
-                    $path = trim($matches[1]);
-                    if (!empty($path) && is_executable($path)) {
-                        return $path;
-                    }
-                }
             }
         }
 

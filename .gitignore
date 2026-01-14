@@ -49,6 +49,7 @@ composer.phar
 # Go build artifacts
 go.work
 go.work.sum
+bin/evo.bin
 *.exe
 *.dll
 *.so

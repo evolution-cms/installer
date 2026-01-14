@@ -2,9 +2,12 @@
 
 CLI tool for creating new Evolution CMS projects.
 
-## Installation
+## Requirements
 
-### Global Installation
+- PHP 8.3+
+- Composer 2.x
+
+## Install
 
 Install globally using Composer:
 
@@ -12,15 +15,13 @@ Install globally using Composer:
 composer global require evolution-cms/installer
 ```
 
-**Important:** After installation, make sure the Composer global bin directory is in your system `PATH` so the `evo` command is accessible from anywhere.
+**Important:** Add the Composer global bin directory to your `PATH` so the `evo` command is accessible from anywhere.
 
 #### Linux / macOS
 
 Add to your shell configuration file (`~/.bashrc`, `~/.zshrc`, or `~/.profile`):
 
 ```bash
-export PATH="$HOME/.composer/vendor/bin:$PATH"
-# or for newer Composer installations:
 export PATH="$HOME/.config/composer/vendor/bin:$PATH"
 ```
 
@@ -47,10 +48,35 @@ source ~/.bashrc  # or source ~/.zshrc
 After setting up PATH, verify the installation:
 
 ```bash
-evo --version
+evo version
 ```
 
-If you see the version, installation was successful!
+On first run, the `evo` PHP bootstrapper downloads the matching Go binary from GitHub Releases, verifies it via `checksums.txt`, stores it next to the bootstrapper, then runs it.
+
+To pre-install the Go binary (optional):
+
+```bash
+evo self-install
+```
+
+## Update
+
+Recommended:
+
+```bash
+evo self-update
+```
+
+Alternative:
+
+```bash
+composer global update evolution-cms/installer
+```
+
+## Troubleshooting
+
+- GitHub API rate limit: set `GITHUB_TOKEN` (classic or fine-grained token with public repo access) in your environment.
+- Permissions: ensure the package `bin/` directory is writable (the bootstrapper installs `bin/evo.bin` or `bin/evo.exe` there).
 
 ## Usage
 
@@ -149,7 +175,7 @@ This installer incorporates best practices from the [Evolution CMS Docker implem
 ### Requirements
 
 - PHP 8.3+
-- Composer
+- Composer 2.x
 - Database: MySQL 5.7+ / MariaDB 10.3+, PostgreSQL 10.0+, SQLite 3.26.0+, or SQL Server 2017+
 
 ### Installation for Development

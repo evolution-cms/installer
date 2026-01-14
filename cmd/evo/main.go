@@ -5,7 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -34,22 +37,60 @@ func run(ctx context.Context, args []string) int {
 		return 2
 	}
 
-	switch strings.ToLower(strings.TrimSpace(args[0])) {
-	case "version":
-		fmt.Printf("evo %s (%s) %s\n", Version, GitCommit, BuildDate)
+	cmd := strings.ToLower(strings.TrimSpace(args[0]))
+	switch cmd {
+	case "version", "--version", "-v":
+		fmt.Printf("Evolution CMS Installer %s\n", Version)
 		return 0
-	case "install":
-		return runInstall(ctx, args[1:])
-	case "doctor":
-		return runTUI(ctx, ui.ModeDoctor, nil)
 	case "-h", "--help", "help":
 		printUsage()
 		return 0
+	case "install":
+		if !ensureComposer2(ctx) {
+			return 1
+		}
+		return runInstall(ctx, args[1:])
+	case "doctor":
+		if !ensureComposer2(ctx) {
+			return 1
+		}
+		return runTUI(ctx, ui.ModeDoctor, nil)
 	default:
+		if !ensureComposer2(ctx) {
+			return 1
+		}
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", args[0])
 		printUsage()
 		return 2
 	}
+}
+
+var composerVersionMajorRe = regexp.MustCompile(`(?i)\bComposer version\s+(\d+)\.`)
+
+func ensureComposer2(ctx context.Context) bool {
+	out, err := exec.CommandContext(ctx, "composer", "--version").CombinedOutput()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Composer 2.x is required.")
+		fmt.Fprintln(os.Stderr, "Please upgrade Composer before continuing.")
+		return false
+	}
+
+	m := composerVersionMajorRe.FindStringSubmatch(string(out))
+	if len(m) < 2 {
+		fmt.Fprintln(os.Stderr, "Composer 2.x is required.")
+		fmt.Fprintln(os.Stderr, "Please upgrade Composer before continuing.")
+		return false
+	}
+
+	major, err := strconv.Atoi(m[1])
+	if err != nil || major < 2 {
+		fmt.Fprintln(os.Stderr, "Composer 2.x is required.")
+		fmt.Fprintln(os.Stderr, "Your system uses Composer 1.x which is incompatible with PHP 8.3.")
+		fmt.Fprintln(os.Stderr, "Please upgrade Composer before continuing.")
+		return false
+	}
+
+	return true
 }
 
 func runInstall(ctx context.Context, args []string) int {

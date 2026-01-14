@@ -1,21 +1,437 @@
 #!/usr/bin/env php
 <?php
 
-/**
- * Evolution CMS Installer
- *
- * This file is the entry point for the Evolution CMS installer CLI tool.
- * It should be made executable: chmod +x bin/evo
- */
+declare(strict_types=1);
 
-if (file_exists(dirname(__DIR__) . '/vendor-php/autoload.php')) {
-    require dirname(__DIR__) . '/vendor-php/autoload.php';
-} else {
-    echo "Please run 'composer install' to install dependencies." . PHP_EOL;
-    exit(1);
+final class EvoBootstrapper
+{
+    private const REPO = 'evolution-cms/installer';
+    private const API_LATEST_RELEASE = 'https://api.github.com/repos/' . self::REPO . '/releases/latest';
+
+    /** @var array<int, string> */
+    private array $args;
+
+    private string $packageRoot;
+    private string $binDir;
+    private string $binaryPath;
+
+    /**
+     * @param array<int, string> $argv
+     */
+    public function __construct(array $argv)
+    {
+        $this->args = $argv;
+
+        $scriptPath = realpath(__FILE__) ?: __FILE__;
+        $this->binDir = dirname($scriptPath);
+        $this->packageRoot = realpath($this->binDir . DIRECTORY_SEPARATOR . '..') ?: dirname($this->binDir);
+
+        $this->binaryPath = $this->resolveInstalledBinaryPath();
+    }
+
+    public function run(): int
+    {
+        $cmd = $this->args[0] ?? '';
+
+        if ($cmd === 'self-install' || $cmd === 'install-binary') {
+            $this->installBinary(false);
+            return 0;
+        }
+
+        if ($cmd === 'self-update') {
+            $this->selfUpdate();
+            return 0;
+        }
+
+        if (!is_file($this->binaryPath)) {
+            $this->installBinary(false);
+        }
+
+        return $this->execBinary($this->args);
+    }
+
+    private function selfUpdate(): void
+    {
+        $current = $this->getInstalledVersion() ?? '(not installed)';
+        [$tag] = $this->getLatestReleaseInfo();
+        $this->out("Current: {$current}");
+        $this->out("Latest:  {$tag}");
+        $this->installBinary(true);
+    }
+
+    private function installBinary(bool $isSelfUpdate): void
+    {
+        $this->assertWritableDir($this->binDir);
+
+        [$tag, $assets] = $this->getLatestReleaseInfo();
+        [$expectedAssetName, $installedBinaryPath] = $this->resolveAssetNameAndBinaryPath();
+
+        $checksumsUrl = $this->findAssetUrl($assets, 'checksums.txt');
+        $binaryUrl = $this->findAssetUrl($assets, $expectedAssetName);
+
+        $checksums = $this->downloadString($checksumsUrl);
+        $shaMap = $this->parseChecksums($checksums);
+        $expectedSha = $shaMap[$expectedAssetName] ?? null;
+        if ($expectedSha === null) {
+            throw new RuntimeException("checksums.txt does not contain sha256 for: {$expectedAssetName}");
+        }
+
+        if ($isSelfUpdate) {
+            $this->out("Updating to {$tag}...");
+        } else {
+            $this->out("Installing {$tag}...");
+        }
+
+        $tmpPath = $installedBinaryPath . '.tmp';
+        $this->downloadToFile($binaryUrl, $tmpPath);
+
+        $actualSha = hash_file('sha256', $tmpPath);
+        if (!is_string($actualSha) || strtolower($actualSha) !== strtolower($expectedSha)) {
+            @unlink($tmpPath);
+            throw new RuntimeException("Checksum mismatch for {$expectedAssetName} (expected {$expectedSha}, got {$actualSha})");
+        }
+
+        if (PHP_OS_FAMILY !== 'Windows') {
+            @chmod($tmpPath, 0755);
+        }
+
+        $this->atomicReplace($tmpPath, $installedBinaryPath);
+        $this->out('OK');
+    }
+
+    /**
+     * @param array<int, string> $args
+     */
+    private function execBinary(array $args): int
+    {
+        $cmdParts = [escapeshellarg($this->binaryPath)];
+        foreach ($args as $arg) {
+            $cmdParts[] = escapeshellarg($arg);
+        }
+        $cmd = implode(' ', $cmdParts);
+        $exitCode = 0;
+        passthru($cmd, $exitCode);
+        return (int)$exitCode;
+    }
+
+    private function getInstalledVersion(): ?string
+    {
+        if (!is_file($this->binaryPath)) {
+            return null;
+        }
+        if (!is_callable('exec')) {
+            return null;
+        }
+
+        $out = [];
+        $code = 0;
+        @exec(escapeshellarg($this->binaryPath) . ' version 2>&1', $out, $code);
+        if ($code !== 0) {
+            return null;
+        }
+
+        $text = trim(implode("\n", array_map('strval', $out)));
+        if ($text === '') {
+            return null;
+        }
+        if (preg_match('/\\bEvolution CMS Installer\\s+(\\S+)/', $text, $m)) {
+            return $m[1];
+        }
+        if (preg_match('/\\bevo\\s+(\\S+)/', $text, $m)) {
+            return $m[1];
+        }
+        return $text;
+    }
+
+    private function resolveInstalledBinaryPath(): string
+    {
+        [, $path] = $this->resolveAssetNameAndBinaryPath();
+        return $path;
+    }
+
+    /**
+     * @return array{0: string, 1: string} [$assetName, $installedBinaryPath]
+     */
+    private function resolveAssetNameAndBinaryPath(): array
+    {
+        $os = match (PHP_OS_FAMILY) {
+            'Linux' => 'linux',
+            'Darwin' => 'darwin',
+            'Windows' => 'windows',
+            default => throw new RuntimeException('Unsupported OS: ' . PHP_OS_FAMILY),
+        };
+
+        $machine = strtolower(trim((string)php_uname('m')));
+        $arch = match ($machine) {
+            'x86_64', 'amd64' => 'amd64',
+            'aarch64', 'arm64' => 'arm64',
+            default => throw new RuntimeException('Unsupported architecture: ' . $machine),
+        };
+
+        $assetName = "evo-{$os}-{$arch}";
+        $binaryName = 'evo.bin';
+        if ($os === 'windows') {
+            $assetName .= '.exe';
+            $binaryName = 'evo.exe';
+        }
+
+        return [$assetName, $this->binDir . DIRECTORY_SEPARATOR . $binaryName];
+    }
+
+    /**
+     * @return array{0: string, 1: array<int, array<string, mixed>>} [$tag, $assets]
+     */
+    private function getLatestReleaseInfo(): array
+    {
+        $json = $this->downloadString(self::API_LATEST_RELEASE, true);
+        $data = json_decode($json, true);
+        if (!is_array($data)) {
+            throw new RuntimeException('Failed to parse GitHub API response.');
+        }
+
+        $tag = $data['tag_name'] ?? null;
+        $assets = $data['assets'] ?? null;
+        if (!is_string($tag) || !is_array($assets)) {
+            throw new RuntimeException('Unexpected GitHub API response.');
+        }
+
+        return [$tag, $assets];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $assets
+     */
+    private function findAssetUrl(array $assets, string $assetName): string
+    {
+        foreach ($assets as $asset) {
+            if (!is_array($asset)) {
+                continue;
+            }
+            if (($asset['name'] ?? null) !== $assetName) {
+                continue;
+            }
+            $url = $asset['browser_download_url'] ?? null;
+            if (!is_string($url) || $url === '') {
+                throw new RuntimeException("Missing download URL for asset: {$assetName}");
+            }
+            $this->assertHttpsUrl($url);
+            return $url;
+        }
+        throw new RuntimeException("Release asset not found: {$assetName}");
+    }
+
+    private function downloadString(string $url, bool $isApi = false): string
+    {
+        $this->assertHttpsUrl($url);
+
+        $ctx = $this->createHttpContext($isApi);
+        $contents = @file_get_contents($url, false, $ctx);
+        if (is_string($contents)) {
+            return $contents;
+        }
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init();
+            if ($ch !== false) {
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, $this->createHttpHeaders($isApi));
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+
+                $data = curl_exec($ch);
+                $err = curl_error($ch);
+                $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+                curl_close($ch);
+
+                if (is_string($data) && $code >= 200 && $code < 300) {
+                    return $data;
+                }
+                $err = trim((string)$err);
+                throw new RuntimeException("Download failed: {$url} (HTTP {$code})" . ($err !== '' ? " {$err}" : ''));
+            }
+        }
+
+        $error = error_get_last();
+        $message = is_array($error) && isset($error['message']) ? $error['message'] : 'unknown error';
+        throw new RuntimeException("Download failed: {$url} ({$message})");
+    }
+
+    private function downloadToFile(string $url, string $destPath): void
+    {
+        $this->assertHttpsUrl($url);
+
+        $ctx = $this->createHttpContext(false);
+        $in = @fopen($url, 'rb', false, $ctx);
+        if (is_resource($in)) {
+            $out = @fopen($destPath, 'wb');
+            if (!is_resource($out)) {
+                @fclose($in);
+                throw new RuntimeException("Failed to write file: {$destPath}");
+            }
+
+            $ok = @stream_copy_to_stream($in, $out);
+            @fclose($in);
+            @fclose($out);
+
+            if (!is_int($ok) || $ok <= 0) {
+                @unlink($destPath);
+                throw new RuntimeException("Download failed or empty file: {$url}");
+            }
+            return;
+        }
+
+        if (function_exists('curl_init')) {
+            $fh = @fopen($destPath, 'wb');
+            if (!is_resource($fh)) {
+                throw new RuntimeException("Failed to write file: {$destPath}");
+            }
+
+            $ch = curl_init();
+            if ($ch === false) {
+                @fclose($fh);
+                throw new RuntimeException('Failed to initialize cURL.');
+            }
+
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_FILE, $fh);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $this->createHttpHeaders(false));
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+
+            $ok = curl_exec($ch);
+            $err = curl_error($ch);
+            $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+            @fclose($fh);
+
+            if ($ok === true && $code >= 200 && $code < 300 && is_file($destPath) && filesize($destPath) > 0) {
+                return;
+            }
+
+            @unlink($destPath);
+            $err = trim((string)$err);
+            throw new RuntimeException("Download failed: {$url} (HTTP {$code})" . ($err !== '' ? " {$err}" : ''));
+        }
+
+        $error = error_get_last();
+        $message = is_array($error) && isset($error['message']) ? $error['message'] : 'unknown error';
+        throw new RuntimeException("Failed to open URL: {$url} ({$message})");
+    }
+
+    /**
+     * @return array<string, string> filename => sha256
+     */
+    private function parseChecksums(string $checksumsTxt): array
+    {
+        $map = [];
+        $lines = preg_split('/\\R/', $checksumsTxt) ?: [];
+        foreach ($lines as $line) {
+            $line = trim((string)$line);
+            if ($line === '') {
+                continue;
+            }
+            if (!preg_match('/^([a-f0-9]{64})\\s+(\\S+)$/i', $line, $m)) {
+                continue;
+            }
+            $map[$m[2]] = strtolower($m[1]);
+        }
+        return $map;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function createHttpHeaders(bool $isApi): array
+    {
+        $headers = [
+            'User-Agent: evo-bootstrapper',
+        ];
+        if ($isApi) {
+            $headers[] = 'Accept: application/vnd.github+json';
+            $token = getenv('GITHUB_TOKEN');
+            if (is_string($token) && trim($token) !== '') {
+                $headers[] = 'Authorization: Bearer ' . trim($token);
+            }
+        }
+
+        return $headers;
+    }
+
+    private function createHttpContext(bool $isApi): mixed
+    {
+        return stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => implode("\r\n", $this->createHttpHeaders($isApi)),
+                'timeout' => 60,
+                'follow_location' => 1,
+                'max_redirects' => 5,
+            ],
+            'ssl' => [
+                'verify_peer' => true,
+                'verify_peer_name' => true,
+            ],
+        ]);
+    }
+
+    private function atomicReplace(string $tmpPath, string $destPath): void
+    {
+        if (@rename($tmpPath, $destPath)) {
+            return;
+        }
+
+        // Windows does not allow renaming over an existing file.
+        if (is_file($destPath) && !@unlink($destPath)) {
+            @unlink($tmpPath);
+            throw new RuntimeException("Failed to replace existing binary: {$destPath}");
+        }
+        if (!@rename($tmpPath, $destPath)) {
+            @unlink($tmpPath);
+            throw new RuntimeException("Failed to move binary into place: {$destPath}");
+        }
+    }
+
+    private function assertWritableDir(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            throw new RuntimeException("Missing directory: {$dir}");
+        }
+        if (!is_writable($dir)) {
+            throw new RuntimeException("Directory is not writable: {$dir}");
+        }
+    }
+
+    private function assertHttpsUrl(string $url): void
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https') {
+            throw new RuntimeException('Refusing non-HTTPS URL: ' . $url);
+        }
+    }
+
+    private function out(string $message): void
+    {
+        fwrite(STDOUT, $message . PHP_EOL);
+    }
 }
 
-use EvolutionCMS\Installer\Application;
+try {
+    $args = $_SERVER['argv'] ?? [];
+    if (!is_array($args)) {
+        $args = [];
+    }
+    array_shift($args);
 
-$app = new Application();
-$app->run();
+    $app = new EvoBootstrapper($args);
+    exit($app->run());
+} catch (Throwable $e) {
+    fwrite(STDERR, 'Error: ' . $e->getMessage() . PHP_EOL);
+    exit(1);
+}
