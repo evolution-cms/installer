@@ -33,6 +33,13 @@ final class EvoBootstrapper
     {
         $cmd = $this->args[0] ?? '';
 
+        // Internal adapter command used by the Go TUI to probe PHP/Composer environment.
+        // Must not require network access or the Go binary.
+        if ($cmd === 'system-status') {
+            $this->printSystemStatusJson();
+            return 0;
+        }
+
         if ($cmd === 'self-install' || $cmd === 'install-binary') {
             $this->installBinary(false);
             return 0;
@@ -48,6 +55,186 @@ final class EvoBootstrapper
         }
 
         return $this->execBinary($this->args);
+    }
+
+    private function printSystemStatusJson(): void
+    {
+        $payload = $this->systemStatusJson();
+        fwrite(STDOUT, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . PHP_EOL);
+    }
+
+    /**
+     * @return array{status:string,overall:string,items:array<int,array{key:string,label:string,level:string,details?:string}>}
+     */
+    private function systemStatusJson(): array
+    {
+        $os = $this->getOSLabel();
+
+        $phpVersion = PHP_VERSION;
+        $phpOk = version_compare($phpVersion, '8.3.0', '>=');
+
+        $composerVersion = $this->getComposerVersion();
+        $composerOk = $composerVersion !== null;
+
+        $pdoOk = extension_loaded('pdo');
+        $jsonOk = extension_loaded('json');
+        $mysqliOk = extension_loaded('mysqli');
+        $mbstringOk = extension_loaded('mbstring');
+
+        $availablePdoDrivers = [];
+        if ($pdoOk && class_exists(\PDO::class)) {
+            try {
+                $availablePdoDrivers = \PDO::getAvailableDrivers();
+            } catch (Throwable $e) {
+                $availablePdoDrivers = [];
+            }
+        }
+
+        $pdoSqliteOk = in_array('sqlite', $availablePdoDrivers, true);
+        $pdoMysqlOk = in_array('mysql', $availablePdoDrivers, true);
+        $pdoPgsqlOk = in_array('pgsql', $availablePdoDrivers, true);
+        $pdoSqlsrvOk = in_array('sqlsrv', $availablePdoDrivers, true);
+
+        $curlOk = extension_loaded('curl');
+        $gdOk = extension_loaded('gd');
+        $imagickOk = extension_loaded('imagick');
+        $imageOk = $gdOk || $imagickOk;
+
+        $imageLabel = 'Image extension';
+        if ($imageOk) {
+            $installed = [];
+            if ($gdOk) {
+                $installed[] = 'GD';
+            }
+            if ($imagickOk) {
+                $installed[] = 'Imagick';
+            }
+            if (!empty($installed)) {
+                $imageLabel .= ' - ' . implode(', ', $installed);
+            }
+        } else {
+            $imageLabel .= ' - GD/Imagick';
+        }
+
+        $diskFree = $this->getDiskFreeSpaceLabel();
+        $memoryLimit = ini_get('memory_limit') ?: 'Unknown';
+
+        $items = [
+            ['key' => 'os', 'label' => $os, 'level' => 'ok'],
+            ['key' => 'php', 'label' => "PHP - {$phpVersion}", 'level' => $phpOk ? 'ok' : 'error'],
+            ['key' => 'composer', 'label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'level' => $composerOk ? 'ok' : 'warn'],
+            ['key' => 'pdo', 'label' => 'PDO extension', 'level' => $pdoOk ? 'ok' : 'error'],
+            // DB drivers: if unavailable, mark as warning (optional until user chooses a DB).
+            ['key' => 'pdo_mysql', 'label' => 'PDO MySQL driver', 'level' => $pdoMysqlOk ? 'ok' : 'warn'],
+            ['key' => 'pdo_pgsql', 'label' => 'PDO PostgreSQL driver', 'level' => $pdoPgsqlOk ? 'ok' : 'warn'],
+            ['key' => 'pdo_sqlite', 'label' => 'PDO SQLite driver', 'level' => $pdoSqliteOk ? 'ok' : 'warn'],
+            ['key' => 'pdo_sqlsrv', 'label' => 'PDO SQL Server driver', 'level' => $pdoSqlsrvOk ? 'ok' : 'warn'],
+            ['key' => 'json', 'label' => 'JSON extension', 'level' => $jsonOk ? 'ok' : 'error'],
+            ['key' => 'mysqli', 'label' => 'MySQLi extension', 'level' => $mysqliOk ? 'ok' : 'error'],
+            ['key' => 'mbstring', 'label' => 'MBString extension', 'level' => $mbstringOk ? 'ok' : 'error'],
+            ['key' => 'curl', 'label' => 'cURL extension', 'level' => $curlOk ? 'ok' : 'warn'],
+            ['key' => 'image', 'label' => $imageLabel, 'level' => $imageOk ? 'ok' : 'warn'],
+            ['key' => 'disk_free', 'label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'level' => $diskFree !== null ? 'ok' : 'warn'],
+            ['key' => 'memory_limit', 'label' => 'Memory limit - ' . $memoryLimit, 'level' => 'ok'],
+        ];
+
+        $overall = 'ok';
+        foreach ($items as $it) {
+            if (($it['level'] ?? '') === 'error') {
+                $overall = 'error';
+                break;
+            }
+            if (($it['level'] ?? '') === 'warn') {
+                $overall = 'warn';
+            }
+        }
+
+        return [
+            'status' => $overall,
+            'overall' => $overall,
+            'items' => $items,
+        ];
+    }
+
+    private function getOSLabel(): string
+    {
+        $os = php_uname('s');
+        $version = php_uname('r');
+        $arch = php_uname('m');
+
+        $osLower = strtolower($os);
+        $osName = match (true) {
+            str_contains($osLower, 'darwin') => 'macOS',
+            str_contains($osLower, 'linux') => 'Linux',
+            str_contains($osLower, 'win') => 'Windows',
+            default => $os,
+        };
+
+        return sprintf('%s - %s (%s)', $osName, $version, $arch);
+    }
+
+    private function getComposerVersion(): ?string
+    {
+        $re = '/Composer\\s+(?:version\\s+)?([0-9]+\\.[0-9]+\\.[0-9]+)/i';
+
+        $out = $this->runCommandCaptureOutput('composer -V 2>&1');
+        if ($out !== null && preg_match($re, $out, $m)) {
+            return $m[1];
+        }
+
+        $out = $this->runCommandCaptureOutput('composer --version 2>&1');
+        if ($out !== null && preg_match($re, $out, $m)) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
+    private function runCommandCaptureOutput(string $cmd): ?string
+    {
+        if (function_exists('shell_exec')) {
+            $disabled = (string)ini_get('disable_functions');
+            if ($disabled === '' || stripos($disabled, 'shell_exec') === false) {
+                $out = @shell_exec($cmd);
+                if (is_string($out) && trim($out) !== '') {
+                    return trim($out);
+                }
+            }
+        }
+
+        if (function_exists('exec')) {
+            $disabled = (string)ini_get('disable_functions');
+            if ($disabled === '' || stripos($disabled, 'exec') === false) {
+                $lines = [];
+                $code = 0;
+                @exec($cmd, $lines, $code);
+                $out = trim(implode("\n", array_map('strval', $lines)));
+                if ($out !== '') {
+                    return $out;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function getDiskFreeSpaceLabel(): ?string
+    {
+        $free = @disk_free_space('.');
+        if (!is_float($free) && !is_int($free)) {
+            return null;
+        }
+
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $unitIndex = 0;
+        $value = (float)$free;
+
+        while ($value >= 1024 && $unitIndex < count($units) - 1) {
+            $value /= 1024;
+            $unitIndex++;
+        }
+
+        return sprintf('%.1f %s free', round($value, 1), $units[$unitIndex]);
     }
 
     private function selfUpdate(): void
