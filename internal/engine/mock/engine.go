@@ -456,8 +456,8 @@ func fetchSystemStatus(ctx context.Context) (domain.SystemStatus, error) {
 
 func findPHPInstallerCLIEntry() (string, error) {
 	candidates := []string{
-		filepath.Join("bin", "evo"),
 		filepath.Join("installer", "bin", "evo"),
+		filepath.Join("bin", "evo"),
 	}
 	for _, p := range candidates {
 		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {

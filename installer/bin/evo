@@ -1,0 +1,37 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Internal PHP CLI entrypoint for the Go TUI adapter.
+ *
+ * The Go installer invokes this script via: `php installer/bin/evo ...`
+ * to run Symfony Console commands (install/system-status/etc) without
+ * going through the `bin/evo` bootstrapper.
+ */
+
+$root = dirname(__DIR__, 2);
+$autoload = null;
+foreach ([
+    $root . '/vendor-php/autoload.php',
+    $root . '/vendor/autoload.php',
+    dirname($root, 2) . '/autoload.php',
+] as $candidate) {
+    if (is_file($candidate)) {
+        $autoload = $candidate;
+        break;
+    }
+}
+
+if ($autoload === null) {
+    fwrite(STDERR, "Please run 'composer install' to install dependencies." . PHP_EOL);
+    exit(1);
+}
+
+require $autoload;
+
+use EvolutionCMS\Installer\Application;
+
+$app = new Application();
+$app->run();
