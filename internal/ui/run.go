@@ -7,7 +7,9 @@ import (
 	"strconv"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/term"
+	"github.com/muesli/termenv"
 
 	"github.com/evolution-cms/installer/internal/domain"
 )
@@ -17,8 +19,6 @@ func Run(ctx context.Context, mode Mode, events <-chan domain.Event, meta Meta) 
 }
 
 func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, actions chan<- domain.Action, meta Meta, cancel func()) error {
-	m := NewModel(ctx, mode, events, actions, meta, cancel)
-
 	in := os.Stdin
 	out := os.Stdout
 	var tty *os.File
@@ -38,6 +38,12 @@ func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, a
 		defer tty.Close()
 	}
 
+	// Ensure Lip Gloss and other Charm components detect color capabilities based on the
+	// actual terminal output we're writing to (which might be /dev/tty).
+	configureTerminalOutput(out)
+
+	m := NewModel(ctx, mode, events, actions, meta, cancel)
+
 	// Seed a sensible initial size so the UI can render even if WindowSizeMsg never arrives.
 	if w, h, ok := detectTerminalSize(in, out, tty); ok {
 		m.width = w
@@ -51,6 +57,17 @@ func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, a
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithInput(in), tea.WithOutput(out))
 	_, err := p.Run()
 	return err
+}
+
+func configureTerminalOutput(out *os.File) {
+	if out == nil {
+		return
+	}
+
+	o := termenv.NewOutput(out, termenv.WithTTY(true), termenv.WithColorCache(true))
+	termenv.SetDefaultOutput(o)
+	lipgloss.DefaultRenderer().SetOutput(o)
+	lipgloss.SetColorProfile(o.Profile)
 }
 
 func detectTerminalSize(in *os.File, out *os.File, tty *os.File) (w int, h int, ok bool) {
