@@ -1906,6 +1906,9 @@ func fetchSystemStatus(ctx context.Context) (domain.SystemStatus, error) {
 		return domain.SystemStatus{}, err
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+
 	cmd := exec.CommandContext(ctx, "php", entry, "system-status", "--format=json", "--no-ansi", "--no-interaction")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -1958,20 +1961,68 @@ func fetchSystemStatus(ctx context.Context) (domain.SystemStatus, error) {
 }
 
 func findPHPInstallerCLIEntry() (string, error) {
-	candidates := []string{
-		filepath.Join("installer", "bin", "evo"),
-		filepath.Join("bin", "evo"),
+	candidates := []string{}
+
+	// Prefer the bootstrapper on PATH (installed alongside the Go binary).
+	if p, err := exec.LookPath("evo"); err == nil && p != "" {
+		candidates = append(candidates, p)
 	}
-	for _, p := range candidates {
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			abs, absErr := filepath.Abs(p)
-			if absErr != nil {
-				return p, nil
-			}
-			return abs, nil
+
+	// Prefer a sibling `evo` script next to the running executable (common install layout:
+	// `evo` bootstrapper + `evo.bin` Go binary in the same directory).
+	if exe, err := os.Executable(); err == nil && exe != "" {
+		exeDir := filepath.Dir(exe)
+		if exeDir != "" && exeDir != "." {
+			candidates = append(candidates, filepath.Join(exeDir, "evo"))
 		}
 	}
+
+	// Repo-local fallbacks (when running from source checkout).
+	candidates = append(candidates,
+		filepath.Join("installer", "bin", "evo"),
+		filepath.Join("bin", "evo"),
+	)
+	for _, p := range candidates {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		fi, err := os.Stat(p)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		if !looksLikePHPScript(p) {
+			continue
+		}
+
+		abs, absErr := filepath.Abs(p)
+		if absErr != nil {
+			return p, nil
+		}
+		return abs, nil
+	}
 	return "", fmt.Errorf("unable to find installer PHP CLI entry (tried: %s)", strings.Join(candidates, ", "))
+}
+
+func looksLikePHPScript(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 256)
+	n, _ := f.Read(buf)
+	if n <= 0 {
+		return false
+	}
+	head := strings.ToLower(string(buf[:n]))
+	if strings.Contains(head, "<?php") {
+		return true
+	}
+	if strings.HasPrefix(head, "#!") && strings.Contains(head, "php") {
+		return true
+	}
+	return false
 }
 
 func detectExistingEvoInstall(dir string) (bool, string) {

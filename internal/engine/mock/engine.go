@@ -151,7 +151,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, _ <-chan domai
 				Severity: domain.SeverityWarn,
 				Payload:  domain.StepDonePayload{OK: false},
 			})
-			} else {
+		} else {
 			tag := releaseInfo.Tag
 			if tag == "" && releaseInfo.HighestVersion != "" {
 				tag = "v" + releaseInfo.HighestVersion
@@ -180,83 +180,83 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, _ <-chan domai
 					Unit:    "pct",
 				},
 			})
-				_ = emit(domain.Event{
-					Type:     domain.EventStepDone,
-					StepID:   releaseStepID,
-					Source:   "mock",
-					Severity: domain.SeverityInfo,
-					Payload:  releaseInfo,
-				})
-			}
-
-			// Step: check system status via PHP adapter.
-			const sysStepID = "check_system_status"
 			_ = emit(domain.Event{
-				Type:     domain.EventStepStart,
-				StepID:   sysStepID,
+				Type:     domain.EventStepDone,
+				StepID:   releaseStepID,
 				Source:   "mock",
 				Severity: domain.SeverityInfo,
-				Payload: domain.StepStartPayload{
-					Label: "Check system status",
-					Index: 0,
-					Total: 0,
-				},
+				Payload:  releaseInfo,
 			})
+		}
+
+		// Step: check system status via PHP adapter.
+		const sysStepID = "check_system_status"
+		_ = emit(domain.Event{
+			Type:     domain.EventStepStart,
+			StepID:   sysStepID,
+			Source:   "mock",
+			Severity: domain.SeverityInfo,
+			Payload: domain.StepStartPayload{
+				Label: "Check system status",
+				Index: 0,
+				Total: 0,
+			},
+		})
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   sysStepID,
+			Source:   "mock",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Checking system status…",
+			},
+		})
+
+		status, err := fetchSystemStatus(ctx)
+		if err != nil {
 			_ = emit(domain.Event{
-				Type:     domain.EventLog,
+				Type:     domain.EventWarning,
 				StepID:   sysStepID,
 				Source:   "mock",
-				Severity: domain.SeverityInfo,
+				Severity: domain.SeverityWarn,
 				Payload: domain.LogPayload{
-					Message: "Checking system status…",
+					Message: "Unable to check system status; continuing…",
+					Fields:  map[string]string{"error": err.Error()},
 				},
 			})
-
-			status, err := fetchSystemStatus(ctx)
-			if err != nil {
-				_ = emit(domain.Event{
-					Type:     domain.EventWarning,
-					StepID:   sysStepID,
-					Source:   "mock",
-					Severity: domain.SeverityWarn,
-					Payload: domain.LogPayload{
-						Message: "Unable to check system status; continuing…",
-						Fields:  map[string]string{"error": err.Error()},
-					},
-				})
-				_ = emit(domain.Event{
-					Type:     domain.EventSystemStatus,
-					StepID:   sysStepID,
-					Source:   "mock",
-					Severity: domain.SeverityWarn,
-					Payload: domain.SystemStatus{
-						Items:     nil,
-						UpdatedAt: time.Now(),
-					},
-				})
-				_ = emit(domain.Event{
-					Type:     domain.EventStepDone,
-					StepID:   sysStepID,
-					Source:   "mock",
-					Severity: domain.SeverityWarn,
-					Payload:  domain.StepDonePayload{OK: false},
-				})
-			} else {
-				_ = emit(domain.Event{
-					Type:     domain.EventSystemStatus,
-					StepID:   sysStepID,
-					Source:   "mock",
-					Severity: domain.SeverityInfo,
-					Payload:  status,
-				})
-				_ = emit(domain.Event{
-					Type:     domain.EventStepDone,
-					StepID:   sysStepID,
-					Source:   "mock",
-					Severity: domain.SeverityInfo,
-					Payload:  domain.StepDonePayload{OK: true},
-				})
-			}
+			_ = emit(domain.Event{
+				Type:     domain.EventSystemStatus,
+				StepID:   sysStepID,
+				Source:   "mock",
+				Severity: domain.SeverityWarn,
+				Payload: domain.SystemStatus{
+					Items:     nil,
+					UpdatedAt: time.Now(),
+				},
+			})
+			_ = emit(domain.Event{
+				Type:     domain.EventStepDone,
+				StepID:   sysStepID,
+				Source:   "mock",
+				Severity: domain.SeverityWarn,
+				Payload:  domain.StepDonePayload{OK: false},
+			})
+		} else {
+			_ = emit(domain.Event{
+				Type:     domain.EventSystemStatus,
+				StepID:   sysStepID,
+				Source:   "mock",
+				Severity: domain.SeverityInfo,
+				Payload:  status,
+			})
+			_ = emit(domain.Event{
+				Type:     domain.EventStepDone,
+				StepID:   sysStepID,
+				Source:   "mock",
+				Severity: domain.SeverityInfo,
+				Payload:  domain.StepDonePayload{OK: true},
+			})
+		}
 
 		// A sample question to drive UI selection (engine does not consume the answer yet).
 		_ = emit(domain.Event{
@@ -369,7 +369,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, _ <-chan domai
 				StepID:   s.id,
 				Source:   "mock",
 				Severity: domain.SeverityInfo,
-				Payload: domain.StepDonePayload{OK: true},
+				Payload:  domain.StepDonePayload{OK: true},
 			})
 		}
 	}()
@@ -389,7 +389,7 @@ func envInt(key string, def int) int {
 
 type systemStatusJSON struct {
 	Overall string `json:"overall"`
-	Items []struct {
+	Items   []struct {
 		Key     string `json:"key"`
 		Label   string `json:"label"`
 		Level   string `json:"level"`
@@ -402,6 +402,9 @@ func fetchSystemStatus(ctx context.Context) (domain.SystemStatus, error) {
 	if err != nil {
 		return domain.SystemStatus{}, err
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "php", entry, "system-status", "--format=json", "--no-ansi", "--no-interaction")
 	var stderr bytes.Buffer
@@ -455,14 +458,60 @@ func fetchSystemStatus(ctx context.Context) (domain.SystemStatus, error) {
 }
 
 func findPHPInstallerCLIEntry() (string, error) {
-	candidates := []string{
-		filepath.Join("installer", "bin", "evo"),
-		filepath.Join("bin", "evo"),
+	candidates := []string{}
+
+	// Prefer the bootstrapper on PATH (installed alongside the Go binary).
+	if p, err := exec.LookPath("evo"); err == nil && p != "" {
+		candidates = append(candidates, p)
 	}
-	for _, p := range candidates {
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			return p, nil
+
+	// Prefer a sibling `evo` script next to the running executable (common install layout).
+	if exe, err := os.Executable(); err == nil && exe != "" {
+		exeDir := filepath.Dir(exe)
+		if exeDir != "" && exeDir != "." {
+			candidates = append(candidates, filepath.Join(exeDir, "evo"))
 		}
 	}
+
+	// Repo-local fallbacks (when running from source checkout).
+	candidates = append(candidates,
+		filepath.Join("installer", "bin", "evo"),
+		filepath.Join("bin", "evo"),
+	)
+	for _, p := range candidates {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		fi, err := os.Stat(p)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		if !looksLikePHPScript(p) {
+			continue
+		}
+		return p, nil
+	}
 	return "", fmt.Errorf("unable to find installer PHP CLI entry (tried: %s)", strings.Join(candidates, ", "))
+}
+
+func looksLikePHPScript(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 256)
+	n, _ := f.Read(buf)
+	if n <= 0 {
+		return false
+	}
+	head := strings.ToLower(string(buf[:n]))
+	if strings.Contains(head, "<?php") {
+		return true
+	}
+	if strings.HasPrefix(head, "#!") && strings.Contains(head, "php") {
+		return true
+	}
+	return false
 }

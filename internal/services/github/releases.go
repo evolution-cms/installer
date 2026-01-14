@@ -54,6 +54,7 @@ func FetchReleasesPage(ctx context.Context, owner string, repo string, page int)
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "evo-installer")
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -75,4 +76,3 @@ func FetchReleasesPage(ctx context.Context, owner string, repo string, page int)
 	}
 	return releases, nil
 }
-
