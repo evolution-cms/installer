@@ -120,22 +120,22 @@ final class EvoBootstrapper
         $memoryLimit = ini_get('memory_limit') ?: 'Unknown';
 
         $items = [
-            ['key' => 'os', 'label' => $os, 'level' => 'ok'],
-            ['key' => 'php', 'label' => "PHP - {$phpVersion}", 'level' => $phpOk ? 'ok' : 'error'],
-            ['key' => 'composer', 'label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'level' => $composerOk ? 'ok' : 'warn'],
-            ['key' => 'pdo', 'label' => 'PDO extension', 'level' => $pdoOk ? 'ok' : 'error'],
+                ['key' => 'os', 'label' => $os, 'level' => 'ok'],
+                ['key' => 'php', 'label' => "PHP - {$phpVersion}", 'level' => $phpOk ? 'ok' : 'error'],
+                ['key' => 'composer', 'label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'level' => $composerOk ? 'ok' : 'warn'],
+                ['key' => 'pdo', 'label' => 'PDO extension', 'level' => $pdoOk ? 'ok' : 'error'],
             // DB drivers: if unavailable, mark as warning (optional until user chooses a DB).
-            ['key' => 'pdo_mysql', 'label' => 'PDO MySQL driver', 'level' => $pdoMysqlOk ? 'ok' : 'warn'],
-            ['key' => 'pdo_pgsql', 'label' => 'PDO PostgreSQL driver', 'level' => $pdoPgsqlOk ? 'ok' : 'warn'],
-            ['key' => 'pdo_sqlite', 'label' => 'PDO SQLite driver', 'level' => $pdoSqliteOk ? 'ok' : 'warn'],
-            ['key' => 'pdo_sqlsrv', 'label' => 'PDO SQL Server driver', 'level' => $pdoSqlsrvOk ? 'ok' : 'warn'],
-            ['key' => 'json', 'label' => 'JSON extension', 'level' => $jsonOk ? 'ok' : 'error'],
-            ['key' => 'mysqli', 'label' => 'MySQLi extension', 'level' => $mysqliOk ? 'ok' : 'error'],
-            ['key' => 'mbstring', 'label' => 'MBString extension', 'level' => $mbstringOk ? 'ok' : 'error'],
-            ['key' => 'curl', 'label' => 'cURL extension', 'level' => $curlOk ? 'ok' : 'warn'],
-            ['key' => 'image', 'label' => $imageLabel, 'level' => $imageOk ? 'ok' : 'warn'],
-            ['key' => 'disk_free', 'label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'level' => $diskFree !== null ? 'ok' : 'warn'],
-            ['key' => 'memory_limit', 'label' => 'Memory limit - ' . $memoryLimit, 'level' => 'ok'],
+                ['key' => 'pdo_mysql', 'label' => 'PDO MySQL driver', 'level' => $pdoMysqlOk ? 'ok' : 'warn'],
+                ['key' => 'pdo_pgsql', 'label' => 'PDO PostgreSQL driver', 'level' => $pdoPgsqlOk ? 'ok' : 'warn'],
+                ['key' => 'pdo_sqlite', 'label' => 'PDO SQLite driver', 'level' => $pdoSqliteOk ? 'ok' : 'warn'],
+                ['key' => 'pdo_sqlsrv', 'label' => 'PDO SQL Server driver', 'level' => $pdoSqlsrvOk ? 'ok' : 'warn'],
+                ['key' => 'json', 'label' => 'JSON extension', 'level' => $jsonOk ? 'ok' : 'error'],
+                ['key' => 'mysqli', 'label' => 'MySQLi extension', 'level' => $mysqliOk ? 'ok' : 'error'],
+                ['key' => 'mbstring', 'label' => 'MBString extension', 'level' => $mbstringOk ? 'ok' : 'error'],
+                ['key' => 'curl', 'label' => 'cURL extension', 'level' => $curlOk ? 'ok' : 'warn'],
+                ['key' => 'image', 'label' => $imageLabel, 'level' => $imageOk ? 'ok' : 'warn'],
+                ['key' => 'disk_free', 'label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'level' => $diskFree !== null ? 'ok' : 'warn'],
+                ['key' => 'memory_limit', 'label' => 'Memory limit - ' . $memoryLimit, 'level' => 'ok'],
         ];
 
         $overall = 'ok';
@@ -150,9 +150,9 @@ final class EvoBootstrapper
         }
 
         return [
-            'status' => $overall,
-            'overall' => $overall,
-            'items' => $items,
+                'status' => $overall,
+                'overall' => $overall,
+                'items' => $items,
         ];
     }
 
@@ -240,7 +240,11 @@ final class EvoBootstrapper
     private function selfUpdate(): void
     {
         $current = $this->getInstalledVersion() ?? '(not installed)';
-        [$tag] = $this->getLatestReleaseInfo();
+        try {
+            [$tag] = $this->getLatestReleaseInfo();
+        } catch (RuntimeException $e) {
+            $tag = $this->resolveLatestReleaseTagFallback() ?? 'latest';
+        }
         $this->out("Current: {$current}");
         $this->out("Latest:  {$tag}");
         $this->installBinary(true);
@@ -250,11 +254,19 @@ final class EvoBootstrapper
     {
         $this->assertWritableDir($this->binDir);
 
-        [$tag, $assets] = $this->getLatestReleaseInfo();
         [$expectedAssetName, $installedBinaryPath] = $this->resolveAssetNameAndBinaryPath();
 
-        $checksumsUrl = $this->findAssetUrl($assets, 'checksums.txt');
-        $binaryUrl = $this->findAssetUrl($assets, $expectedAssetName);
+        try {
+            [$tag, $assets] = $this->getLatestReleaseInfo();
+            $checksumsUrl = $this->findAssetUrl($assets, 'checksums.txt');
+            $binaryUrl = $this->findAssetUrl($assets, $expectedAssetName);
+        } catch (RuntimeException $e) {
+            // GitHub API may return 403 due to rate limits or enterprise firewalls.
+            // Fall back to direct "latest" asset URLs which do not require API access.
+            $tag = $this->resolveLatestReleaseTagFallback() ?? 'latest';
+            $checksumsUrl = $this->getLatestDirectAssetUrl('checksums.txt');
+            $binaryUrl = $this->getLatestDirectAssetUrl($expectedAssetName);
+        }
 
         $checksums = $this->downloadString($checksumsUrl);
         $shaMap = $this->parseChecksums($checksums);
@@ -383,6 +395,57 @@ final class EvoBootstrapper
         }
 
         return [$tag, $assets];
+    }
+
+    private function getLatestDirectAssetUrl(string $assetName): string
+    {
+        $assetName = ltrim($assetName, "/\\");
+        $url = 'https://github.com/' . self::REPO . '/releases/latest/download/' . rawurlencode($assetName);
+        $this->assertHttpsUrl($url);
+        return $url;
+    }
+
+    private function resolveLatestReleaseTagFallback(): ?string
+    {
+        $url = 'https://github.com/' . self::REPO . '/releases/latest';
+        $this->assertHttpsUrl($url);
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init();
+            if ($ch !== false) {
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_NOBODY, true);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_HEADER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, $this->createHttpHeaders(false));
+                curl_exec($ch);
+                $redirect = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+                curl_close($ch);
+
+                if (is_string($redirect) && $redirect !== '') {
+                    if (preg_match('~/releases/tag/([^/?#]+)~', $redirect, $m)) {
+                        return $m[1];
+                    }
+                }
+            }
+        }
+
+        $headers = @get_headers($url, true);
+        if (is_array($headers)) {
+            $location = $headers['Location'] ?? $headers['location'] ?? null;
+            if (is_array($location)) {
+                $location = end($location) ?: null;
+            }
+            if (is_string($location) && $location !== '') {
+                if (preg_match('~/releases/tag/([^/?#]+)~', $location, $m)) {
+                    return $m[1];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -538,7 +601,7 @@ final class EvoBootstrapper
     private function createHttpHeaders(bool $isApi): array
     {
         $headers = [
-            'User-Agent: evo-bootstrapper',
+                'User-Agent: evo-bootstrapper',
         ];
         if ($isApi) {
             $headers[] = 'Accept: application/vnd.github+json';
@@ -554,17 +617,17 @@ final class EvoBootstrapper
     private function createHttpContext(bool $isApi): mixed
     {
         return stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'header' => implode("\r\n", $this->createHttpHeaders($isApi)),
-                'timeout' => 60,
-                'follow_location' => 1,
-                'max_redirects' => 5,
-            ],
-            'ssl' => [
-                'verify_peer' => true,
-                'verify_peer_name' => true,
-            ],
+                'http' => [
+                        'method' => 'GET',
+                        'header' => implode("\r\n", $this->createHttpHeaders($isApi)),
+                        'timeout' => 60,
+                        'follow_location' => 1,
+                        'max_redirects' => 5,
+                ],
+                'ssl' => [
+                        'verify_peer' => true,
+                        'verify_peer_name' => true,
+                ],
         ]);
     }
 
