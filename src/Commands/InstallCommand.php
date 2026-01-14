@@ -10,7 +10,6 @@ use EvolutionCMS\Installer\Utilities\TuiRenderer;
 use EvolutionCMS\Installer\Utilities\VersionResolver;
 use EvolutionCMS\Installer\Validators\PhpValidator;
 use GuzzleHttp\Client;
-use GuzzleHttp\TransferStats;
 use PDOException;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -753,15 +752,35 @@ class InstallCommand extends Command
         $isCurrentDir = !empty($options['install_in_current_dir']);
         $targetPath = $isCurrentDir ? $name : (getcwd() . '/' . $name);
 
-        // If branch is specified, download from branch
-        if ($branch !== null) {
-            $branch = trim($branch);
-            $this->tui->addLog("Downloading Evolution CMS from branch: {$branch}...");
+        $sourceLabel = null;
+        $composerConstraint = null;
+        $composerRepository = null;
+        $preferSource = false;
 
-            $downloadUrl = $versionResolver->getBranchDownloadUrl($branch);
-            $displayName = $branch;
+        if ($branch !== null && trim($branch) !== '') {
+            $branch = trim($branch);
+            $this->tui->addLog("Preparing Evolution CMS from branch: {$branch}...");
+
+            // Packagist for evolution-cms/evolution currently publishes only tagged releases (no dev branches).
+            // For explicit branches, use the upstream Git repository through Composer.
+            $composerRepository = [
+                // Use explicit "git" to avoid GitHub API auth/rate-limit issues from the GitHub VCS driver.
+                'type' => 'git',
+                'url' => 'https://github.com/evolution-cms/evolution.git',
+            ];
+
+            $preferSource = true;
+
+            // Accept branch aliases like `3.5.x-dev`, otherwise treat as a branch name (`dev-branchName`).
+            if (str_starts_with($branch, 'dev-') || str_ends_with($branch, '-dev')) {
+                $composerConstraint = $branch;
+            } elseif (preg_match('/^\\d+\\.\\d+\\.x$/', $branch) === 1) {
+                $composerConstraint = $branch . '-dev';
+            } else {
+                $composerConstraint = 'dev-' . $branch;
+            }
+            $sourceLabel = "branch {$branch}";
         } else {
-            // Get latest compatible version
             $this->tui->addLog('Finding compatible Evolution CMS version...');
             $phpVersion = PHP_VERSION;
             $version = $versionResolver->getLatestCompatibleVersion($phpVersion, true);
@@ -771,30 +790,49 @@ class InstallCommand extends Command
                 throw new \RuntimeException("Could not find a compatible Evolution CMS version for PHP {$phpVersion}.");
             }
 
-            // Remove 'v' prefix if present
             $versionTag = ltrim($version, 'v');
             $this->tui->replaceLastLogs('<fg=green>✔</> Found compatible version: ' . $version . '.', 2);
-            $this->tui->addLog("Downloading Evolution CMS {$versionTag}...");
+            $this->tui->addLog("Downloading Evolution CMS {$versionTag} via Composer...");
 
-            $downloadUrl = $versionResolver->getDownloadUrl($version);
-            $displayName = $versionTag;
+            // Use the normalized version without `v` prefix (Packagist versions are `X.Y.Z`).
+            $composerConstraint = $versionTag;
+            $sourceLabel = "version {$versionTag}";
         }
 
-        // Create temp file for download
-        $tempFile = sys_get_temp_dir() . '/evo-installer-' . uniqid() . '.zip';
+        $tempDir = rtrim(sys_get_temp_dir(), "/\\") . '/evo-installer-' . uniqid('', true);
 
         try {
-            // Download with progress
-            $this->downloadFile($downloadUrl, $tempFile);
+            $composerWorkDir = rtrim(sys_get_temp_dir(), "/\\");
+            $composerCommand = $this->resolveComposerCommand($composerWorkDir);
 
-            // Extract archive
-            $this->tui->addLog('Extracting archive...');
-            $this->extractZip($tempFile, $targetPath);
+            $args = [
+                'create-project',
+                $preferSource ? '--prefer-source' : '--prefer-dist',
+                '--no-install',
+                'evolution-cms/evolution',
+                $tempDir,
+            ];
+            if (is_array($composerRepository)) {
+                $args[] = '--stability=dev';
+                $args[] = '--repository=' . json_encode($composerRepository, JSON_UNESCAPED_SLASHES);
+                $args[] = '--remove-vcs';
+            }
+            if (is_string($composerConstraint) && trim($composerConstraint) !== '') {
+                $args[] = trim($composerConstraint);
+            }
 
-            // Clean up
-            @unlink($tempFile);
+            $process = $this->runComposer($composerCommand, $args, $composerWorkDir);
+            if (!$process->isSuccessful()) {
+                $out = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
+                throw new \RuntimeException(trim($out) !== '' ? trim($out) : 'Composer create-project failed.');
+            }
 
-            $sourceLabel = $branch ? "branch {$branch}" : "version {$displayName}";
+            $this->tui->replaceLastLogs('<fg=green>✔</> Download completed.');
+
+            $this->tui->addLog('Extracting files...');
+            $this->copyDirectoryWithProgress($tempDir, $targetPath);
+            $this->removeDirectory($tempDir);
+
             $this->tui->addLog("Evolution CMS from {$sourceLabel} downloaded and extracted successfully!", 'success');
 
             // Mark Step 3 (Download Evolution CMS) as completed
@@ -802,153 +840,125 @@ class InstallCommand extends Command
             $this->tui->setQuestTrack($this->steps);
         } catch (\Exception $e) {
             // Clean up on error
-            @unlink($tempFile);
-            $this->tui->addLog("Failed to download Evolution CMS: " . $e->getMessage(), 'error');
+            if (is_dir($tempDir)) {
+                $this->removeDirectory($tempDir);
+            }
+
+            $this->tui->addLog('Failed to download Evolution CMS: ' . $e->getMessage(), 'error');
             throw $e;
         }
     }
 
     /**
-     * Download file with progress bar.
+     * Copy package files into the destination directory.
      */
-    protected function downloadFile(string $url, string $destination): void
+    protected function copyDirectoryWithProgress(string $source, string $destination): void
     {
-        $client = new Client(['timeout' => 300]);
+        $source = rtrim($source, "/\\");
+        $destination = rtrim($destination, "/\\");
 
-        // First, get content length for progress tracking
-        $totalBytes = 0;
-        try {
-            $headResponse = $client->head($url, ['allow_redirects' => true]);
-            $totalBytes = (int) $headResponse->getHeaderLine('Content-Length');
-        } catch (\Exception $e) {
-            // If HEAD fails, we'll track progress from GET request
+        if (!is_dir($source)) {
+            throw new \RuntimeException("Temporary download directory not found: {$source}");
         }
 
-        $downloadedBytes = 0;
-        $lastUpdate = 0;
-
-        // Download with on_stats callback for progress tracking
-        $response = $client->get($url, [
-            'sink' => $destination,
-            'on_stats' => function (TransferStats $stats) use (&$downloadedBytes, &$lastUpdate, $totalBytes) {
-                $downloadedBytes = $stats->getHandlerStat('size_download') ?: 0;
-                $totalSize = $totalBytes > 0 ? $totalBytes : ($stats->getHandlerStat('size_download') ?: 0);
-
-                // Update progress every 100KB or every second
-                $now = microtime(true);
-                if ($totalSize > 0 && ($downloadedBytes - $lastUpdate > 100000 || $now - ($lastUpdate / 1000000) > 1)) {
-                    $this->tui->updateProgress('Downloading', $downloadedBytes, $totalSize);
-                    $lastUpdate = $downloadedBytes;
-                }
-            },
-        ]);
-
-        // Final progress update
-        if ($totalBytes > 0) {
-            $this->tui->updateProgress('Downloading', $totalBytes, $totalBytes);
-        } else {
-            $actualSize = (int) $response->getHeaderLine('Content-Length');
-            if ($actualSize > 0) {
-                $this->tui->updateProgress('Downloading', $actualSize, $actualSize);
-            }
-        }
-
-        $this->tui->replaceLastLogs('<fg=green>✔</> Download completed.');
-    }
-
-    /**
-     * Extract ZIP archive.
-     */
-    protected function extractZip(string $zipFile, string $destination): void
-    {
-        if (!extension_loaded('zip')) {
-            throw new \RuntimeException('ZIP extension is required to extract the archive.');
-        }
-
-        $zip = new \ZipArchive();
-        if ($zip->open($zipFile) !== true) {
-            throw new \RuntimeException("Failed to open ZIP archive: {$zipFile}");
-        }
-
-        // Create destination directory if it doesn't exist
         if (!is_dir($destination)) {
-            mkdir($destination, 0755, true);
+            if (!@mkdir($destination, 0755, true) && !is_dir($destination)) {
+                throw new \RuntimeException("Failed to create destination directory: {$destination}");
+            }
         }
 
-        // Extract all files (count only entries that will be extracted so progress can reach 100%)
-        $totalEntries = $zip->numFiles;
         $totalFiles = 0;
-        for ($i = 0; $i < $totalEntries; $i++) {
-            $filename = $zip->getNameIndex($i);
-            if (!$filename) {
+        $it = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($it as $item) {
+            $rel = substr($item->getPathname(), strlen($source) + 1);
+            if ($rel === false || $rel === '') {
                 continue;
             }
-
-            // Skip directory entries
-            if (substr($filename, -1) === '/') {
+            if ($this->shouldSkipCopiedPath($rel)) {
                 continue;
             }
-
-            // Remove source prefix from path (e.g., "evolution-3.5.0/" or "evolution-branch-name/" -> "")
-            $localPath = preg_replace('/^[^\/]+\//', '', $filename);
-            if (empty($localPath)) {
+            if ($item->isDir()) {
                 continue;
             }
-
             $totalFiles++;
         }
 
-        $extractedFiles = 0;
+        $copiedFiles = 0;
 
-        for ($i = 0; $i < $totalEntries; $i++) {
-            $filename = $zip->getNameIndex($i);
-            if (!$filename) {
+        $it = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($it as $item) {
+            $srcPath = $item->getPathname();
+            $rel = substr($srcPath, strlen($source) + 1);
+            if ($rel === false || $rel === '') {
+                continue;
+            }
+            if ($this->shouldSkipCopiedPath($rel)) {
                 continue;
             }
 
-            // Skip directory entries
-            if (substr($filename, -1) === '/') {
+            $dstPath = $destination . '/' . str_replace('\\', '/', $rel);
+
+            if ($item->isDir()) {
+                if (!is_dir($dstPath)) {
+                    @mkdir($dstPath, 0755, true);
+                }
                 continue;
             }
 
-            // Remove source prefix from path (e.g., "evolution-3.5.0/" or "evolution-branch-name/" -> "")
-            $localPath = preg_replace('/^[^\/]+\//', '', $filename);
-
-            if (empty($localPath)) {
-                continue;
+            $dstDir = dirname($dstPath);
+            if (!is_dir($dstDir) && !@mkdir($dstDir, 0755, true) && !is_dir($dstDir)) {
+                throw new \RuntimeException("Failed to create directory: {$dstDir}");
             }
 
-            $targetPath = $destination . '/' . $localPath;
-            $targetDir = dirname($targetPath);
-
-            // Create directory if needed
-            if (!is_dir($targetDir)) {
-                mkdir($targetDir, 0755, true);
+            if ($item->isLink()) {
+                $target = @readlink($srcPath);
+                if ($target === false) {
+                    throw new \RuntimeException("Failed to read symlink: {$srcPath}");
+                }
+                if (is_link($dstPath) || file_exists($dstPath)) {
+                    @unlink($dstPath);
+                }
+                if (!@symlink($target, $dstPath)) {
+                    // Fallback: copy the resolved target content if symlinks are not permitted.
+                    if (!@copy($srcPath, $dstPath)) {
+                        throw new \RuntimeException("Failed to copy symlink target: {$srcPath}");
+                    }
+                }
+            } else {
+                if (!@copy($srcPath, $dstPath)) {
+                    throw new \RuntimeException("Failed to copy file: {$rel}");
+                }
+                @chmod($dstPath, $item->getPerms() & 0777);
             }
 
-            // Extract file
-            $content = $zip->getFromIndex($i);
-            if ($content === false) {
-                throw new \RuntimeException("Failed to extract file: {$filename}");
-            }
-            if (file_put_contents($targetPath, $content) === false) {
-                throw new \RuntimeException("Failed to write extracted file: {$targetPath}");
-            }
-            $extractedFiles++;
-
-            // Update progress every 10 files
-            if ($totalFiles > 0 && ($extractedFiles % 10 === 0 || $extractedFiles === $totalFiles)) {
-                $this->tui->updateProgress('Extracting', $extractedFiles, $totalFiles, 'files');
+            $copiedFiles++;
+            if ($totalFiles > 0 && ($copiedFiles % 25 === 0 || $copiedFiles === $totalFiles)) {
+                $this->tui->updateProgress('Extracting', $copiedFiles, $totalFiles, 'files');
             }
         }
 
-        $zip->close();
-
-        // Ensure progress reaches 100% when extraction finished successfully
-        if ($totalFiles > 0 && $extractedFiles === $totalFiles) {
+        if ($totalFiles > 0 && $copiedFiles === $totalFiles) {
             $this->tui->updateProgress('Extracting', $totalFiles, $totalFiles, 'files');
         }
-        $this->tui->replaceLastLogs('<fg=green>✔</> Extracted ' . $extractedFiles . ' files.');
+
+        $this->tui->replaceLastLogs('<fg=green>✔</> Extracted ' . $copiedFiles . ' files.');
+    }
+
+    protected function shouldSkipCopiedPath(string $relativePath): bool
+    {
+        $parts = preg_split('#[\\\\/]+#', $relativePath) ?: [];
+        foreach ($parts as $part) {
+            if ($part === '.git' || $part === '.hg' || $part === '.svn') {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

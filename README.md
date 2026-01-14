@@ -2,6 +2,14 @@
 
 CLI tool for creating new Evolution CMS projects.
 
+[![Latest Stable Version](https://img.shields.io/packagist/v/evolution-cms/installer?label=version)](https://packagist.org/packages/evolution-cms/installer)
+[![CMS Evolution](https://img.shields.io/badge/CMS-Evolution-brightgreen.svg)](https://github.com/evolution-cms/evolution)
+![PHP version](https://img.shields.io/packagist/php-v/evolution-cms/installer)
+[![License](https://img.shields.io/packagist/l/evolution-cms/installer)](https://packagist.org/packages/evolution-cms/installer)
+[![Issues](https://img.shields.io/github/issues/evolution-cms/installer)](https://github.com/evolution-cms/installer/issues)
+[![Stars](https://img.shields.io/packagist/stars/evolution-cms/installer)](https://packagist.org/packages/evolution-cms/installer)
+[![Total Downloads](https://img.shields.io/packagist/dt/evolution-cms/installer)](https://packagist.org/packages/evolution-cms/installer)
+
 ## Requirements
 
 - PHP 8.3+
