@@ -12,14 +12,14 @@ type layoutState struct {
 	width  int
 	height int
 
-	gap  int
+	gap int
 
 	leftW  int
 	rightW int
 
-	headerH   int
-	questH    int
-	logH      int
+	headerH      int
+	questH       int
+	logH         int
 	logQuestionH int
 
 	topAreaH int
@@ -72,14 +72,16 @@ func computeLayout(width int, height int, stepsCount int) layoutState {
 
 func computeLayoutWithHeader(width int, height int, stepsCount int, showLogo bool) layoutState {
 	const (
-		gap  = 1
+		gap = 1
 
-		minColW = 40
+		// Allow the common 80-column terminal: two columns + 1 gap => 79 available,
+		// split as 39/40, which is still usable with truncation.
+		minColW = 39
 
 		minQuestH = 4 // border + title + 1 line
 		minLogH   = 5
 
-		sepLines  = 1 // JoinVertical between top/log
+		sepLines = 1 // JoinVertical between top/log
 	)
 
 	headerH := compactHeaderHeight
@@ -88,11 +90,11 @@ func computeLayoutWithHeader(width int, height int, stepsCount int, showLogo boo
 	}
 
 	l := layoutState{
-		width:     width,
-		height:    height,
-		gap:       gap,
-		headerH:   headerH,
-		showLogo:  showLogo,
+		width:    width,
+		height:   height,
+		gap:      gap,
+		headerH:  headerH,
+		showLogo: showLogo,
 	}
 
 	if width <= 0 || height <= 0 {

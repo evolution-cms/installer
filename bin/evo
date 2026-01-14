@@ -120,22 +120,22 @@ final class EvoBootstrapper
         $memoryLimit = ini_get('memory_limit') ?: 'Unknown';
 
         $items = [
-                ['key' => 'os', 'label' => $os, 'level' => 'ok'],
-                ['key' => 'php', 'label' => "PHP - {$phpVersion}", 'level' => $phpOk ? 'ok' : 'error'],
-                ['key' => 'composer', 'label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'level' => $composerOk ? 'ok' : 'warn'],
-                ['key' => 'pdo', 'label' => 'PDO extension', 'level' => $pdoOk ? 'ok' : 'error'],
+            ['key' => 'os', 'label' => $os, 'level' => 'ok'],
+            ['key' => 'php', 'label' => "PHP - {$phpVersion}", 'level' => $phpOk ? 'ok' : 'error'],
+            ['key' => 'composer', 'label' => "Composer" . ($composerVersion ? " - {$composerVersion}" : ''), 'level' => $composerOk ? 'ok' : 'warn'],
+            ['key' => 'pdo', 'label' => 'PDO extension', 'level' => $pdoOk ? 'ok' : 'error'],
             // DB drivers: if unavailable, mark as warning (optional until user chooses a DB).
-                ['key' => 'pdo_mysql', 'label' => 'PDO MySQL driver', 'level' => $pdoMysqlOk ? 'ok' : 'warn'],
-                ['key' => 'pdo_pgsql', 'label' => 'PDO PostgreSQL driver', 'level' => $pdoPgsqlOk ? 'ok' : 'warn'],
-                ['key' => 'pdo_sqlite', 'label' => 'PDO SQLite driver', 'level' => $pdoSqliteOk ? 'ok' : 'warn'],
-                ['key' => 'pdo_sqlsrv', 'label' => 'PDO SQL Server driver', 'level' => $pdoSqlsrvOk ? 'ok' : 'warn'],
-                ['key' => 'json', 'label' => 'JSON extension', 'level' => $jsonOk ? 'ok' : 'error'],
-                ['key' => 'mysqli', 'label' => 'MySQLi extension', 'level' => $mysqliOk ? 'ok' : 'error'],
-                ['key' => 'mbstring', 'label' => 'MBString extension', 'level' => $mbstringOk ? 'ok' : 'error'],
-                ['key' => 'curl', 'label' => 'cURL extension', 'level' => $curlOk ? 'ok' : 'warn'],
-                ['key' => 'image', 'label' => $imageLabel, 'level' => $imageOk ? 'ok' : 'warn'],
-                ['key' => 'disk_free', 'label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'level' => $diskFree !== null ? 'ok' : 'warn'],
-                ['key' => 'memory_limit', 'label' => 'Memory limit - ' . $memoryLimit, 'level' => 'ok'],
+            ['key' => 'pdo_mysql', 'label' => 'PDO MySQL driver', 'level' => $pdoMysqlOk ? 'ok' : 'warn'],
+            ['key' => 'pdo_pgsql', 'label' => 'PDO PostgreSQL driver', 'level' => $pdoPgsqlOk ? 'ok' : 'warn'],
+            ['key' => 'pdo_sqlite', 'label' => 'PDO SQLite driver', 'level' => $pdoSqliteOk ? 'ok' : 'warn'],
+            ['key' => 'pdo_sqlsrv', 'label' => 'PDO SQL Server driver', 'level' => $pdoSqlsrvOk ? 'ok' : 'warn'],
+            ['key' => 'json', 'label' => 'JSON extension', 'level' => $jsonOk ? 'ok' : 'error'],
+            ['key' => 'mysqli', 'label' => 'MySQLi extension', 'level' => $mysqliOk ? 'ok' : 'error'],
+            ['key' => 'mbstring', 'label' => 'MBString extension', 'level' => $mbstringOk ? 'ok' : 'error'],
+            ['key' => 'curl', 'label' => 'cURL extension', 'level' => $curlOk ? 'ok' : 'warn'],
+            ['key' => 'image', 'label' => $imageLabel, 'level' => $imageOk ? 'ok' : 'warn'],
+            ['key' => 'disk_free', 'label' => 'Disk free - ' . ($diskFree ?: 'Unknown'), 'level' => $diskFree !== null ? 'ok' : 'warn'],
+            ['key' => 'memory_limit', 'label' => 'Memory limit - ' . $memoryLimit, 'level' => 'ok'],
         ];
 
         $overall = 'ok';
@@ -150,9 +150,9 @@ final class EvoBootstrapper
         }
 
         return [
-                'status' => $overall,
-                'overall' => $overall,
-                'items' => $items,
+            'status' => $overall,
+            'overall' => $overall,
+            'items' => $items,
         ];
     }
 
@@ -303,6 +303,32 @@ final class EvoBootstrapper
      */
     private function execBinary(array $args): int
     {
+        // Use proc_open with inherited stdio to preserve the TTY. Running via
+        // passthru/exec typically pipes stdout/stderr which breaks Bubble Tea's
+        // terminal size detection and full-screen rendering.
+        if (function_exists('proc_open')) {
+            $disabled = (string)ini_get('disable_functions');
+            if ($disabled === '' || stripos($disabled, 'proc_open') === false) {
+                $cmd = [$this->binaryPath, ...$args];
+                $descriptors = [
+                    0 => STDIN,
+                    1 => STDOUT,
+                    2 => STDERR,
+                ];
+                $options = [];
+                if (PHP_OS_FAMILY === 'Windows') {
+                    $options['bypass_shell'] = true;
+                }
+
+                $proc = @proc_open($cmd, $descriptors, $pipes, null, null, $options);
+                if (is_resource($proc)) {
+                    $code = proc_close($proc);
+                    return (int)$code;
+                }
+            }
+        }
+
+        // Fallback: execute via shell.
         $cmdParts = [escapeshellarg($this->binaryPath)];
         foreach ($args as $arg) {
             $cmdParts[] = escapeshellarg($arg);
@@ -601,7 +627,7 @@ final class EvoBootstrapper
     private function createHttpHeaders(bool $isApi): array
     {
         $headers = [
-                'User-Agent: evo-bootstrapper',
+            'User-Agent: evo-bootstrapper',
         ];
         if ($isApi) {
             $headers[] = 'Accept: application/vnd.github+json';
@@ -617,17 +643,17 @@ final class EvoBootstrapper
     private function createHttpContext(bool $isApi): mixed
     {
         return stream_context_create([
-                'http' => [
-                        'method' => 'GET',
-                        'header' => implode("\r\n", $this->createHttpHeaders($isApi)),
-                        'timeout' => 60,
-                        'follow_location' => 1,
-                        'max_redirects' => 5,
-                ],
-                'ssl' => [
-                        'verify_peer' => true,
-                        'verify_peer_name' => true,
-                ],
+            'http' => [
+                'method' => 'GET',
+                'header' => implode("\r\n", $this->createHttpHeaders($isApi)),
+                'timeout' => 60,
+                'follow_location' => 1,
+                'max_redirects' => 5,
+            ],
+            'ssl' => [
+                'verify_peer' => true,
+                'verify_peer_name' => true,
+            ],
         ]);
     }
 
