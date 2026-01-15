@@ -12,9 +12,10 @@ trait ConfiguresDatabase
      * Create database connection.
      *
      * @param array $config
+     * @param bool $quiet
      * @return PDO
      */
-    protected function createConnection(array $config): PDO
+    protected function createConnection(array $config, bool $quiet = false): PDO
     {
         $type = $config['type'];
         $host = $config['host'] ?? '';
@@ -39,9 +40,33 @@ trait ConfiguresDatabase
 
             return $dbh;
         } catch (PDOException $e) {
-            Console::error("Database connection failed: " . $e->getMessage());
+            if (!$quiet) {
+                Console::error("Database connection failed: " . $e->getMessage());
+            }
             throw $e;
         }
+    }
+
+    /**
+     * Try to connect to a PostgreSQL maintenance database.
+     *
+     * Some environments remove/restrict access to the default `postgres` DB.
+     * `template1` is expected to exist on all PostgreSQL instances.
+     */
+    protected function createPostgresMaintenanceConnection(array $config, ?PDOException &$lastError = null): ?PDO
+    {
+        $candidates = ['postgres', 'template1'];
+        foreach ($candidates as $dbName) {
+            $cfg = $config;
+            $cfg['name'] = $dbName;
+            try {
+                $lastError = null;
+                return $this->createConnection($cfg, true);
+            } catch (PDOException $e) {
+                $lastError = $e;
+            }
+        }
+        return null;
     }
 
     /**
@@ -183,14 +208,17 @@ trait ConfiguresDatabase
         // MySQL / PostgreSQL
         $configWithoutDb = $config;
         unset($configWithoutDb['name']);
-        if ($type === 'pgsql') {
-            // PostgreSQL requires a database name; otherwise it defaults to using the username.
-            // Use a maintenance database for CREATE DATABASE operations.
-            $configWithoutDb['name'] = 'postgres';
-        }
 
         try {
-            $dbh = $this->createConnection($configWithoutDb);
+            if ($type === 'pgsql') {
+                $last = null;
+                $dbh = $this->createPostgresMaintenanceConnection($configWithoutDb, $last);
+                if (!$dbh) {
+                    throw $last ?? new PDOException('Unable to connect to PostgreSQL maintenance database.');
+                }
+            } else {
+                $dbh = $this->createConnection($configWithoutDb);
+            }
             $charset = $this->getCharsetFromCollation($collation);
 
             if ($type === 'pgsql') {

@@ -1774,15 +1774,46 @@ try {
     new \PDO("sqlite:".$name, null, null, $timeout);
     echo json_encode(["ok"=>true]); exit(0);
   }
+  if ($type === "pgsql") {
+    $maintenanceOk = false;
+    $maintenanceErr = null;
+    foreach (["postgres", "template1"] as $db) {
+      try {
+        $dsnMaint = $port > 0 ? "pgsql:host={$host};port={$port};dbname={$db}" : "pgsql:host={$host};dbname={$db}";
+        new \PDO($dsnMaint, $user, $pass, $timeout);
+        $maintenanceOk = true;
+        break;
+      } catch (\Throwable $e) {
+        $maintenanceErr = $e;
+      }
+    }
+
+    $targetOk = false;
+    $targetErr = null;
+    if ($name !== "") {
+      try {
+        $dsn = $port > 0 ? "pgsql:host={$host};port={$port};dbname={$name}" : "pgsql:host={$host};dbname={$name}";
+        new \PDO($dsn, $user, $pass, $timeout);
+        $targetOk = true;
+      } catch (\Throwable $e) {
+        $targetErr = $e;
+      }
+    }
+
+    if (!$maintenanceOk && !$targetOk) {
+      throw $targetErr ?? $maintenanceErr ?? new \Exception("PostgreSQL connection failed.");
+    }
+
+    echo json_encode(["ok"=>true]); exit(0);
+  }
+
   $dsnNoDb = match($type) {
-    "pgsql" => $port > 0 ? "pgsql:host={$host};port={$port};dbname=postgres" : "pgsql:host={$host};dbname=postgres",
     "sqlsrv" => $port > 0 ? "sqlsrv:Server={$host},{$port}" : "sqlsrv:Server={$host}",
     default => "mysql:host={$host};port={$port};charset=utf8mb4",
   };
   new \PDO($dsnNoDb, $user, $pass, $timeout);
   if ($name !== "") {
     $dsn = match($type) {
-      "pgsql" => "pgsql:host={$host};port={$port};dbname={$name}",
       "sqlsrv" => ($port > 0 ? "sqlsrv:Server={$host},{$port};Database={$name}" : "sqlsrv:Server={$host};Database={$name}"),
       default => "mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4",
     };

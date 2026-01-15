@@ -65,7 +65,7 @@ func TestCmpSemver(t *testing.T) {
 func TestDbConnectionTestScriptUsesPostgresMaintenanceDb(t *testing.T) {
 	t.Parallel()
 
-	if !strings.Contains(dbConnectionTestScript, "dbname=postgres") {
-		t.Fatalf("dbConnectionTestScript does not contain PostgreSQL maintenance dbname")
+	if !strings.Contains(dbConnectionTestScript, `"postgres"`) || !strings.Contains(dbConnectionTestScript, `"template1"`) {
+		t.Fatalf("dbConnectionTestScript does not include expected PostgreSQL maintenance database candidates")
 	}
 }

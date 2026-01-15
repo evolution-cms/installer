@@ -474,15 +474,37 @@ class InstallCommand extends Command
                     return false;
                 }
                 $this->createConnection($config);
+            } elseif ($type === 'pgsql') {
+                // PostgreSQL requires a database name; otherwise it defaults to using the username.
+                // To support environments where `postgres` is missing/restricted, accept either:
+                // - successful connect to a maintenance DB (postgres/template1), or
+                // - successful connect to the target DB (if only that one is accessible).
+                $maintenanceOk = false;
+                $maintenanceErr = null;
+
+                $configForOps = $config;
+                unset($configForOps['name']);
+                $dbh = $this->createPostgresMaintenanceConnection($configForOps, $maintenanceErr);
+                $maintenanceOk = $dbh !== null;
+
+                $targetOk = false;
+                $targetErr = null;
+                if (!empty($config['name'])) {
+                    try {
+                        $this->createConnection($config, true);
+                        $targetOk = true;
+                    } catch (PDOException $e) {
+                        $targetErr = $e;
+                    }
+                }
+
+                if (!$maintenanceOk && !$targetOk) {
+                    throw $targetErr ?? $maintenanceErr ?? new PDOException('PostgreSQL connection failed.');
+                }
             } else {
                 // For server-based databases, try to connect without database name first
                 $configWithoutDb = $config;
                 unset($configWithoutDb['name']);
-                if ($type === 'pgsql') {
-                    // PostgreSQL requires a database name; otherwise it defaults to using the username.
-                    // Use a maintenance database for credential/host validation.
-                    $configWithoutDb['name'] = 'postgres';
-                }
                 $this->createConnection($configWithoutDb);
 
                 // If database name is provided, try to connect to it
@@ -528,6 +550,7 @@ class InstallCommand extends Command
     {
         $options = ['Exit installation', 'Try again'];
         $active = 0;
+        $buffer = '';
 
         // Display question in cyan without icon
         $this->tui->addLog('Would you like to try again or exit installation?', 'ask');
@@ -540,31 +563,42 @@ class InstallCommand extends Command
         $this->setSttyMode('-icanon -echo');
         try {
             while (true) {
-                $key = fread(STDIN, 3);
-                if ($key === '' || $key === false) {
+                $chunk = fread(STDIN, 3);
+                if ($chunk === '' || $chunk === false) {
                     usleep(20000);
                     continue;
                 }
 
-                switch ($key) {
+                $buffer .= $chunk;
+                if (strlen($buffer) > 3) {
+                    $buffer = substr($buffer, -3);
+                }
+
+                $prevActive = $active;
+                switch ($buffer) {
                     case "\033[D": // ←
                     case "\033[A": // ↑
                         $active = max(0, $active - 1);
+                        $buffer = '';
                         break;
 
                     case "\033[C": // →
                     case "\033[B": // ↓
                         $active = min(count($options) - 1, $active + 1);
+                        $buffer = '';
                         break;
 
                     case "\n": // Enter
+                    case "\r": // Enter (some terminals)
                         $active
                             ? $this->tui->replaceLastLogs('Reinput DB connections.', 2)
                             : $this->tui->replaceLastLogs('Exit ...', 3);
                         return $active;
                 }
 
-                $this->tui->replaceLastLog($this->tui->renderRadio($options, $active));
+                if ($active !== $prevActive) {
+                    $this->tui->replaceLastLog($this->tui->renderRadio($options, $active));
+                }
             }
         } finally {
             $this->setSttyMode('sane');

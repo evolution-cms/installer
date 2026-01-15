@@ -126,9 +126,19 @@ class EvolutionPreset extends Preset
         // Test connection first (without database)
         $dbConfigWithoutDb = $dbConfig;
         unset($dbConfigWithoutDb['name']);
-        
-        if (!$this->testConnection($dbConfigWithoutDb)) {
-            throw new \RuntimeException("Cannot connect to database server. Please check your credentials.");
+        $dbh = null;
+        if (($dbConfigWithoutDb['type'] ?? '') === 'pgsql') {
+            $last = null;
+            $dbh = $this->createPostgresMaintenanceConnection($dbConfigWithoutDb, $last);
+            if (!$dbh) {
+                $msg = $last ? $last->getMessage() : 'Cannot connect to PostgreSQL maintenance database.';
+                throw new \RuntimeException("Cannot connect to database server. {$msg}");
+            }
+        } else {
+            if (!$this->testConnection($dbConfigWithoutDb)) {
+                throw new \RuntimeException("Cannot connect to database server. Please check your credentials.");
+            }
+            $dbh = $this->createConnection($dbConfigWithoutDb);
         }
 
         // Create database if needed
@@ -137,7 +147,6 @@ class EvolutionPreset extends Preset
         }
 
         // Resolve collation before creating database
-        $dbh = $this->createConnection($dbConfigWithoutDb);
         $serverVersion = null;
         if ($dbConfig['type'] === 'mysql') {
             try {
