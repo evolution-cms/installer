@@ -263,7 +263,165 @@ final class EvoBootstrapper
         }
         $this->out("Current: {$current}");
         $this->out("Latest:  {$tag}");
+        $this->updatePhpInstallerPackageBestEffort();
         $this->installBinary(true);
+    }
+
+    private function updatePhpInstallerPackageBestEffort(): void
+    {
+        $composer = $this->findComposerBinary();
+        if ($composer === null) {
+            $this->out('PHP installer update: skipped (Composer not found).');
+            return;
+        }
+
+        $workDir = $this->findComposerWorkDir();
+        if ($workDir === null) {
+            $this->out('PHP installer update: skipped (unable to detect Composer working dir).');
+            return;
+        }
+
+        if (!is_writable($workDir)) {
+            $this->out("PHP installer update: skipped (working dir not writable: {$workDir}).");
+            return;
+        }
+
+        $this->out('Updating PHP installer package via Composer...');
+        $code = $this->runProcess(
+            [
+                $composer,
+                'update',
+                'evolution-cms/installer',
+                '--no-interaction',
+                '--no-ansi',
+                '--no-progress',
+            ],
+            $workDir,
+            [
+                'COMPOSER_ALLOW_SUPERUSER' => '1',
+            ]
+        );
+        if ($code !== 0) {
+            $this->out("PHP installer update: failed (exit code {$code}).");
+            return;
+        }
+
+        $this->out('PHP installer update: OK');
+    }
+
+    private function findComposerBinary(): ?string
+    {
+        $bins = ['composer', 'composer2'];
+        $binEnv = getenv('EVO_COMPOSER_BIN') ?: '';
+        if ($binEnv !== '') {
+            array_unshift($bins, $binEnv);
+        }
+        $home = getenv('HOME') ?: '';
+        if ($home !== '') {
+            $bins[] = $home . '/.composer/composer';
+            $bins[] = $home . '/.composer/vendor/bin/composer';
+            $bins[] = $home . '/bin/composer';
+        }
+
+        $re = '/Composer\\s+(?:version\\s+)?([0-9]+\\.[0-9]+\\.[0-9]+)/i';
+        foreach ($bins as $bin) {
+            $arg = escapeshellarg($bin);
+            $out = $this->runCommandCaptureOutput($arg . ' -V 2>&1');
+            if (is_string($out) && preg_match($re, $out) === 1) {
+                return $bin;
+            }
+            $out = $this->runCommandCaptureOutput($arg . ' --version 2>&1');
+            if (is_string($out) && preg_match($re, $out) === 1) {
+                return $bin;
+            }
+        }
+
+        return null;
+    }
+
+    private function findComposerWorkDir(): ?string
+    {
+        $candidate = $this->detectComposerRootFromVendorLayout();
+        if ($candidate !== null) {
+            return $candidate;
+        }
+
+        // Fallback: walk up a few levels and look for a composer root with vendor metadata.
+        $dir = $this->packageRoot;
+        for ($i = 0; $i < 6; $i++) {
+            if (is_file($dir . '/composer.json') && is_file($dir . '/vendor/composer/installed.json')) {
+                return $dir;
+            }
+            $parent = dirname($dir);
+            if ($parent === $dir) {
+                break;
+            }
+            $dir = $parent;
+        }
+
+        return null;
+    }
+
+    private function detectComposerRootFromVendorLayout(): ?string
+    {
+        $vendorDir = dirname($this->packageRoot, 2);
+        if (basename($vendorDir) !== 'vendor') {
+            return null;
+        }
+
+        $root = dirname($vendorDir);
+        if (!is_file($root . '/composer.json')) {
+            return null;
+        }
+        if (!is_file($vendorDir . '/composer/installed.json') && !is_file($vendorDir . '/composer/installed.php')) {
+            return null;
+        }
+
+        return $root;
+    }
+
+    /**
+     * @param array<int, string> $cmd
+     * @param array<string, string> $env
+     */
+    private function runProcess(array $cmd, ?string $cwd = null, array $env = []): int
+    {
+        if (function_exists('proc_open') && !$this->isFunctionDisabled('proc_open')) {
+            $descriptors = [
+                0 => STDIN,
+                1 => STDOUT,
+                2 => STDERR,
+            ];
+
+            $mergedEnv = array_merge($_ENV, $env);
+            $proc = @proc_open($cmd, $descriptors, $pipes, $cwd ?: null, $mergedEnv);
+            if (is_resource($proc)) {
+                $code = proc_close($proc);
+                return (int)$code;
+            }
+        }
+
+        // Fallback: execute via shell.
+        $cmdParts = [];
+        foreach ($cmd as $part) {
+            $cmdParts[] = escapeshellarg($part);
+        }
+        $full = implode(' ', $cmdParts);
+        $exitCode = 0;
+        if ($cwd) {
+            $full = 'cd ' . escapeshellarg($cwd) . ' && ' . $full;
+        }
+        passthru($full, $exitCode);
+        return (int)$exitCode;
+    }
+
+    private function isFunctionDisabled(string $name): bool
+    {
+        $disabled = (string)ini_get('disable_functions');
+        if ($disabled === '') {
+            return false;
+        }
+        return stripos($disabled, $name) !== false;
     }
 
     private function installBinary(bool $isSelfUpdate): void
