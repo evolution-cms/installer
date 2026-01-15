@@ -1287,11 +1287,11 @@ class NewCommand extends Command
         $composerCommand = $this->resolveComposerCommand($composerWorkDir);
 
         try {
-            $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts'];
+            $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts', '--no-cache'];
             $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
             if ($process->isSuccessful() && !$this->isComposerVendorHealthy($composerWorkDir)) {
                 $this->tui->addLog('Composer install finished but vendor is incomplete. Retrying with --prefer-source (this can happen due to GitHub rate limits)...', 'warning');
-                $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts'], $composerWorkDir);
+                $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts', '--no-cache'], $composerWorkDir);
             }
             if ($process->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
                 $this->tui->addLog('Dependencies installed successfully.', 'success');
@@ -1392,9 +1392,15 @@ class NewCommand extends Command
             return false;
         }
 
-        $symfonyConsole = $composerWorkDir . '/vendor/symfony/console/Application.php';
-        if (!is_file($symfonyConsole)) {
-            return false;
+        $requiredFiles = [
+            $composerWorkDir . '/vendor/symfony/console/Application.php',
+            $composerWorkDir . '/vendor/symfony/http-kernel/Kernel.php',
+            $composerWorkDir . '/vendor/symfony/routing/RouteCollection.php',
+        ];
+        foreach ($requiredFiles as $file) {
+            if (!is_file($file)) {
+                return false;
+            }
         }
 
         return true;

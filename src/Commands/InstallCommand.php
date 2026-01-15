@@ -1107,6 +1107,8 @@ class InstallCommand extends Command
     {
         $this->tui->addLog('Running database seeders...');
 
+        $this->ensureArtisanDependencies($projectPath);
+
         $artisanScript = null;
         foreach (['core/artisan', 'artisan'] as $candidate) {
             if (file_exists($projectPath . '/' . $candidate)) {
@@ -1296,11 +1298,11 @@ class InstallCommand extends Command
         $composerCommand = $this->resolveComposerCommand($composerWorkDir);
 
         try {
-            $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts'];
+            $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts', '--no-cache'];
             $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
             if ($process->isSuccessful() && !$this->isComposerVendorHealthy($composerWorkDir)) {
                 $this->tui->addLog('Composer install finished but vendor is incomplete. Retrying with --prefer-source (this can happen due to GitHub rate limits)...', 'warning');
-                $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts'], $composerWorkDir);
+                $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts', '--no-cache'], $composerWorkDir);
             }
             if ($process->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
                 $this->tui->addLog('Dependencies installed successfully.', 'success');
@@ -1401,13 +1403,75 @@ class InstallCommand extends Command
             return false;
         }
 
-        // Migrations/seeders use Artisan which requires Symfony Console.
-        $symfonyConsole = $composerWorkDir . '/vendor/symfony/console/Application.php';
-        if (!is_file($symfonyConsole)) {
-            return false;
+        // Migrations/seeders use Artisan (Illuminate Console) which requires Symfony Console.
+        $requiredFiles = [
+            $composerWorkDir . '/vendor/symfony/console/Application.php',
+            $composerWorkDir . '/vendor/symfony/http-kernel/Kernel.php',
+            $composerWorkDir . '/vendor/symfony/routing/RouteCollection.php',
+        ];
+        foreach ($requiredFiles as $file) {
+            if (!is_file($file)) {
+                return false;
+            }
         }
 
         return true;
+    }
+
+    protected function ensureArtisanDependencies(string $projectPath): void
+    {
+        $composerWorkDir = is_file($projectPath . '/core/composer.json') ? ($projectPath . '/core') : $projectPath;
+
+        if ($this->isComposerVendorHealthy($composerWorkDir)) {
+            return;
+        }
+
+        $this->tui->addLog('Composer vendor is incomplete (missing Symfony Console). Reinstalling dependencies...', 'warning');
+
+        $composerCommand = $this->resolveComposerCommand($composerWorkDir);
+        $vendorDir = $composerWorkDir . '/vendor';
+
+        if (is_dir($vendorDir)) {
+            $this->removeDirectory($vendorDir);
+        }
+
+        $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts', '--no-cache'];
+        $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
+        if ($process->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
+            $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
+            return;
+        }
+
+        // Best-effort fallback: use source installs when dist downloads are blocked (GitHub rate limit).
+        if ($this->hasGitExecutable()) {
+            $this->tui->addLog('Retrying with --prefer-source...', 'warning');
+            if (is_dir($vendorDir)) {
+                $this->removeDirectory($vendorDir);
+            }
+            $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts', '--no-cache'], $composerWorkDir);
+            if ($process->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
+                $this->tui->addLog('Dependencies installed successfully (prefer-source).', 'success');
+                return;
+            }
+        }
+
+        $fullOutput = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
+        throw new \RuntimeException(
+            "Composer completed but vendor is incomplete (Symfony components missing). Please run 'composer install' manually in {$composerWorkDir}.\n" .
+                trim($fullOutput)
+        );
+    }
+
+    protected function hasGitExecutable(): bool
+    {
+        try {
+            $p = new Process(['git', '--version'], null, $this->buildProcessEnv());
+            $p->setTimeout(5);
+            $p->run();
+            return $p->isSuccessful();
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     protected function runComposer(array $composerCommand, array $args, string $workingDir): Process
@@ -1795,6 +1859,8 @@ class InstallCommand extends Command
     protected function runMigrations(string $projectPath, array $options): void
     {
         $this->tui->addLog('Running database migrations...');
+
+        $this->ensureArtisanDependencies($projectPath);
 
         $artisanScript = null;
         foreach (['core/artisan', 'artisan'] as $candidate) {
