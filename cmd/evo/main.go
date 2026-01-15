@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -60,32 +61,132 @@ func run(ctx context.Context, args []string) int {
 	}
 }
 
-var composerVersionMajorRe = regexp.MustCompile(`(?i)\bComposer version\s+(\d+)\.`)
+var composerVersionMajorRe = regexp.MustCompile(`(?i)\bComposer\s+(?:version\s+)?(\d+)\.`)
 
 func ensureComposer2(ctx context.Context) bool {
-	out, err := exec.CommandContext(ctx, "composer", "--version").CombinedOutput()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Composer 2.x is required.")
-		fmt.Fprintln(os.Stderr, "Please upgrade Composer before continuing.")
-		return false
+	candidates := composerCandidates()
+	var lastErr error
+	var lastOut string
+	var detectedMajor int
+	var detectedBin string
+
+	for _, bin := range candidates {
+		outBytes, err := exec.CommandContext(ctx, bin, "--no-ansi", "--version").CombinedOutput()
+		out := strings.TrimSpace(string(outBytes))
+
+		m := composerVersionMajorRe.FindStringSubmatch(out)
+		if len(m) >= 2 {
+			major, parseErr := strconv.Atoi(m[1])
+			if parseErr == nil {
+				if major >= 2 {
+					return true
+				}
+				detectedMajor = major
+				detectedBin = bin
+			}
+		}
+
+		if err == nil {
+			lastErr = nil
+			lastOut = out
+			continue
+		}
+
+		lastErr = err
+		lastOut = out
+
+		// If the executable isn't found, try other common names/paths.
+		if errors.Is(err, exec.ErrNotFound) {
+			continue
+		}
 	}
 
-	m := composerVersionMajorRe.FindStringSubmatch(string(out))
-	if len(m) < 2 {
-		fmt.Fprintln(os.Stderr, "Composer 2.x is required.")
-		fmt.Fprintln(os.Stderr, "Please upgrade Composer before continuing.")
-		return false
-	}
-
-	major, err := strconv.Atoi(m[1])
-	if err != nil || major < 2 {
-		fmt.Fprintln(os.Stderr, "Composer 2.x is required.")
+	fmt.Fprintln(os.Stderr, "Composer 2.x is required.")
+	if detectedMajor > 0 && detectedMajor < 2 {
+		fmt.Fprintf(os.Stderr, "Detected Composer %d.x via %q.\n", detectedMajor, detectedBin)
 		fmt.Fprintln(os.Stderr, "Your system uses Composer 1.x which is incompatible with PHP 8.3.")
 		fmt.Fprintln(os.Stderr, "Please upgrade Composer before continuing.")
 		return false
 	}
 
-	return true
+	if lastErr != nil {
+		// Help users who have Composer only as a shell alias/function (not an executable on PATH).
+		if errors.Is(lastErr, exec.ErrNotFound) {
+			fmt.Fprintln(os.Stderr, "Composer executable was not found in PATH.")
+		} else {
+			fmt.Fprintf(os.Stderr, "Could not run Composer: %v\n", lastErr)
+		}
+	}
+	if lastOut != "" {
+		fmt.Fprintf(os.Stderr, "Composer output: %s\n", firstLine(lastOut))
+	}
+	fmt.Fprintln(os.Stderr, "Please upgrade Composer before continuing.")
+	fmt.Fprintln(os.Stderr, "Tip: if `composer` works in your shell but not here, it may be an alias/function; install the Composer binary or set EVO_COMPOSER_BIN.")
+	return false
+}
+
+func composerCandidates() []string {
+	var candidates []string
+	seen := map[string]struct{}{}
+
+	add := func(bin string) {
+		bin = strings.TrimSpace(bin)
+		if bin == "" {
+			return
+		}
+		if _, ok := seen[bin]; ok {
+			return
+		}
+		seen[bin] = struct{}{}
+		candidates = append(candidates, bin)
+	}
+
+	if v := os.Getenv("EVO_COMPOSER_BIN"); strings.TrimSpace(v) != "" {
+		add(v)
+	}
+
+	// Standard names that may be on PATH.
+	add("composer")
+	add("composer2")
+
+	// Common system locations.
+	add("/usr/local/bin/composer")
+	add("/usr/bin/composer")
+	add("/bin/composer")
+
+	// Hosting panels (e.g. Hestia) sometimes provide Composer as a shell alias to a user-local path.
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		userLocal := []string{
+			home + "/.composer/composer",
+			home + "/.composer/vendor/bin/composer",
+			home + "/bin/composer",
+		}
+		for _, p := range userLocal {
+			if isExecutableFile(p) {
+				add(p)
+			}
+		}
+	}
+
+	return candidates
+}
+
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	if !info.Mode().IsRegular() {
+		return false
+	}
+	return info.Mode().Perm()&fs.FileMode(0o111) != 0
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return strings.TrimSpace(s[:i])
+	}
+	return strings.TrimSpace(s)
 }
 
 func runInstall(ctx context.Context, args []string) int {

@@ -177,14 +177,30 @@ final class EvoBootstrapper
     {
         $re = '/Composer\\s+(?:version\\s+)?([0-9]+\\.[0-9]+\\.[0-9]+)/i';
 
-        $out = $this->runCommandCaptureOutput('composer -V 2>&1');
-        if ($out !== null && preg_match($re, $out, $m)) {
-            return $m[1];
+        $bins = ['composer', 'composer2'];
+        $binEnv = getenv('EVO_COMPOSER_BIN') ?: '';
+        if ($binEnv !== '') {
+            array_unshift($bins, $binEnv);
+        }
+        $home = getenv('HOME') ?: '';
+        if ($home !== '') {
+            // Hosting panels (e.g. Hestia) sometimes provide Composer via a shell alias to a user-local path.
+            $bins[] = $home . '/.composer/composer';
+            $bins[] = $home . '/.composer/vendor/bin/composer';
+            $bins[] = $home . '/bin/composer';
         }
 
-        $out = $this->runCommandCaptureOutput('composer --version 2>&1');
-        if ($out !== null && preg_match($re, $out, $m)) {
-            return $m[1];
+        foreach ($bins as $bin) {
+            $arg = escapeshellarg($bin);
+            $out = $this->runCommandCaptureOutput($arg . ' -V 2>&1');
+            if ($out !== null && preg_match($re, $out, $m)) {
+                return $m[1];
+            }
+
+            $out = $this->runCommandCaptureOutput($arg . ' --version 2>&1');
+            if ($out !== null && preg_match($re, $out, $m)) {
+                return $m[1];
+            }
         }
 
         return null;

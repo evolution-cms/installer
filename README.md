@@ -77,6 +77,7 @@ composer global update evolution-cms/installer
 
 - GitHub API rate limit: set `GITHUB_TOKEN` (classic or fine-grained token with public repo access) in your environment.
 - Permissions: ensure the package `bin/` directory is writable (the bootstrapper installs `bin/evo.bin` or `bin/evo.exe` there).
+- Composer not found / Composer is a shell alias (common on hosting panels like Hestia): install a Composer executable on `PATH` or set `EVO_COMPOSER_BIN` to the full path, e.g. `EVO_COMPOSER_BIN=$HOME/.composer/composer evo install`.
 
 ## Usage
 
