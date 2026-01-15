@@ -1962,6 +1962,10 @@ class InstallCommand extends Command
 
         $this->ensureArtisanDependencies($projectPath);
 
+        if (($options['database']['type'] ?? null) === 'pgsql') {
+            $this->patchPostgresInetDefaultsInMigrations($projectPath);
+        }
+
         $artisanScript = null;
         foreach (['core/artisan', 'artisan'] as $candidate) {
             if (file_exists($projectPath . '/' . $candidate)) {
@@ -2084,6 +2088,64 @@ class InstallCommand extends Command
         } catch (\Exception $e) {
             $this->tui->addLog('Migration failed: ' . $e->getMessage(), 'error');
             throw new \RuntimeException("Failed to run migrations. Please run 'php core/artisan migrate' manually.");
+        }
+    }
+
+    protected function patchPostgresInetDefaultsInMigrations(string $projectPath): void
+    {
+        $dirs = [
+            $projectPath . '/core/database/migrations',
+            $projectPath . '/install/stubs/migrations',
+        ];
+
+        $totalReplacements = 0;
+        $touchedFiles = 0;
+
+        foreach ($dirs as $dir) {
+            if (!is_dir($dir)) {
+                continue;
+            }
+
+            $files = glob($dir . '/*.php') ?: [];
+            foreach ($files as $file) {
+                $original = @file_get_contents($file);
+                if (!is_string($original) || $original === '') {
+                    continue;
+                }
+
+                $patched = $original;
+                $count = 0;
+
+                // PostgreSQL uses the `inet` type for Laravel's `ipAddress()` / `inet()`.
+                // An empty-string default is invalid for `inet` and breaks migrations.
+                $patched = preg_replace(
+                    '/(->(?:ipAddress|inet)\\s*\\([^;]*?)->default\\(\\s*(?:\'\'|"")\\s*\\)/s',
+                    '$1',
+                    $patched,
+                    -1,
+                    $count
+                );
+
+                if (!is_string($patched) || $count <= 0 || $patched === $original) {
+                    continue;
+                }
+
+                if (is_file($file) && !is_writable($file)) {
+                    @chmod($file, 0644);
+                }
+
+                if (@file_put_contents($file, $patched) !== false) {
+                    $totalReplacements += $count;
+                    $touchedFiles++;
+                }
+            }
+        }
+
+        if ($totalReplacements > 0) {
+            $this->tui->addLog(
+                "PostgreSQL compatibility: removed {$totalReplacements} empty inet default(s) in {$touchedFiles} migration file(s).",
+                'warning'
+            );
         }
     }
 

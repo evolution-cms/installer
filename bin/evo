@@ -349,7 +349,7 @@ final class EvoBootstrapper
         // Fallback: walk up a few levels and look for a composer root with vendor metadata.
         $dir = $this->packageRoot;
         for ($i = 0; $i < 6; $i++) {
-            if (is_file($dir . '/composer.json') && is_file($dir . '/vendor/composer/installed.json')) {
+            if ($this->looksLikeComposerRoot($dir)) {
                 return $dir;
             }
             $parent = dirname($dir);
@@ -364,20 +364,46 @@ final class EvoBootstrapper
 
     private function detectComposerRootFromVendorLayout(): ?string
     {
-        $vendorDir = dirname($this->packageRoot, 2);
-        if (basename($vendorDir) !== 'vendor') {
-            return null;
+        // Locate the nearest parent "vendor" directory. Typical layouts:
+        // - <root>/vendor/evolution-cms/installer/bin/evo
+        // - <root>/vendor-php/evolution-cms/installer/bin/evo (repo/dev)
+        $dir = $this->packageRoot;
+        for ($i = 0; $i < 10; $i++) {
+            $base = basename($dir);
+            if ($base === 'vendor' || $base === 'vendor-php') {
+                $root = dirname($dir);
+                if ($this->looksLikeComposerRoot($root)) {
+                    return $root;
+                }
+                return null;
+            }
+            $parent = dirname($dir);
+            if ($parent === $dir) {
+                break;
+            }
+            $dir = $parent;
         }
 
-        $root = dirname($vendorDir);
-        if (!is_file($root . '/composer.json')) {
-            return null;
-        }
-        if (!is_file($vendorDir . '/composer/installed.json') && !is_file($vendorDir . '/composer/installed.php')) {
-            return null;
+        return null;
+    }
+
+    private function looksLikeComposerRoot(string $dir): bool
+    {
+        if (!is_file($dir . '/composer.json')) {
+            return false;
         }
 
-        return $root;
+        foreach (['vendor', 'vendor-php'] as $vendorBase) {
+            $composerMeta = $dir . '/' . $vendorBase . '/composer';
+            if (!is_dir($composerMeta)) {
+                continue;
+            }
+            if (is_file($composerMeta . '/installed.json') || is_file($composerMeta . '/installed.php')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
