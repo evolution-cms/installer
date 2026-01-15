@@ -286,6 +286,12 @@ final class EvoBootstrapper
             return;
         }
 
+        $home = $this->resolveHomeDir();
+        $composerHome = getenv('COMPOSER_HOME');
+        if (!is_string($composerHome) || trim($composerHome) === '') {
+            $composerHome = rtrim($home, "/\\") . DIRECTORY_SEPARATOR . '.composer';
+        }
+
         $this->out('Updating PHP installer package via Composer...');
         $code = $this->runProcess(
             [
@@ -299,6 +305,10 @@ final class EvoBootstrapper
             $workDir,
             [
                 'COMPOSER_ALLOW_SUPERUSER' => '1',
+                // Composer requires either HOME or COMPOSER_HOME.
+                // Some environments (cron, systemd, restrictive shells) may clear HOME.
+                'HOME' => $home,
+                'COMPOSER_HOME' => $composerHome,
             ]
         );
         if ($code !== 0) {
@@ -406,6 +416,25 @@ final class EvoBootstrapper
         return false;
     }
 
+    private function resolveHomeDir(): string
+    {
+        $home = getenv('HOME');
+        if (is_string($home) && trim($home) !== '') {
+            return $home;
+        }
+
+        if (function_exists('posix_geteuid') && function_exists('posix_getpwuid')) {
+            $info = @posix_getpwuid(posix_geteuid());
+            if (is_array($info) && isset($info['dir']) && is_string($info['dir']) && trim($info['dir']) !== '') {
+                return $info['dir'];
+            }
+        }
+
+        return PHP_OS_FAMILY === 'Windows'
+            ? (getenv('USERPROFILE') ?: 'C:\\')
+            : '/root';
+    }
+
     /**
      * @param array<int, string> $cmd
      * @param array<string, string> $env
@@ -428,6 +457,11 @@ final class EvoBootstrapper
         }
 
         // Fallback: execute via shell.
+        foreach ($env as $k => $v) {
+            if (is_string($k) && is_string($v)) {
+                @putenv($k . '=' . $v);
+            }
+        }
         $cmdParts = [];
         foreach ($cmd as $part) {
             $cmdParts[] = escapeshellarg($part);
