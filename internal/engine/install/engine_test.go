@@ -1,6 +1,9 @@
 package install
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSanitizeAdminDir(t *testing.T) {
 	t.Parallel()
@@ -56,5 +59,13 @@ func TestCmpSemver(t *testing.T) {
 	}
 	if got := cmpSemver(1, 2, 2, 1, 2, 3); got >= 0 {
 		t.Fatalf("cmpSemver less=%d; want <0", got)
+	}
+}
+
+func TestDbConnectionTestScriptUsesPostgresMaintenanceDb(t *testing.T) {
+	t.Parallel()
+
+	if !strings.Contains(dbConnectionTestScript, "dbname=postgres") {
+		t.Fatalf("dbConnectionTestScript does not contain PostgreSQL maintenance dbname")
 	}
 }

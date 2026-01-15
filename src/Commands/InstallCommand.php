@@ -474,6 +474,11 @@ class InstallCommand extends Command
                 // For server-based databases, try to connect without database name first
                 $configWithoutDb = $config;
                 unset($configWithoutDb['name']);
+                if ($type === 'pgsql') {
+                    // PostgreSQL requires a database name; otherwise it defaults to using the username.
+                    // Use a maintenance database for credential/host validation.
+                    $configWithoutDb['name'] = 'postgres';
+                }
                 $this->createConnection($configWithoutDb);
 
                 // If database name is provided, try to connect to it

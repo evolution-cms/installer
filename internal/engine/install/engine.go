@@ -1750,14 +1750,7 @@ func statusLevelForKey(status domain.SystemStatus, key string) (domain.StatusLev
 	return domain.StatusError, false
 }
 
-func testDatabaseConnection(ctx context.Context, workDir string, cfg dbConfig) (bool, string, error) {
-	raw, err := json.Marshal(cfg)
-	if err != nil {
-		return false, "", err
-	}
-	encoded := base64.StdEncoding.EncodeToString(raw)
-
-	script := `
+const dbConnectionTestScript = `
 $cfg = json_decode(base64_decode($argv[1] ?? ''), true);
 if (!is_array($cfg)) { echo json_encode(["ok"=>false,"error"=>"Invalid config"]); exit(0); }
 $type = $cfg["type"] ?? "mysql";
@@ -1782,7 +1775,7 @@ try {
     echo json_encode(["ok"=>true]); exit(0);
   }
   $dsnNoDb = match($type) {
-    "pgsql" => "pgsql:host={$host};port={$port}",
+    "pgsql" => $port > 0 ? "pgsql:host={$host};port={$port};dbname=postgres" : "pgsql:host={$host};dbname=postgres",
     "sqlsrv" => $port > 0 ? "sqlsrv:Server={$host},{$port}" : "sqlsrv:Server={$host}",
     default => "mysql:host={$host};port={$port};charset=utf8mb4",
   };
@@ -1806,6 +1799,15 @@ try {
   echo json_encode(["ok"=>false,"error"=>$msg]); exit(0);
 }
 `
+
+func testDatabaseConnection(ctx context.Context, workDir string, cfg dbConfig) (bool, string, error) {
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return false, "", err
+	}
+	encoded := base64.StdEncoding.EncodeToString(raw)
+
+	script := dbConnectionTestScript
 
 	cmd := exec.CommandContext(ctx, "php", "-r", script, encoded)
 	if strings.TrimSpace(workDir) != "" {

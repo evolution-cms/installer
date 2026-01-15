@@ -183,6 +183,11 @@ trait ConfiguresDatabase
         // MySQL / PostgreSQL
         $configWithoutDb = $config;
         unset($configWithoutDb['name']);
+        if ($type === 'pgsql') {
+            // PostgreSQL requires a database name; otherwise it defaults to using the username.
+            // Use a maintenance database for CREATE DATABASE operations.
+            $configWithoutDb['name'] = 'postgres';
+        }
 
         try {
             $dbh = $this->createConnection($configWithoutDb);
@@ -222,4 +227,3 @@ trait ConfiguresDatabase
         }
     }
 }
-
