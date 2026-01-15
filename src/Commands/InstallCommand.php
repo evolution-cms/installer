@@ -330,6 +330,10 @@ class InstallCommand extends Command
         try {
             while (true) {
                 $key = fread(STDIN, 3);
+                if ($key === '' || $key === false) {
+                    usleep(20000);
+                    continue;
+                }
 
                 switch ($key) {
                     case "\033[D": // ←
@@ -537,16 +541,20 @@ class InstallCommand extends Command
         try {
             while (true) {
                 $key = fread(STDIN, 3);
+                if ($key === '' || $key === false) {
+                    usleep(20000);
+                    continue;
+                }
 
                 switch ($key) {
                     case "\033[D": // ←
                     case "\033[A": // ↑
-                        $active = max(0, $active - 1) ? true : false;
+                        $active = max(0, $active - 1);
                         break;
 
                     case "\033[C": // →
                     case "\033[B": // ↓
-                        $active = min(count($options) - 1, $active + 1) ? true : false;
+                        $active = min(count($options) - 1, $active + 1);
                         break;
 
                     case "\n": // Enter
@@ -702,6 +710,10 @@ class InstallCommand extends Command
         try {
             while (true) {
                 $key = fread(STDIN, 3);
+                if ($key === '' || $key === false) {
+                    usleep(20000);
+                    continue;
+                }
 
                 switch ($key) {
                     case "\033[A": // ↑
@@ -3068,13 +3080,42 @@ class InstallCommand extends Command
             return;
         }
 
-        $modeTokens = preg_split('/\\s+/', $mode) ?: [];
+        $normalized = $this->normalizeSttyMode($mode);
+        $modeTokens = preg_split('/\\s+/', $normalized) ?: [];
         $modeArgs = implode(' ', array_map('escapeshellarg', $modeTokens));
 
         // Set stty mode and ensure it takes effect
         @shell_exec('stty ' . $modeArgs . ' < /dev/tty 2>/dev/null');
         // Also try without /dev/tty redirect (for some SSH setups)
         @shell_exec('stty ' . $modeArgs . ' 2>/dev/null');
+    }
+
+    protected function normalizeSttyMode(string $mode): string
+    {
+        $mode = trim($mode);
+        if ($mode === '') {
+            return $mode;
+        }
+
+        $tokens = preg_split('/\\s+/', $mode) ?: [];
+        $hasIcanon = in_array('-icanon', $tokens, true);
+        if (!$hasIcanon) {
+            return implode(' ', $tokens);
+        }
+
+        // Ensure reads block in non-canonical mode (prevents busy-loop rendering on some systems).
+        $hasMin = in_array('min', $tokens, true);
+        $hasTime = in_array('time', $tokens, true);
+        if (!$hasMin) {
+            $tokens[] = 'min';
+            $tokens[] = '1';
+        }
+        if (!$hasTime) {
+            $tokens[] = 'time';
+            $tokens[] = '0';
+        }
+
+        return implode(' ', $tokens);
     }
 
     protected function removeDirectory(string $dir): void
