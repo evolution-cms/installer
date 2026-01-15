@@ -1112,7 +1112,8 @@ class InstallCommand extends Command
 
         // Store collation and charset in options for later use
         $options['database']['collation'] = $collation;
-        $options['database']['charset'] = $this->getCharsetFromCollation($collation);
+        // Persist the charset chosen for the DB driver (PostgreSQL must not receive `utf8mb4`).
+        $options['database']['charset'] = $charset;
         $options['database']['port'] = $options['database']['port'] ?? $this->getDefaultPort($dbConfig['type']);
         // Prefix is already set above
 
