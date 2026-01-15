@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -226,10 +227,54 @@ func runTUI(ctx context.Context, mode ui.Mode, installOpt *installengine.Options
 	defer cancel()
 	engine.Run(engineCtx, events, actions)
 
-	if err := ui.RunWithCancel(ctx, mode, events, actions, ui.Meta{
+	res, err := ui.RunWithCancel(ctx, mode, events, actions, ui.Meta{
 		Version: Version,
 		Tagline: "The world’s fastest CMS!",
-	}, cancel); err != nil {
+	}, cancel)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	if len(res.PostExecCommand) > 0 {
+		return runPostExec(ctx, res.PostExecCommand)
+	}
+	return 0
+}
+
+func runPostExec(ctx context.Context, argv []string) int {
+	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
+		return 0
+	}
+
+	run := func(cmd []string) error {
+		c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+		c.Stdin = os.Stdin
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		return c.Run()
+	}
+
+	if err := run(argv); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode()
+		}
+
+		// If we failed to execute a script directly (no shebang support / not executable),
+		// retry via `php <script> ...`.
+		if errors.Is(err, syscall.ENOEXEC) || errors.Is(err, syscall.EACCES) {
+			phpArgv := append([]string{"php", argv[0]}, argv[1:]...)
+			if err2 := run(phpArgv); err2 != nil {
+				if errors.As(err2, &exitErr) {
+					return exitErr.ExitCode()
+				}
+				fmt.Fprintln(os.Stderr, err2)
+				return 1
+			}
+			return 0
+		}
+
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

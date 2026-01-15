@@ -63,6 +63,10 @@ type Model struct {
 
 	confirmQuitActive   bool
 	confirmQuitSelected int // 0 = abort, 1 = continue
+
+	// When set by the engine, quit the UI and run this command after the TUI exits.
+	postExecCommand []string
+	quitRequested   bool
 }
 
 func NewModel(ctx context.Context, mode Mode, events <-chan domain.Event, actions chan<- domain.Action, meta Meta, cancel func()) *Model {
@@ -329,6 +333,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.applyEvent(msg.Event)
 		m.reflow()
+		if m.quitRequested {
+			// Cancel the engine context (best-effort) and quit the TUI immediately.
+			if m.cancel != nil {
+				m.cancel()
+			}
+			return m, tea.Quit
+		}
 		return m, waitForEvent(m.events)
 
 	default:
@@ -356,6 +367,11 @@ func (m *Model) requestCancel(key string) {
 
 func (m *Model) applyEvent(ev domain.Event) {
 	switch ev.Type {
+	case domain.EventExecRequest:
+		if p, ok := ev.Payload.(domain.ExecRequestPayload); ok && len(p.Command) > 0 {
+			m.postExecCommand = append([]string(nil), p.Command...)
+			m.quitRequested = true
+		}
 	case domain.EventSteps:
 		switch p := ev.Payload.(type) {
 		case domain.StepsPayload:

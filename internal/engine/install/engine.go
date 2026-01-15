@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -1492,7 +1493,7 @@ func (e *Engine) maybeOfferSelfUpdate(ctx context.Context, emit func(domain.Even
 		tag = "v" + info.HighestVersion
 	}
 
-	cmdStr := "go install github.com/evolution-cms/installer/cmd/evo@" + tag
+	cmdStr := "evo self-update"
 
 	_ = emit(domain.Event{
 		Type:     domain.EventLog,
@@ -1519,9 +1520,14 @@ func (e *Engine) maybeOfferSelfUpdate(ctx context.Context, emit func(domain.Even
 
 	updateEnabled := true
 	reason := ""
-	if _, lookErr := exec.LookPath("go"); lookErr != nil {
+	bootstrapper, bootErr := findPHPBootstrapperEntry()
+	if bootErr != nil || strings.TrimSpace(bootstrapper) == "" {
 		updateEnabled = false
-		reason = "Go not found in PATH"
+		if bootErr != nil {
+			reason = bootErr.Error()
+		} else {
+			reason = "PHP bootstrapper not found"
+		}
 	}
 
 	choice, okSel := askSelect(ctx, emit, actions, stepID, domain.QuestionState{
@@ -1545,33 +1551,25 @@ func (e *Engine) maybeOfferSelfUpdate(ctx context.Context, emit func(domain.Even
 		Source:   "install",
 		Severity: domain.SeverityInfo,
 		Payload: domain.LogPayload{
-			Message: "Updating installer…",
+			Message: "Exiting installer and running: " + cmdStr,
 		},
 	})
 
-	cmd := exec.CommandContext(ctx, "go", "install", "github.com/evolution-cms/installer/cmd/evo@"+tag)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		_ = emit(domain.Event{
-			Type:     domain.EventWarning,
-			StepID:   stepID,
-			Source:   "install",
-			Severity: domain.SeverityWarn,
-			Payload: domain.LogPayload{
-				Message: "Self-update failed; continuing installation.",
-				Fields:  map[string]string{"error": err.Error(), "output": strings.TrimSpace(string(out))},
-			},
-		})
+	if !updateEnabled {
 		return false
 	}
 
+	cmd := []string{bootstrapper, "self-update"}
+	if runtime.GOOS == "windows" {
+		cmd = []string{"php", bootstrapper, "self-update"}
+	}
 	_ = emit(domain.Event{
-		Type:     domain.EventLog,
+		Type:     domain.EventExecRequest,
 		StepID:   stepID,
 		Source:   "install",
 		Severity: domain.SeverityInfo,
-		Payload: domain.LogPayload{
-			Message: "✔ Installer updated. Please restart the installer to use the new version.",
+		Payload: domain.ExecRequestPayload{
+			Command: cmd,
 		},
 	})
 

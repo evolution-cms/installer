@@ -14,11 +14,16 @@ import (
 	"github.com/evolution-cms/installer/internal/domain"
 )
 
-func Run(ctx context.Context, mode Mode, events <-chan domain.Event, meta Meta) error {
-	return RunWithCancel(ctx, mode, events, nil, meta, nil)
+type RunResult struct {
+	PostExecCommand []string
 }
 
-func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, actions chan<- domain.Action, meta Meta, cancel func()) error {
+func Run(ctx context.Context, mode Mode, events <-chan domain.Event, meta Meta) error {
+	_, err := RunWithCancel(ctx, mode, events, nil, meta, nil)
+	return err
+}
+
+func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, actions chan<- domain.Action, meta Meta, cancel func()) (RunResult, error) {
 	in := os.Stdin
 	out := os.Stdout
 	var tty *os.File
@@ -55,8 +60,12 @@ func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, a
 	m.reflow()
 
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithInput(in), tea.WithOutput(out))
-	_, err := p.Run()
-	return err
+	finalModel, err := p.Run()
+	res := RunResult{}
+	if mm, ok := finalModel.(*Model); ok && len(mm.postExecCommand) > 0 {
+		res.PostExecCommand = append([]string(nil), mm.postExecCommand...)
+	}
+	return res, err
 }
 
 func configureTerminalOutput(out *os.File) {
