@@ -1298,10 +1298,19 @@ class InstallCommand extends Command
         $composerCommand = $this->resolveComposerCommand($composerWorkDir);
 
         try {
+            $vendorDir = $composerWorkDir . '/vendor';
+            if (is_dir($vendorDir) && !$this->isComposerVendorHealthy($composerWorkDir)) {
+                $this->tui->addLog('Detected incomplete vendor directory. Removing and reinstalling...', 'warning');
+                $this->removeDirectory($vendorDir);
+            }
+
             $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts', '--no-cache'];
             $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
             if ($process->isSuccessful() && !$this->isComposerVendorHealthy($composerWorkDir)) {
-                $this->tui->addLog('Composer install finished but vendor is incomplete. Retrying with --prefer-source (this can happen due to GitHub rate limits)...', 'warning');
+                $this->tui->addLog('Composer install finished but vendor is incomplete. Retrying with clean vendor and --prefer-source (this can happen due to GitHub rate limits)...', 'warning');
+                if (is_dir($vendorDir)) {
+                    $this->removeDirectory($vendorDir);
+                }
                 $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts', '--no-cache'], $composerWorkDir);
             }
             if ($process->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
@@ -1399,23 +1408,50 @@ class InstallCommand extends Command
     protected function isComposerVendorHealthy(string $composerWorkDir): bool
     {
         $autoload = $composerWorkDir . '/vendor/autoload.php';
-        if (!is_file($autoload)) {
+        if (!is_file($autoload) || !$this->isNonEmptyFile($autoload)) {
             return false;
         }
 
         // Migrations/seeders use Artisan (Illuminate Console) which requires Symfony Console.
         $requiredFiles = [
-            $composerWorkDir . '/vendor/symfony/console/Application.php',
-            $composerWorkDir . '/vendor/symfony/http-kernel/Kernel.php',
-            $composerWorkDir . '/vendor/symfony/routing/RouteCollection.php',
+            [$composerWorkDir . '/vendor/symfony/console/Application.php', 'class Application'],
+            [$composerWorkDir . '/vendor/symfony/http-kernel/Kernel.php', 'class Kernel'],
+            [$composerWorkDir . '/vendor/symfony/routing/RouteCollection.php', 'class RouteCollection'],
         ];
-        foreach ($requiredFiles as $file) {
-            if (!is_file($file)) {
+        foreach ($requiredFiles as $it) {
+            [$file, $needle] = $it;
+            if (!$this->fileContains($file, $needle)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    protected function isNonEmptyFile(string $path): bool
+    {
+        $size = @filesize($path);
+        return is_int($size) && $size > 0;
+    }
+
+    protected function fileContains(string $path, string $needle): bool
+    {
+        if (!is_file($path) || !$this->isNonEmptyFile($path)) {
+            return false;
+        }
+        $fh = @fopen($path, 'rb');
+        if (!is_resource($fh)) {
+            return false;
+        }
+        try {
+            $buf = @fread($fh, 8192);
+        } finally {
+            @fclose($fh);
+        }
+        if (!is_string($buf) || $buf === '') {
+            return false;
+        }
+        return strpos($buf, $needle) !== false;
     }
 
     protected function ensureArtisanDependencies(string $projectPath): void
