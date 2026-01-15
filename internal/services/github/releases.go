@@ -19,6 +19,41 @@ type GitHubRelease struct {
 	Prerelease bool   `json:"prerelease"`
 }
 
+func FetchLatestRelease(ctx context.Context, owner string, repo string) (GitHubRelease, error) {
+	u := url.URL{
+		Scheme: "https",
+		Host:   "api.github.com",
+		Path:   fmt.Sprintf("/repos/%s/%s/releases/latest", owner, repo),
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return GitHubRelease{}, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "evo-installer")
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{Timeout: 12 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return GitHubRelease{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return GitHubRelease{}, fmt.Errorf("github releases latest: %s", resp.Status)
+	}
+
+	var rel GitHubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		return GitHubRelease{}, err
+	}
+	return rel, nil
+}
+
 func FetchReleases(ctx context.Context, owner string, repo string) ([]GitHubRelease, error) {
 	const maxPages = 3
 	var out []GitHubRelease

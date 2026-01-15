@@ -67,7 +67,35 @@ trait HandlesCollations
      */
     protected function getCharsetFromCollation(string $collation): string
     {
+        $collation = trim($collation);
+        if ($collation === '') {
+            return 'utf8mb4';
+        }
+
+        $lower = strtolower($collation);
+
+        // PostgreSQL / SQLite may provide charset-like values without underscore.
+        if (in_array($lower, ['utf8', 'utf8mb4', 'latin1', 'ascii', 'utf16', 'utf32', 'ucs2'], true)) {
+            return $lower;
+        }
+
+        // SQL Server collations are not in "{charset}_{collation}" format.
+        if (str_starts_with($lower, 'sql_')) {
+            return 'utf8';
+        }
+
         $pos = strpos($collation, '_');
-        return $pos !== false ? substr($collation, 0, $pos) : 'utf8mb4';
+        if ($pos === false) {
+            return 'utf8mb4';
+        }
+
+        $candidate = substr($collation, 0, $pos);
+        $candidateLower = strtolower($candidate);
+
+        if ($candidateLower === 'sql') {
+            return 'utf8';
+        }
+
+        return $candidateLower;
     }
 }

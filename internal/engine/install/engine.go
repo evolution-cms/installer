@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/evolution-cms/installer/internal/domain"
+	"github.com/evolution-cms/installer/internal/services/github"
 	"github.com/evolution-cms/installer/internal/services/release"
 )
 
@@ -1506,7 +1507,42 @@ func (e *Engine) maybeOfferSelfUpdate(ctx context.Context, emit func(domain.Even
 		CacheTTL: 12 * time.Hour,
 	})
 	if err != nil || info.HighestVersion == "" {
-		return false
+		// Fall back to GitHub's "latest" release endpoint (ignores pre-releases),
+		// matching the PHP bootstrapper's self-update behavior.
+		rel, err2 := github.FetchLatestRelease(ctx, "evolution-cms", "installer")
+		if err2 != nil || strings.TrimSpace(rel.TagName) == "" {
+			if err2 == nil {
+				err2 = err
+			}
+			if err2 != nil {
+				_ = emit(domain.Event{
+					Type:     domain.EventWarning,
+					StepID:   stepID,
+					Source:   "install",
+					Severity: domain.SeverityWarn,
+					Payload: domain.LogPayload{
+						Message: "Unable to check for installer updates.",
+						Fields:  map[string]string{"error": err2.Error()},
+					},
+				})
+			}
+			return false
+		}
+
+		tagName := strings.TrimSpace(rel.TagName)
+		highest := strings.TrimPrefix(strings.TrimPrefix(tagName, "v"), "V")
+		if highest == "" {
+			highest = tagName
+		}
+		tag := tagName
+		if !strings.HasPrefix(strings.ToLower(tag), "v") && highest != "" {
+			tag = "v" + highest
+		}
+		info = domain.ReleaseInfo{
+			Repo:          "evolution-cms/installer",
+			Tag:           tag,
+			HighestVersion: highest,
+		}
 	}
 
 	newMaj, newMin, newPatch, ok := parseVersionForCompare(info.HighestVersion)
