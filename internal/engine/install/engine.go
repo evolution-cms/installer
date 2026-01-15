@@ -1103,7 +1103,15 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 	if strings.TrimSpace(opt.WorkDir) != "" {
 		cmd.Dir = opt.WorkDir
 	}
-	cmd.Env = append(os.Environ(), "CI=1")
+	env := append([]string(nil), os.Environ()...)
+	env = append(env, "CI=1")
+	// Some older PHP installer versions connect to PostgreSQL without dbname to validate
+	// credentials. PostgreSQL defaults dbname to the username in that case. Setting
+	// PGDATABASE ensures those connection attempts use a maintenance database instead.
+	if strings.EqualFold(strings.TrimSpace(opt.DBType), "pgsql") {
+		env = append(env, "PGDATABASE=template1")
+	}
+	cmd.Env = env
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
