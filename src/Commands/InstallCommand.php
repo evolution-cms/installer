@@ -1296,8 +1296,13 @@ class InstallCommand extends Command
         $composerCommand = $this->resolveComposerCommand($composerWorkDir);
 
         try {
-            $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
-            if ($process->isSuccessful()) {
+            $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts'];
+            $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
+            if ($process->isSuccessful() && !$this->isComposerVendorHealthy($composerWorkDir)) {
+                $this->tui->addLog('Composer install finished but vendor is incomplete. Retrying with --prefer-source (this can happen due to GitHub rate limits)...', 'warning');
+                $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts'], $composerWorkDir);
+            }
+            if ($process->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
                 $this->tui->addLog('Dependencies installed successfully.', 'success');
                 return;
             }
@@ -1322,8 +1327,8 @@ class InstallCommand extends Command
                 }
 
                 // Reinstall with prefer-dist
-                $reinstall = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
-                if ($reinstall->isSuccessful()) {
+                $reinstall = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
+                if ($reinstall->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
                     $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
                     return;
                 }
@@ -1331,7 +1336,7 @@ class InstallCommand extends Command
                 // If install fails, try update as fallback
                 $this->tui->addLog('Install failed. Trying composer update...', 'warning');
                 $update = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
-                if ($update->isSuccessful()) {
+                if ($update->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
                     $this->tui->addLog('Dependencies updated successfully.', 'success');
                     return;
                 }
@@ -1345,7 +1350,7 @@ class InstallCommand extends Command
                 || str_contains($fullOutput, 'requires php >=8.4')) {
                 $this->tui->addLog('composer.lock is not compatible with current PHP. Running composer update...', 'warning');
                 $update = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
-                if ($update->isSuccessful()) {
+                if ($update->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
                     $this->tui->addLog('Dependencies updated successfully.', 'success');
                     return;
                 }
@@ -1369,8 +1374,8 @@ class InstallCommand extends Command
                     }
 
                     // Reinstall with prefer-dist
-                    $reinstall = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
-                    if ($reinstall->isSuccessful()) {
+                    $reinstall = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
+                    if ($reinstall->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
                         $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
                         return;
                     }
@@ -1387,6 +1392,22 @@ class InstallCommand extends Command
             $this->tui->addLog('Failed to install dependencies: ' . $e->getMessage(), 'error');
             throw new \RuntimeException("Failed to install dependencies. Please run 'composer install' (or 'composer update') manually.");
         }
+    }
+
+    protected function isComposerVendorHealthy(string $composerWorkDir): bool
+    {
+        $autoload = $composerWorkDir . '/vendor/autoload.php';
+        if (!is_file($autoload)) {
+            return false;
+        }
+
+        // Migrations/seeders use Artisan which requires Symfony Console.
+        $symfonyConsole = $composerWorkDir . '/vendor/symfony/console/Application.php';
+        if (!is_file($symfonyConsole)) {
+            return false;
+        }
+
+        return true;
     }
 
     protected function runComposer(array $composerCommand, array $args, string $workingDir): Process

@@ -14,7 +14,6 @@ import (
 
 	"github.com/evolution-cms/installer/internal/domain"
 	installengine "github.com/evolution-cms/installer/internal/engine/install"
-	"github.com/evolution-cms/installer/internal/engine/mock"
 	"github.com/evolution-cms/installer/internal/ui"
 )
 
@@ -50,11 +49,6 @@ func run(ctx context.Context, args []string) int {
 			return 1
 		}
 		return runInstall(ctx, args[1:])
-	case "doctor":
-		if !ensureComposer2(ctx) {
-			return 1
-		}
-		return runTUI(ctx, ui.ModeDoctor, nil)
 	default:
 		if !ensureComposer2(ctx) {
 			return 1
@@ -227,8 +221,6 @@ func runTUI(ctx context.Context, mode ui.Mode, installOpt *installengine.Options
 			opt = *installOpt
 		}
 		engine = installengine.New(opt)
-	} else {
-		engine = mock.New()
 	}
 	engineCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -249,7 +241,6 @@ func printUsage() {
 	fmt.Println("")
 	fmt.Println("Usage:")
 	fmt.Println("  evo install [dir] [flags]  Run TUI installer")
-	fmt.Println("  evo doctor                 Run TUI doctor (mock engine)")
 	fmt.Println("  evo version   Print version")
 	fmt.Println("")
 	fmt.Println("Common flags:")

@@ -1087,7 +1087,10 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 		args = append(args, "--force")
 	}
 
-	cmd := exec.CommandContext(ctx, "php", args...)
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	cmd := exec.CommandContext(runCtx, "php", args...)
 	if strings.TrimSpace(opt.WorkDir) != "" {
 		cmd.Dir = opt.WorkDir
 	}
@@ -1143,6 +1146,11 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 	for l := range linesCh {
 		line := l.text
 		tracker.OnLine(line)
+		if tracker.HasFailed() {
+			// Abort immediately when a step is marked failed (e.g., download failed)
+			// even if the PHP command would otherwise continue.
+			cancel()
+		}
 		stepID := tracker.CurrentStepID()
 
 		if shouldSuppressPHPSubprocessLine(line) {
@@ -1217,6 +1225,10 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 		tracker.FailRemaining()
 		return err
 	}
+	if tracker.HasFailed() {
+		tracker.FailRemaining()
+		return fmt.Errorf("installation aborted due to failed step")
+	}
 	tracker.FinishRemaining()
 	return nil
 }
@@ -1246,6 +1258,9 @@ type stepTracker struct {
 	current string
 
 	done map[string]bool
+
+	started map[string]bool
+	failed  bool
 }
 
 func newStepTracker(emit func(domain.Event) bool) *stepTracker {
@@ -1253,6 +1268,7 @@ func newStepTracker(emit func(domain.Event) bool) *stepTracker {
 		emit:    emit,
 		current: "download",
 		done:    map[string]bool{},
+		started: map[string]bool{},
 	}
 }
 
@@ -1263,6 +1279,8 @@ func (t *stepTracker) CurrentStepID() string {
 	return t.current
 }
 
+func (t *stepTracker) HasFailed() bool { return t.failed }
+
 func (t *stepTracker) start(stepID, label string, index int) {
 	if t.done[stepID] {
 		return
@@ -1271,6 +1289,7 @@ func (t *stepTracker) start(stepID, label string, index int) {
 		return
 	}
 	t.current = stepID
+	t.started[stepID] = true
 	_ = t.emit(domain.Event{
 		Type:     domain.EventStepStart,
 		StepID:   stepID,
@@ -1289,6 +1308,9 @@ func (t *stepTracker) doneStep(stepID string, ok bool) {
 		return
 	}
 	t.done[stepID] = true
+	if !ok {
+		t.failed = true
+	}
 	sev := domain.SeverityInfo
 	if !ok {
 		sev = domain.SeverityError
@@ -1320,6 +1342,10 @@ func (t *stepTracker) OnLine(line string) {
 		t.doneStep("install", true)
 		t.doneStep("presets", true)
 	}
+	// Install command now reports migrations and composer install as part of Step 4.
+	if strings.Contains(line, "Running database migrations") || strings.Contains(line, "Running database seeders") {
+		t.start("install", "Step 4: Install Evolution CMS", 4)
+	}
 
 	// Step 6 marker: deps update starts after install + presets.
 	if strings.Contains(line, "Updating dependencies with Composer") {
@@ -1344,6 +1370,12 @@ func (t *stepTracker) OnLine(line string) {
 	if strings.Contains(strings.ToLower(line), "failed to download evolution cms") {
 		t.doneStep("download", false)
 	}
+	if strings.Contains(strings.ToLower(line), "migration failed") {
+		t.doneStep("install", false)
+	}
+	if strings.Contains(strings.ToLower(line), "failed to install dependencies") {
+		t.doneStep("install", false)
+	}
 	if strings.Contains(strings.ToLower(line), "failed to update dependencies") {
 		t.doneStep("dependencies", false)
 	}
@@ -1354,12 +1386,16 @@ func (t *stepTracker) FinishRemaining() {
 	if t.done["install"] {
 		t.doneStep("presets", true)
 	}
-	// If PHP ran to completion, mark remaining steps as done (best-effort).
-	t.doneStep("download", true)
-	t.doneStep("install", true)
-	t.doneStep("presets", true)
-	t.doneStep("dependencies", true)
-	t.doneStep("finalize", true)
+	// If PHP ran to completion, mark any started but not-done steps as OK (best-effort),
+	// but never override an explicit failure.
+	if t.failed {
+		return
+	}
+	for _, id := range []string{"download", "install", "dependencies", "finalize"} {
+		if t.started[id] && !t.done[id] {
+			t.doneStep(id, true)
+		}
+	}
 }
 
 func (t *stepTracker) FailRemaining() {
