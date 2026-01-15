@@ -25,6 +25,7 @@ class InstallCommand extends Command
 
     protected ?OutputInterface $logSection = null;
     protected ?TuiRenderer $tui = null;
+    protected ?string $lastDatabaseConnectionError = null;
     protected array $composerCommandCache = [];
     protected array $steps = [
         'php' => ['label' => 'Step 1: Validate PHP version', 'completed' => false],
@@ -220,6 +221,13 @@ class InstallCommand extends Command
             if ($this->testDatabaseConnection($inputs['database'])) {
                 $databaseConnected = true;
             } else {
+                if (!$input->isInteractive()) {
+                    $msg = is_string($this->lastDatabaseConnectionError) ? trim($this->lastDatabaseConnectionError) : '';
+                    if ($msg === '') {
+                        $msg = 'Unknown database connection error.';
+                    }
+                    throw new \RuntimeException('Database connection failed: ' . $msg);
+                }
                 // Connection failed, ask user what to do
                 if (!$this->askRetryDatabaseConnection()) {
                     throw new \RuntimeException('Installation cancelled by user.');
@@ -436,6 +444,7 @@ class InstallCommand extends Command
      */
     protected function testDatabaseConnection(array $config): bool
     {
+        $this->lastDatabaseConnectionError = null;
         $this->tui->addLog('Testing database connection...');
 
         try {
@@ -464,6 +473,7 @@ class InstallCommand extends Command
                     'Please install PHP extension: ' . ($type === 'sqlite' ? 'pdo_sqlite' : 'pdo_' . $type) . '.',
                     2
                 );
+                $this->lastDatabaseConnectionError = 'PDO driver for ' . $driverName . ' is not available.';
                 return false;
             }
 
@@ -471,6 +481,7 @@ class InstallCommand extends Command
                 // SQLite: Connect directly to the database file
                 if (empty($config['name'])) {
                     $this->tui->replaceLastLogs('<fg=red>✗</> Database connection failed: SQLite database path is required.', 2);
+                    $this->lastDatabaseConnectionError = 'SQLite database path is required.';
                     return false;
                 }
                 $this->createConnection($config);
@@ -536,6 +547,7 @@ class InstallCommand extends Command
                 $errorMessage = "PDO driver for {$driverName} is not installed. Please install PHP extension: {$extensionName}";
             }
 
+            $this->lastDatabaseConnectionError = $errorMessage;
             $this->tui->replaceLastLogs('<fg=red>✗</> Database connection failed: ' . $errorMessage, 2);
             return false;
         }

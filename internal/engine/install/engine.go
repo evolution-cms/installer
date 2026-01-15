@@ -1151,6 +1151,9 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 	lastWasSeederStart := false
 	lastSeeder := ""
 	lastStep := ""
+	lastPlainLine := ""
+	lastPlainStepID := ""
+	lastPlainWasStderr := false
 
 	for l := range linesCh {
 		line := l.text
@@ -1219,6 +1222,15 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 			sev = domain.SeverityWarn
 		}
 
+		fields := map[string]string(nil)
+		if line == lastPlainLine && stepID == lastPlainStepID && l.stderr == lastPlainWasStderr {
+			fields = map[string]string{"op": "replace_last"}
+		} else {
+			lastPlainLine = line
+			lastPlainStepID = stepID
+			lastPlainWasStderr = l.stderr
+		}
+
 		_ = emit(domain.Event{
 			Type:     evType,
 			StepID:   stepID,
@@ -1226,6 +1238,7 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 			Severity: sev,
 			Payload: domain.LogPayload{
 				Message: line,
+				Fields:  fields,
 			},
 		})
 	}
