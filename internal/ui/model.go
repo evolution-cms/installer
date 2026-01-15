@@ -215,16 +215,33 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Question handling (engine-driven).
-		if m.state.Question.Active {
-			kind := m.state.Question.Kind
-			if kind == "" {
-				kind = domain.QuestionSelect
-			}
+			// Question handling (engine-driven).
+			if m.state.Question.Active {
+				kind := m.state.Question.Kind
+				if kind == "" {
+					kind = domain.QuestionSelect
+				}
 
-			if kind == domain.QuestionInput {
-				if key == "enter" {
-					text := m.inputValue
+				// While a question is active, keep an escape hatch for scrolling logs.
+				// Some terminals/IDEs don't send PgUp/PgDn reliably, so support key chords too.
+				switch key {
+				case "shift+up", "ctrl+up":
+					m.followLogs = false
+					m.logVP.LineUp(1)
+					m.reflow()
+					return m, nil
+				case "shift+down", "ctrl+down":
+					m.logVP.LineDown(1)
+					if m.logVP.AtBottom() {
+						m.followLogs = true
+					}
+					m.reflow()
+					return m, nil
+				}
+
+				if kind == domain.QuestionInput {
+					if key == "enter" {
+						text := m.inputValue
 					if !m.inputTouched {
 						text = m.state.Question.Default
 					}

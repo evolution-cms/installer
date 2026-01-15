@@ -680,11 +680,19 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 				},
 			})
 
+			promptMsg := strings.TrimSpace(msg)
+			promptMsg = strings.ReplaceAll(promptMsg, "\r", " ")
+			promptMsg = strings.ReplaceAll(promptMsg, "\n", " ")
+			promptMsg = strings.Join(strings.Fields(promptMsg), " ")
+			if len(promptMsg) > 160 {
+				promptMsg = promptMsg[:160] + "..."
+			}
+
 			retry, ok := askSelect(ctx, emit, actions, dbStepID, domain.QuestionState{
 				Active: true,
 				ID:     "db_retry",
 				Kind:   domain.QuestionSelect,
-				Prompt: "Would you like to try again or exit installation?",
+				Prompt: "Database connection failed: " + promptMsg + " — try again or exit installation?",
 				Options: []domain.QuestionOption{
 					{ID: "exit", Label: "Exit installation", Enabled: true},
 					{ID: "retry", Label: "Try again", Enabled: true},

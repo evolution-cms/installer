@@ -59,7 +59,13 @@ func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, a
 	}
 	m.reflow()
 
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithInput(in), tea.WithOutput(out))
+	progOpts := []tea.ProgramOption{tea.WithInput(in), tea.WithOutput(out)}
+	// Alt screen breaks scrolling in some environments (and can look like "log spam" in IDE consoles).
+	// Allow disabling it explicitly.
+	if os.Getenv("EVO_NO_ALT_SCREEN") == "" && os.Getenv("NO_ALT_SCREEN") == "" {
+		progOpts = append(progOpts, tea.WithAltScreen())
+	}
+	p := tea.NewProgram(m, progOpts...)
 	finalModel, err := p.Run()
 	res := RunResult{}
 	if mm, ok := finalModel.(*Model); ok && len(mm.postExecCommand) > 0 {
