@@ -254,7 +254,7 @@ func printUsage() {
 	fmt.Println("")
 	fmt.Println("Common flags:")
 	fmt.Println("  -f, --force                Force installation even if directory exists")
-	fmt.Println("  --branch=<name>            Install from Git branch (e.g., 3.5.x)")
+	fmt.Println("  --branch=<name>            Install from Git branch (e.g., main or master)")
 	fmt.Println("  --db-type=<driver>         mysql|pgsql|sqlite|sqlsrv")
 	fmt.Println("  --db-name=<name|path>      Database name (or SQLite file path)")
 	fmt.Println("  --admin-email=<email>      Admin email")

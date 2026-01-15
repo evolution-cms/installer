@@ -1056,7 +1056,7 @@ func shouldSuppressPHPSubprocessLine(line string) bool {
 func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt phpNewOptions) error {
 	tracker := newStepTracker(emit)
 
-	entry, err := findPHPInstallerCLIEntry()
+	entry, err := findPHPSymfonyCLIEntry()
 	if err != nil {
 		tracker.FailRemaining()
 		return err
@@ -1901,7 +1901,7 @@ type systemStatusJSON struct {
 }
 
 func fetchSystemStatus(ctx context.Context) (domain.SystemStatus, error) {
-	entry, err := findPHPInstallerCLIEntry()
+	entry, err := findPHPSystemStatusEntry()
 	if err != nil {
 		return domain.SystemStatus{}, err
 	}
@@ -1961,46 +1961,8 @@ func fetchSystemStatus(ctx context.Context) (domain.SystemStatus, error) {
 }
 
 func findPHPInstallerCLIEntry() (string, error) {
-	candidates := []string{}
-
-	// Prefer the bootstrapper on PATH (installed alongside the Go binary).
-	if p, err := exec.LookPath("evo"); err == nil && p != "" {
-		candidates = append(candidates, p)
-	}
-
-	// Prefer a sibling `evo` script next to the running executable (common install layout:
-	// `evo` bootstrapper + `evo.bin` Go binary in the same directory).
-	if exe, err := os.Executable(); err == nil && exe != "" {
-		exeDir := filepath.Dir(exe)
-		if exeDir != "" && exeDir != "." {
-			candidates = append(candidates, filepath.Join(exeDir, "evo"))
-		}
-	}
-
-	// Repo-local fallbacks (when running from source checkout).
-	candidates = append(candidates,
-		filepath.Join("installer", "bin", "evo"),
-		filepath.Join("bin", "evo"),
-	)
-	for _, p := range candidates {
-		if strings.TrimSpace(p) == "" {
-			continue
-		}
-		fi, err := os.Stat(p)
-		if err != nil || fi.IsDir() {
-			continue
-		}
-		if !looksLikePHPScript(p) {
-			continue
-		}
-
-		abs, absErr := filepath.Abs(p)
-		if absErr != nil {
-			return p, nil
-		}
-		return abs, nil
-	}
-	return "", fmt.Errorf("unable to find installer PHP CLI entry (tried: %s)", strings.Join(candidates, ", "))
+	// Backwards-compatible alias; keep for older callers.
+	return findPHPSymfonyCLIEntry()
 }
 
 func looksLikePHPScript(path string) bool {
@@ -2023,6 +1985,127 @@ func looksLikePHPScript(path string) bool {
 		return true
 	}
 	return false
+}
+
+func findPHPSymfonyCLIEntry() (string, error) {
+	// This entrypoint must be the internal Symfony Console runner (installer/bin/evo),
+	// not the end-user bootstrapper (bin/evo). The bootstrapper proxies to the Go
+	// binary and will fail when we pass PHP-only flags like --no-ansi/--no-interaction.
+
+	candidates := []string{}
+	if exe, err := os.Executable(); err == nil && exe != "" {
+		exeDir := filepath.Dir(exe)
+		base := filepath.Dir(exeDir)
+		// Typical layout: <root>/bin/evo.bin and <root>/installer/bin/evo
+		candidates = append(candidates,
+			filepath.Join(base, "installer", "bin", "evo"),
+			filepath.Join(exeDir, "installer", "bin", "evo"),
+			filepath.Join(filepath.Dir(base), "installer", "bin", "evo"),
+		)
+	}
+
+	// Repo-local fallbacks (when running from source checkout).
+	candidates = append(candidates, filepath.Join("installer", "bin", "evo"))
+
+	for _, p := range candidates {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		fi, err := os.Stat(p)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		if !looksLikePHPScript(p) {
+			continue
+		}
+		if !looksLikeSymfonyEntry(p) {
+			continue
+		}
+
+		abs, absErr := filepath.Abs(p)
+		if absErr != nil {
+			return p, nil
+		}
+		return abs, nil
+	}
+
+	return "", fmt.Errorf("unable to find Symfony PHP CLI entry (expected installer/bin/evo). Ensure the PHP installer package files are present next to the Go binary")
+}
+
+func findPHPSystemStatusEntry() (string, error) {
+	// Prefer the Symfony entry (more complete), but fall back to the bootstrapper
+	// which implements `system-status` without requiring Composer deps.
+	if p, err := findPHPSymfonyCLIEntry(); err == nil {
+		return p, nil
+	}
+	return findPHPBootstrapperEntry()
+}
+
+func findPHPBootstrapperEntry() (string, error) {
+	candidates := []string{}
+
+	// Prefer a sibling `evo` script next to the running executable (common install layout:
+	// `evo` bootstrapper + `evo.bin` Go binary in the same directory).
+	if exe, err := os.Executable(); err == nil && exe != "" {
+		exeDir := filepath.Dir(exe)
+		if exeDir != "" && exeDir != "." {
+			candidates = append(candidates, filepath.Join(exeDir, "evo"))
+		}
+	}
+
+	// Prefer the bootstrapper on PATH.
+	if p, err := exec.LookPath("evo"); err == nil && p != "" {
+		candidates = append(candidates, p)
+	}
+
+	// Repo-local fallback.
+	candidates = append(candidates, filepath.Join("bin", "evo"))
+
+	for _, p := range candidates {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		fi, err := os.Stat(p)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		if !looksLikePHPScript(p) {
+			continue
+		}
+		abs, absErr := filepath.Abs(p)
+		if absErr != nil {
+			return p, nil
+		}
+		return abs, nil
+	}
+
+	return "", fmt.Errorf("unable to find PHP bootstrapper entry (tried: %s)", strings.Join(candidates, ", "))
+}
+
+func looksLikeSymfonyEntry(path string) bool {
+	// Fast path: expected location.
+	p := filepath.ToSlash(path)
+	if strings.HasSuffix(p, "/installer/bin/evo") {
+		return true
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 2048)
+	n, _ := f.Read(buf)
+	if n <= 0 {
+		return false
+	}
+	head := string(buf[:n])
+	return strings.Contains(head, "EvolutionCMS\\\\Installer\\\\Application") ||
+		strings.Contains(head, "Internal PHP CLI entrypoint") ||
+		strings.Contains(head, "Symfony Console")
 }
 
 func detectExistingEvoInstall(dir string) (bool, string) {
