@@ -2930,11 +2930,32 @@ class InstallCommand extends Command
             $this->tui->addLog('Removed install directory.', 'info');
         }
 
+        // Remove localization tooling dir (not needed in production)
+        $txDir = $projectPath . '/.tx';
+        if (is_dir($txDir)) {
+            $this->removeDirectory($txDir);
+            $this->tui->addLog('Removed .tx directory.', 'info');
+        }
+
         // Remove composer.json from root (not the one in core/)
         $rootComposerJson = $projectPath . '/composer.json';
         if (file_exists($rootComposerJson) && !is_dir($rootComposerJson)) {
             @unlink($rootComposerJson);
             $this->tui->addLog('Removed root composer.json.', 'info');
+        }
+
+        // Remove repository-only files from project root
+        foreach ([
+            '.gitattributes',
+            'LICENSE',
+            'ng.inx',
+            'README.md',
+        ] as $file) {
+            $path = $projectPath . '/' . $file;
+            if (file_exists($path) && !is_dir($path)) {
+                @unlink($path);
+                $this->tui->addLog("Removed {$file}.", 'info');
+            }
         }
 
         // Remove config.php.example

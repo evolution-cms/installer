@@ -292,6 +292,13 @@ final class EvoBootstrapper
             $composerHome = rtrim($home, "/\\") . DIRECTORY_SEPARATOR . '.composer';
         }
 
+        // Ensure Composer sees these even if we fall back to shell execution.
+        @putenv('HOME=' . $home);
+        @putenv('COMPOSER_HOME=' . $composerHome);
+        if (!is_dir($composerHome)) {
+            @mkdir($composerHome, 0755, true);
+        }
+
         $this->out('Updating PHP installer package via Composer...');
         $code = $this->runProcess(
             [
@@ -448,7 +455,7 @@ final class EvoBootstrapper
                 2 => STDERR,
             ];
 
-            $mergedEnv = array_merge($_ENV, $env);
+            $mergedEnv = array_merge($this->readCurrentEnvironment(), $env);
             $proc = @proc_open($cmd, $descriptors, $pipes, $cwd ?: null, $mergedEnv);
             if (is_resource($proc)) {
                 $code = proc_close($proc);
@@ -473,6 +480,39 @@ final class EvoBootstrapper
         }
         passthru($full, $exitCode);
         return (int)$exitCode;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function readCurrentEnvironment(): array
+    {
+        $env = [];
+
+        foreach ($_ENV as $k => $v) {
+            if (is_string($k) && is_string($v)) {
+                $env[$k] = $v;
+            }
+        }
+        foreach ($_SERVER as $k => $v) {
+            if (is_string($k) && is_string($v)) {
+                $env[$k] = $v;
+            }
+        }
+
+        // Provide a sane PATH if the environment is mostly empty.
+        if (!isset($env['PATH']) || trim($env['PATH']) === '') {
+            $path = getenv('PATH');
+            if (is_string($path) && trim($path) !== '') {
+                $env['PATH'] = $path;
+            } else {
+                $env['PATH'] = PHP_OS_FAMILY === 'Windows'
+                    ? 'C:\\Windows\\System32'
+                    : '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+            }
+        }
+
+        return $env;
     }
 
     private function isFunctionDisabled(string $name): bool
