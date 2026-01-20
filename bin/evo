@@ -50,6 +50,10 @@ final class EvoBootstrapper
             return 0;
         }
 
+        if ($cmd === 'install') {
+            $this->maybePromptUpdateBeforeInstall();
+        }
+
         if (!is_file($this->binaryPath)) {
             $this->installBinary(false);
         }
@@ -267,6 +271,54 @@ final class EvoBootstrapper
         $this->installBinary(true);
     }
 
+    private function maybePromptUpdateBeforeInstall(): void
+    {
+        if (!$this->isInteractiveSession()) {
+            return;
+        }
+
+        if ($this->hasArg('--no-interaction') || $this->hasArg('-n')) {
+            return;
+        }
+        if ($this->hasArg('--quiet') || $this->hasArg('-q') || $this->hasArg('--silent')) {
+            return;
+        }
+        if ($this->isCiEnvironment()) {
+            return;
+        }
+
+        $current = $this->getInstalledVersion();
+        if (!is_string($current) || trim($current) === '') {
+            return;
+        }
+
+        $latest = null;
+        try {
+            [$tag] = $this->getLatestReleaseInfo();
+            $latest = $tag;
+        } catch (RuntimeException $e) {
+            $latest = $this->resolveLatestReleaseTagFallback();
+        }
+
+        if (!is_string($latest) || trim($latest) === '') {
+            return;
+        }
+
+        if (!$this->isNewerVersion($current, $latest)) {
+            return;
+        }
+
+        $this->out("Update available: {$current} -> {$latest}");
+        if (!$this->promptYesNo('Update now? [Y/n]', true)) {
+            $this->out('Continuing without update.');
+            return;
+        }
+
+        $this->out('Updating installer (Composer + binary)...');
+        $this->updatePhpInstallerPackageGlobal();
+        $this->installBinary(true);
+    }
+
     private function updatePhpInstallerPackageBestEffort(): void
     {
         $composer = $this->findComposerBinary();
@@ -326,6 +378,46 @@ final class EvoBootstrapper
         $this->out('PHP installer update: OK');
     }
 
+    private function updatePhpInstallerPackageGlobal(): void
+    {
+        $composer = $this->findComposerBinary();
+        if ($composer === null) {
+            $this->out('PHP installer update: skipped (Composer not found).');
+            return;
+        }
+
+        $home = $this->resolveHomeDir();
+        $env = [
+            'COMPOSER_ALLOW_SUPERUSER' => '1',
+            'HOME' => $home,
+        ];
+        $composerHome = getenv('COMPOSER_HOME');
+        if (is_string($composerHome) && trim($composerHome) !== '') {
+            $env['COMPOSER_HOME'] = $composerHome;
+        }
+
+        $this->out('Updating PHP installer package via Composer (global)...');
+        $code = $this->runProcess(
+            [
+                $composer,
+                'global',
+                'update',
+                'evolution-cms/installer',
+                '--no-interaction',
+                '--no-ansi',
+                '--no-progress',
+            ],
+            null,
+            $env
+        );
+        if ($code !== 0) {
+            $this->out("PHP installer update: failed (exit code {$code}).");
+            return;
+        }
+
+        $this->out('PHP installer update: OK');
+    }
+
     private function findComposerBinary(): ?string
     {
         $bins = ['composer', 'composer2'];
@@ -354,6 +446,71 @@ final class EvoBootstrapper
         }
 
         return null;
+    }
+
+    private function isInteractiveSession(): bool
+    {
+        if (function_exists('stream_isatty')) {
+            return @stream_isatty(STDIN);
+        }
+        if (function_exists('posix_isatty')) {
+            return @posix_isatty(STDIN);
+        }
+        return false;
+    }
+
+    private function isCiEnvironment(): bool
+    {
+        $ci = getenv('CI');
+        return is_string($ci) && trim($ci) !== '';
+    }
+
+    private function hasArg(string $needle): bool
+    {
+        foreach ($this->args as $arg) {
+            if ($arg === $needle) {
+                return true;
+            }
+            if (str_starts_with($needle, '--') && str_starts_with($arg, $needle . '=')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function normalizeVersion(string $version): string
+    {
+        $v = trim($version);
+        $v = ltrim($v, "vV");
+        return $v;
+    }
+
+    private function isNewerVersion(string $current, string $latest): bool
+    {
+        $currentNorm = $this->normalizeVersion($current);
+        $latestNorm = $this->normalizeVersion($latest);
+        if ($currentNorm === '' || $latestNorm === '') {
+            return $latest !== $current;
+        }
+        if (!preg_match('/^[0-9]+(\\.[0-9]+)*/', $currentNorm) || !preg_match('/^[0-9]+(\\.[0-9]+)*/', $latestNorm)) {
+            return $latest !== $current;
+        }
+        return version_compare($latestNorm, $currentNorm, '>');
+    }
+
+    private function promptYesNo(string $question, bool $defaultYes): bool
+    {
+        $suffix = $defaultYes ? ' ' : '';
+        $this->out($question . $suffix);
+        $line = fgets(STDIN);
+        if ($line === false) {
+            return $defaultYes;
+        }
+        $answer = strtolower(trim($line));
+        if ($answer === '') {
+            return $defaultYes;
+        }
+        return in_array($answer, ['y', 'yes'], true);
     }
 
     private function findComposerWorkDir(): ?string

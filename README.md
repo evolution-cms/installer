@@ -128,7 +128,7 @@ evo install my-project --composer-clear-cache  # Clear Composer cache before ins
 - `--admin-password`: Admin password
 - `--admin-directory`: Admin directory name (default: `manager`)
 - `--language`: Installation language (default: `en`)
-- `--branch`: Install from specific Git branch (e.g., `develop`, `nightly`, `main`) instead of latest release
+- `--branch`: Install from specific Git branch (e.g., `3.5.x`, `develop`, `nightly`, `main`) instead of latest release
 - `--git`: Initialize a Git repository and create initial commit
 - `--force`: Force install even if directory exists
 - `--log`: Always write installer log to `log.md`
