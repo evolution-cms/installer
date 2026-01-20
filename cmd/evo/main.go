@@ -370,6 +370,7 @@ func runInstaller(ctx context.Context, mode ui.Mode, installOpt *installengine.O
 		res, err := ui.RunWithCancel(ctx, mode, events, actions, ui.Meta{
 			Version: Version,
 			Tagline: "The world’s fastest CMS!",
+			Branch:  strings.TrimSpace(opt.Branch),
 		}, cancel, logger)
 		runErr = err
 		postExec = res.PostExecCommand

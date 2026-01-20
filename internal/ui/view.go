@@ -320,12 +320,23 @@ func (m *Model) releaseVersionLine() (string, lipgloss.Style) {
 		return "Fetching version…", mutedStyle
 	}
 	if m.state.Release.Error != "" {
-		return "v—", mutedStyle
+		return m.appendBranch("v—"), mutedStyle
 	}
 	if m.state.Release.Highest.HighestVersion != "" {
-		return "v" + m.state.Release.Highest.HighestVersion, versionStyle
+		return m.appendBranch("v" + m.state.Release.Highest.HighestVersion), versionStyle
 	}
-	return "v—", mutedStyle
+	return m.appendBranch("v—"), mutedStyle
+}
+
+func (m *Model) appendBranch(versionLine string) string {
+	branch := strings.TrimSpace(m.meta.Branch)
+	if branch == "" {
+		return versionLine
+	}
+	if !strings.HasPrefix(versionLine, "v") {
+		return versionLine
+	}
+	return versionLine + " (branch " + branch + ")"
 }
 
 func formatVersion(v string) string {
