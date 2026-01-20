@@ -29,7 +29,9 @@ type Options struct {
 
 	SelfVersion string
 
-	Branch string
+	Branch             string
+	ComposerClearCache bool
+	ComposerUpdate     bool
 
 	DBType     string
 	DBHost     string
@@ -953,20 +955,22 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 		})
 
 		if err := runPHPNewCommand(ctx, emit, phpNewOptions{
-			DBType:         dbType,
-			DBHost:         dbHost,
-			DBPort:         dbPort,
-			DBName:         dbName,
-			DBUser:         dbUser,
-			DBPassword:     dbPassword,
-			AdminUsername:  adminUser,
-			AdminEmail:     adminEmail,
-			AdminPassword:  adminPass,
-			AdminDirectory: adminDir,
-			Language:       lang,
-			Force:          e.opt.Force,
-			Branch:         strings.TrimSpace(e.opt.Branch),
-			WorkDir:        workDir,
+			DBType:             dbType,
+			DBHost:             dbHost,
+			DBPort:             dbPort,
+			DBName:             dbName,
+			DBUser:             dbUser,
+			DBPassword:         dbPassword,
+			AdminUsername:      adminUser,
+			AdminEmail:         adminEmail,
+			AdminPassword:      adminPass,
+			AdminDirectory:     adminDir,
+			Language:           lang,
+			Force:              e.opt.Force,
+			Branch:             strings.TrimSpace(e.opt.Branch),
+			WorkDir:            workDir,
+			ComposerClearCache: e.opt.ComposerClearCache,
+			ComposerUpdate:     e.opt.ComposerUpdate,
 		}); err != nil {
 			_ = emit(domain.Event{
 				Type:     domain.EventError,
@@ -1000,6 +1004,9 @@ type phpNewOptions struct {
 	Force   bool
 	Branch  string
 	WorkDir string
+
+	ComposerClearCache bool
+	ComposerUpdate     bool
 }
 
 var consoleTagRe = regexp.MustCompile(`<[^>]+>`)
@@ -1095,6 +1102,12 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 	}
 	if opt.Force {
 		args = append(args, "--force")
+	}
+	if opt.ComposerUpdate {
+		args = append(args, "--composer-update")
+	}
+	if opt.ComposerClearCache {
+		args = append(args, "--composer-clear-cache")
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -1539,8 +1552,8 @@ func (e *Engine) maybeOfferSelfUpdate(ctx context.Context, emit func(domain.Even
 			tag = "v" + highest
 		}
 		info = domain.ReleaseInfo{
-			Repo:          "evolution-cms/installer",
-			Tag:           tag,
+			Repo:           "evolution-cms/installer",
+			Tag:            tag,
 			HighestVersion: highest,
 		}
 	}

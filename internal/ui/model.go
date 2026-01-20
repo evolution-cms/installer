@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/evolution-cms/installer/internal/domain"
+	"github.com/evolution-cms/installer/internal/logging"
 )
 
 type EventMsg struct {
@@ -67,9 +68,11 @@ type Model struct {
 	// When set by the engine, quit the UI and run this command after the TUI exits.
 	postExecCommand []string
 	quitRequested   bool
+
+	logger *logging.EventLogger
 }
 
-func NewModel(ctx context.Context, mode Mode, events <-chan domain.Event, actions chan<- domain.Action, meta Meta, cancel func()) *Model {
+func NewModel(ctx context.Context, mode Mode, events <-chan domain.Event, actions chan<- domain.Action, meta Meta, cancel func(), logger *logging.EventLogger) *Model {
 	now := time.Now()
 	state := domain.AppState{
 		Mode:      mode.DomainMode(),
@@ -98,6 +101,7 @@ func NewModel(ctx context.Context, mode Mode, events <-chan domain.Event, action
 		spin:                spin,
 		systemStatusLoading: true,
 		followLogs:          true,
+		logger:              logger,
 	}
 }
 
@@ -215,33 +219,33 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-			// Question handling (engine-driven).
-			if m.state.Question.Active {
-				kind := m.state.Question.Kind
-				if kind == "" {
-					kind = domain.QuestionSelect
-				}
+		// Question handling (engine-driven).
+		if m.state.Question.Active {
+			kind := m.state.Question.Kind
+			if kind == "" {
+				kind = domain.QuestionSelect
+			}
 
-				// While a question is active, keep an escape hatch for scrolling logs.
-				// Some terminals/IDEs don't send PgUp/PgDn reliably, so support key chords too.
-				switch key {
-				case "shift+up", "ctrl+up":
-					m.followLogs = false
-					m.logVP.LineUp(1)
-					m.reflow()
-					return m, nil
-				case "shift+down", "ctrl+down":
-					m.logVP.LineDown(1)
-					if m.logVP.AtBottom() {
-						m.followLogs = true
-					}
-					m.reflow()
-					return m, nil
+			// While a question is active, keep an escape hatch for scrolling logs.
+			// Some terminals/IDEs don't send PgUp/PgDn reliably, so support key chords too.
+			switch key {
+			case "shift+up", "ctrl+up":
+				m.followLogs = false
+				m.logVP.LineUp(1)
+				m.reflow()
+				return m, nil
+			case "shift+down", "ctrl+down":
+				m.logVP.LineDown(1)
+				if m.logVP.AtBottom() {
+					m.followLogs = true
 				}
+				m.reflow()
+				return m, nil
+			}
 
-				if kind == domain.QuestionInput {
-					if key == "enter" {
-						text := m.inputValue
+			if kind == domain.QuestionInput {
+				if key == "enter" {
+					text := m.inputValue
 					if !m.inputTouched {
 						text = m.state.Question.Default
 					}
@@ -367,15 +371,27 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) requestCancel(key string) {
 	m.cancelling = true
 	m.state.Question.Active = false
-	m.state.Logs.Entries = append(m.state.Logs.Entries, domain.LogEntry{
+	entry := domain.LogEntry{
 		TS:      time.Now(),
 		Level:   domain.LogWarning,
 		Source:  "ui",
 		StepID:  "",
 		Message: fmt.Sprintf("Cancellation requested (%s).", key),
-	})
+	}
+	m.state.Logs.Entries = append(m.state.Logs.Entries, entry)
 	if m.state.Logs.Max > 0 && len(m.state.Logs.Entries) > m.state.Logs.Max {
 		m.state.Logs.Entries = m.state.Logs.Entries[len(m.state.Logs.Entries)-m.state.Logs.Max:]
+	}
+	if m.logger != nil {
+		m.logger.Record(domain.Event{
+			Type:     domain.EventWarning,
+			Source:   entry.Source,
+			Severity: domain.SeverityWarn,
+			TS:       entry.TS,
+			Payload: domain.LogPayload{
+				Message: entry.Message,
+			},
+		})
 	}
 	if m.cancel != nil {
 		m.cancel()
@@ -383,6 +399,10 @@ func (m *Model) requestCancel(key string) {
 }
 
 func (m *Model) applyEvent(ev domain.Event) {
+	if m.logger != nil {
+		m.logger.Record(ev)
+	}
+
 	switch ev.Type {
 	case domain.EventExecRequest:
 		if p, ok := ev.Payload.(domain.ExecRequestPayload); ok && len(p.Command) > 0 {

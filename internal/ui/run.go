@@ -12,6 +12,7 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/evolution-cms/installer/internal/domain"
+	"github.com/evolution-cms/installer/internal/logging"
 )
 
 type RunResult struct {
@@ -19,11 +20,11 @@ type RunResult struct {
 }
 
 func Run(ctx context.Context, mode Mode, events <-chan domain.Event, meta Meta) error {
-	_, err := RunWithCancel(ctx, mode, events, nil, meta, nil)
+	_, err := RunWithCancel(ctx, mode, events, nil, meta, nil, nil)
 	return err
 }
 
-func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, actions chan<- domain.Action, meta Meta, cancel func()) (RunResult, error) {
+func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, actions chan<- domain.Action, meta Meta, cancel func(), logger *logging.EventLogger) (RunResult, error) {
 	in := os.Stdin
 	out := os.Stdout
 	var tty *os.File
@@ -47,7 +48,7 @@ func RunWithCancel(ctx context.Context, mode Mode, events <-chan domain.Event, a
 	// actual terminal output we're writing to (which might be /dev/tty).
 	configureTerminalOutput(out)
 
-	m := NewModel(ctx, mode, events, actions, meta, cancel)
+	m := NewModel(ctx, mode, events, actions, meta, cancel, logger)
 
 	// Seed a sensible initial size so the UI can render even if WindowSizeMsg never arrives.
 	if w, h, ok := detectTerminalSize(in, out, tty); ok {

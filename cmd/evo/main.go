@@ -16,6 +16,7 @@ import (
 
 	"github.com/evolution-cms/installer/internal/domain"
 	installengine "github.com/evolution-cms/installer/internal/engine/install"
+	"github.com/evolution-cms/installer/internal/logging"
 	"github.com/evolution-cms/installer/internal/ui"
 )
 
@@ -220,27 +221,41 @@ func runInstall(ctx context.Context, args []string) int {
 	adminPassword := fs.String("admin-password", "", "Admin password")
 	adminDirectory := fs.String("admin-directory", "", "Admin directory (default: manager)")
 	language := fs.String("language", "", "Installation language (e.g., en, uk)")
+	logToFile := fs.Bool("log", false, "Write installer log to file")
+	cliMode := fs.Bool("cli", false, "Run in non-interactive CLI mode (no TUI)")
+	quiet := fs.Bool("quiet", false, "Reduce CLI output (warnings/errors only)")
+	composerClearCache := fs.Bool("composer-clear-cache", false, "Clear Composer cache before install")
+	composerUpdate := fs.Bool("composer-update", false, "Use composer update instead of install during setup")
 
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
 	}
-	return runTUI(ctx, ui.ModeInstall, &installengine.Options{
-		Force:          *force,
-		Dir:            installDir,
-		SelfVersion:    Version,
-		Branch:         strings.TrimSpace(*branch),
-		DBType:         strings.ToLower(strings.TrimSpace(*dbType)),
-		DBHost:         strings.TrimSpace(*dbHost),
-		DBPort:         *dbPort,
-		DBName:         strings.TrimSpace(*dbName),
-		DBUser:         strings.TrimSpace(*dbUser),
-		DBPassword:     *dbPassword,
-		AdminUsername:  strings.TrimSpace(*adminUsername),
-		AdminEmail:     strings.TrimSpace(*adminEmail),
-		AdminPassword:  *adminPassword,
-		AdminDirectory: strings.TrimSpace(*adminDirectory),
-		Language:       strings.ToLower(strings.TrimSpace(*language)),
-	})
+	opt := installengine.Options{
+		Force:              *force,
+		Dir:                installDir,
+		SelfVersion:        Version,
+		Branch:             strings.TrimSpace(*branch),
+		ComposerClearCache: *composerClearCache,
+		ComposerUpdate:     *composerUpdate,
+		DBType:             strings.ToLower(strings.TrimSpace(*dbType)),
+		DBHost:             strings.TrimSpace(*dbHost),
+		DBPort:             *dbPort,
+		DBName:             strings.TrimSpace(*dbName),
+		DBUser:             strings.TrimSpace(*dbUser),
+		DBPassword:         *dbPassword,
+		AdminUsername:      strings.TrimSpace(*adminUsername),
+		AdminEmail:         strings.TrimSpace(*adminEmail),
+		AdminPassword:      *adminPassword,
+		AdminDirectory:     strings.TrimSpace(*adminDirectory),
+		Language:           strings.ToLower(strings.TrimSpace(*language)),
+	}
+	if *cliMode {
+		if err := applyCLIDefaults(&opt); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+	}
+	return runInstaller(ctx, ui.ModeInstall, &opt, *logToFile, *cliMode, *quiet)
 }
 
 func splitInstallArgs(args []string) (installDir string, flagArgs []string, err error) {
@@ -311,34 +326,73 @@ func splitInstallArgs(args []string) (installDir string, flagArgs []string, err 
 	return installDir, flagArgs, nil
 }
 
-func runTUI(ctx context.Context, mode ui.Mode, installOpt *installengine.Options) int {
+func runInstaller(ctx context.Context, mode ui.Mode, installOpt *installengine.Options, logAlways bool, cliMode bool, quiet bool) int {
 	events := make(chan domain.Event, 256)
 	actions := make(chan domain.Action, 16)
 	var engine interface {
 		Run(context.Context, chan<- domain.Event, <-chan domain.Action)
 	}
+	var opt installengine.Options
 	if mode == ui.ModeInstall {
-		opt := installengine.Options{}
 		if installOpt != nil {
 			opt = *installOpt
 		}
 		engine = installengine.New(opt)
 	}
+	var logger *logging.EventLogger
+	if mode == ui.ModeInstall {
+		logger = logging.NewEventLogger(logging.Config{
+			Always:         logAlways,
+			InstallDir:     opt.Dir,
+			Version:        Version,
+			Mode:           string(mode),
+			Force:          opt.Force,
+			Branch:         opt.Branch,
+			DBType:         opt.DBType,
+			DBHost:         opt.DBHost,
+			DBPort:         opt.DBPort,
+			DBName:         opt.DBName,
+			AdminDirectory: opt.AdminDirectory,
+			Language:       opt.Language,
+		})
+	}
 	engineCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	engine.Run(engineCtx, events, actions)
 
-	res, err := ui.RunWithCancel(ctx, mode, events, actions, ui.Meta{
-		Version: Version,
-		Tagline: "The world’s fastest CMS!",
-	}, cancel)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	var (
+		postExec []string
+		runErr   error
+	)
+	if cliMode {
+		postExec, runErr = runCLI(ctx, events, actions, cancel, logger, quiet)
+	} else {
+		res, err := ui.RunWithCancel(ctx, mode, events, actions, ui.Meta{
+			Version: Version,
+			Tagline: "The world’s fastest CMS!",
+		}, cancel, logger)
+		runErr = err
+		postExec = res.PostExecCommand
+	}
+	if runErr != nil && logger != nil {
+		logger.MarkFailure()
+	}
+	if logger != nil {
+		logRes, logErr := logger.Finalize()
+		if logErr != nil {
+			fmt.Fprintln(os.Stderr, logErr)
+		}
+		if logRes.Written {
+			fmt.Fprintf(os.Stderr, "Installer log saved to %s\n", logRes.Path)
+		}
+	}
+	if runErr != nil {
+		fmt.Fprintln(os.Stderr, runErr)
 		return 1
 	}
 
-	if len(res.PostExecCommand) > 0 {
-		return runPostExec(ctx, res.PostExecCommand)
+	if len(postExec) > 0 {
+		return runPostExec(ctx, postExec)
 	}
 	return 0
 }
@@ -395,4 +449,9 @@ func printUsage() {
 	fmt.Println("  --db-type=<driver>         mysql|pgsql|sqlite|sqlsrv")
 	fmt.Println("  --db-name=<name|path>      Database name (or SQLite file path)")
 	fmt.Println("  --admin-email=<email>      Admin email")
+	fmt.Println("  --log                      Always write installer log to log.md")
+	fmt.Println("  --composer-clear-cache     Clear Composer cache before install")
+	fmt.Println("  --composer-update          Use composer update instead of install during setup")
+	fmt.Println("  --cli                      Run in non-interactive CLI mode (no TUI)")
+	fmt.Println("  --quiet                    Reduce CLI output (warnings/errors only)")
 }

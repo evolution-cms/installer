@@ -109,6 +109,9 @@ evo install my-project --language=en
 evo install my-project --branch=develop  # Install from specific Git branch
 evo install my-project --git  # Initialize a Git repository
 evo install my-project --force  # Force install even if directory exists
+evo install my-project --cli --log  # Non-interactive mode + write log.md
+evo install my-project --composer-update  # Use composer update during setup
+evo install my-project --composer-clear-cache  # Clear Composer cache before install
 ```
 
 ### Available Options
@@ -128,6 +131,11 @@ evo install my-project --force  # Force install even if directory exists
 - `--branch`: Install from specific Git branch (e.g., `develop`, `nightly`, `main`) instead of latest release
 - `--git`: Initialize a Git repository and create initial commit
 - `--force`: Force install even if directory exists
+- `--log`: Always write installer log to `log.md`
+- `--cli`: Run in non-interactive CLI mode (no TUI)
+- `--quiet`: Reduce CLI output (warnings/errors only)
+- `--composer-clear-cache`: Clear Composer cache before install
+- `--composer-update`: Use `composer update` instead of `composer install` during setup
 
 ## Presets
 

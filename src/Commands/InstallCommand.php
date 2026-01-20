@@ -27,6 +27,7 @@ class InstallCommand extends Command
     protected ?TuiRenderer $tui = null;
     protected ?string $lastDatabaseConnectionError = null;
     protected array $composerCommandCache = [];
+    protected array $composerVersionCache = [];
     protected array $steps = [
         'php' => ['label' => 'Step 1: Validate PHP version', 'completed' => false],
         'database' => ['label' => 'Step 2: Check database connection', 'completed' => false],
@@ -60,6 +61,8 @@ class InstallCommand extends Command
             ->addOption('admin-directory', null, InputOption::VALUE_OPTIONAL, 'The admin directory')
             ->addOption('branch', null, InputOption::VALUE_OPTIONAL, 'Install from specific Git branch (e.g., develop, nightly, main) instead of latest release')
             ->addOption('language', null, InputOption::VALUE_OPTIONAL, 'The installation language')
+            ->addOption('composer-clear-cache', null, InputOption::VALUE_NONE, 'Clear Composer cache before install')
+            ->addOption('composer-update', null, InputOption::VALUE_NONE, 'Use composer update instead of install during setup')
             ->addOption('git', null, InputOption::VALUE_NONE, 'Initialize a Git repository')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Force install even if directory exists');
     }
@@ -107,6 +110,8 @@ class InstallCommand extends Command
         $options = $this->gatherInputs($input, $output);
         $options['git'] = $input->getOption('git');
         $options['install_in_current_dir'] = $installInCurrentDir;
+        $options['composer_clear_cache'] = (bool) $input->getOption('composer-clear-cache');
+        $options['composer_update'] = (bool) $input->getOption('composer-update');
 
         // Step 3: Download Evolution CMS
         $branch = $input->getOption('branch');
@@ -1045,7 +1050,7 @@ class InstallCommand extends Command
         $this->writeCoreCustomEnv($projectPath, $options);
 
         // Step 4.2: Install dependencies via Composer
-        $this->setupComposer($projectPath);
+        $this->setupComposer($projectPath, $options);
 
         // Step 4.3: Run database migrations
         $this->runMigrations($projectPath, $options);
@@ -1171,7 +1176,7 @@ class InstallCommand extends Command
     {
         $this->tui->addLog('Running database seeders...');
 
-        $this->ensureArtisanDependencies($projectPath);
+        $this->ensureArtisanDependencies($projectPath, $options);
 
         $artisanScript = null;
         foreach (['core/artisan', 'artisan'] as $candidate) {
@@ -1339,7 +1344,7 @@ class InstallCommand extends Command
      * @param string $projectPath
      * @return void
      */
-    protected function setupComposer(string $projectPath): void
+    protected function setupComposer(string $projectPath, array $options): void
     {
         $this->tui->addLog('Installing dependencies with Composer...');
 
@@ -1351,6 +1356,8 @@ class InstallCommand extends Command
             return;
         }
 
+        $this->tui->addLog('Composer scripts disabled: --no-scripts');
+
         // Some releases may omit these directories; Composer and Evolution CMS expect them.
         @mkdir($composerWorkDir . '/storage/bootstrap', 0755, true);
         @mkdir($composerWorkDir . '/storage/cache', 0755, true);
@@ -1360,144 +1367,63 @@ class InstallCommand extends Command
         $this->tui->addLog('Composer working directory: ' . basename($composerWorkDir));
 
         $composerCommand = $this->resolveComposerCommand($composerWorkDir);
+        $clearCache = !empty($options['composer_clear_cache']);
+        $useUpdate = !empty($options['composer_update']);
+        $modeLabel = $useUpdate ? 'update' : 'install';
 
         try {
             $vendorDir = $composerWorkDir . '/vendor';
-            if (is_dir($vendorDir) && !$this->isComposerVendorHealthy($composerWorkDir)) {
-                $this->tui->addLog('Detected incomplete vendor directory. Removing and reinstalling...', 'warning');
-                $this->removeDirectory($vendorDir);
+            if (is_dir($vendorDir)) {
+                $this->tui->addLog('Existing vendor directory detected. Removing for a clean install...', 'warning');
+                $this->removeVendorDirectory($vendorDir, 'clean install');
+            } else {
+                $this->tui->addLog('No existing vendor directory detected. Proceeding with clean install.');
             }
 
-            $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts', '--no-cache'];
-            $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
-            if ($process->isSuccessful() && !$this->verifyComposerVendor($composerWorkDir)) {
-                $this->tui->addLog('Composer install finished but vendor is incomplete. Retrying with clean vendor and --prefer-source (this can happen due to GitHub rate limits)...', 'warning');
-                if (is_dir($vendorDir)) {
-                    $this->removeDirectory($vendorDir);
+            if ($clearCache) {
+                $this->tui->addLog('Clearing Composer cache (--composer-clear-cache)...', 'warning');
+                $clear = $this->runComposer($composerCommand, ['clear-cache'], $composerWorkDir);
+                if (!$clear->isSuccessful()) {
+                    $out = $this->sanitizeComposerOutput($clear->getOutput() . "\n" . $clear->getErrorOutput());
+                    $this->tui->addLog('Composer cache clear failed: ' . trim($out), 'warning');
+                } else {
+                    $this->tui->addLog('Composer cache cleared.', 'success');
                 }
-                $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts', '--no-cache'], $composerWorkDir);
             }
-            if ($process->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
+
+            $installArgs = [$useUpdate ? 'update' : 'install', '--no-dev', '--prefer-dist', '--no-scripts'];
+            $this->tui->addLog('Composer mode: ' . $modeLabel);
+            $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
+            $fullOutput = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
+            if ($process->isSuccessful()) {
                 $this->tui->addLog('Dependencies installed successfully.', 'success');
                 return;
             }
 
-            $fullOutput = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
-
-            // Handle missing .git directory error (packages installed with --prefer-source)
-            if (str_contains($fullOutput, '.git directory is missing') || str_contains($fullOutput, 'see https://getcomposer.org/commit-deps')) {
-                $this->tui->addLog('Detected source-installed packages with missing .git. Removing vendor directory and reinstalling with --prefer-dist...', 'warning');
-
-                // Remove vendor directory to clear source-installed packages
-                $vendorDir = $composerWorkDir . '/vendor';
-                if (is_dir($vendorDir)) {
-                    $this->removeDirectory($vendorDir);
-                }
-
-                // Also remove composer.lock if it exists to force fresh install
-                $composerLock = $composerWorkDir . '/composer.lock';
-                if (file_exists($composerLock)) {
-                    @unlink($composerLock);
-                    $this->tui->addLog('Removed composer.lock to force fresh dependency resolution.');
-                }
-
-                // Reinstall with prefer-dist
-                $reinstall = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
-                if ($reinstall->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
-                    $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
-                    return;
-                }
-
-                // If install fails, try update as fallback
-                $this->tui->addLog('Install failed. Trying composer update...', 'warning');
-                $update = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
-                if ($update->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
-                    $this->tui->addLog('Dependencies updated successfully.', 'success');
-                    return;
-                }
-
-                $updateOutput = $this->sanitizeComposerOutput($update->getOutput() . "\n" . $update->getErrorOutput());
-                throw new \RuntimeException(trim($updateOutput));
-            }
-
-            // composer.lock may be generated for a newer PHP version; fall back to update to resolve a compatible set.
-            if (str_contains($fullOutput, 'Your lock file does not contain a compatible set of packages')
-                || str_contains($fullOutput, 'requires php >=8.4')) {
-                $this->tui->addLog('composer.lock is not compatible with current PHP. Running composer update...', 'warning');
-                $update = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
-                if ($update->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
-                    $this->tui->addLog('Dependencies updated successfully.', 'success');
-                    return;
-                }
-
-                $updateOutput = $this->sanitizeComposerOutput($update->getOutput() . "\n" . $update->getErrorOutput());
-
-                // Check if update failed due to .git directory issue
-                if (str_contains($updateOutput, '.git directory is missing') || str_contains($updateOutput, 'see https://getcomposer.org/commit-deps')) {
-                    $this->tui->addLog('Update failed due to missing .git. Removing vendor and reinstalling...', 'warning');
-
-                    // Remove vendor directory to clear source-installed packages
-                    $vendorDir = $composerWorkDir . '/vendor';
-                    if (is_dir($vendorDir)) {
-                        $this->removeDirectory($vendorDir);
-                    }
-
-                    // Remove composer.lock to force fresh install
-                    $composerLock = $composerWorkDir . '/composer.lock';
-                    if (file_exists($composerLock)) {
-                        @unlink($composerLock);
-                    }
-
-                    // Reinstall with prefer-dist
-                    $reinstall = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
-                    if ($reinstall->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
-                        $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
-                        return;
-                    }
-
-                    $reinstallOutput = $this->sanitizeComposerOutput($reinstall->getOutput() . "\n" . $reinstall->getErrorOutput());
-                    throw new \RuntimeException(trim($reinstallOutput));
-                }
-
-                throw new \RuntimeException(trim($updateOutput));
-            }
-
             throw new \RuntimeException(trim($fullOutput));
         } catch (\Exception $e) {
-            $this->tui->addLog('Failed to install dependencies: ' . $e->getMessage(), 'error');
-            throw new \RuntimeException("Failed to install dependencies. Please run 'composer install' (or 'composer update') manually.");
+            $this->tui->addLog('Failed to ' . $modeLabel . ' dependencies: ' . $e->getMessage(), 'error');
+            $manual = $useUpdate ? 'composer update' : 'composer install';
+            throw new \RuntimeException("Failed to {$modeLabel} dependencies. Please run '{$manual}' manually.");
         }
     }
 
     protected function isComposerVendorHealthy(string $composerWorkDir): bool
     {
-        $autoload = $composerWorkDir . '/vendor/autoload.php';
-        if (!is_file($autoload) || !$this->isNonEmptyFile($autoload)) {
-            return false;
-        }
-
-        // Migrations/seeders use Artisan (Illuminate Console) which requires Symfony Console.
-        $requiredFiles = [
-            [$composerWorkDir . '/vendor/symfony/console/Application.php', 'class Application'],
-            [$composerWorkDir . '/vendor/symfony/http-kernel/Kernel.php', 'class Kernel'],
-            [$composerWorkDir . '/vendor/symfony/routing/RouteCollection.php', 'class RouteCollection'],
-        ];
-        foreach ($requiredFiles as $it) {
-            [$file, $needle] = $it;
-            if (!$this->fileContains($file, $needle)) {
-                return false;
-            }
-        }
-
-        return true;
+        return $this->composerVendorIssues($composerWorkDir) === [];
     }
 
     protected function verifyComposerVendor(string $composerWorkDir, int $attempts = 3, int $sleepMs = 400): bool
     {
         $this->tui->addLog('Verifying Composer dependencies...');
         for ($i = 0; $i < $attempts; $i++) {
-            if ($this->isComposerVendorHealthy($composerWorkDir)) {
+            $report = [];
+            $issues = $this->composerVendorIssues($composerWorkDir, $report);
+            if ($issues === []) {
                 return true;
+            }
+            if ($i === 0) {
+                $this->logComposerVendorIssues($composerWorkDir, $report, 'Composer vendor incomplete.');
             }
             if ($i < $attempts - 1) {
                 usleep($sleepMs * 1000);
@@ -1506,74 +1432,134 @@ class InstallCommand extends Command
         return false;
     }
 
+    protected function composerVendorIssues(string $composerWorkDir, ?array &$report = null): array
+    {
+        $issues = [];
+        $report = [
+            'installed_path' => null,
+            'installed_format' => null,
+            'package_count' => 0,
+            'missing_artifacts' => [],
+            'missing_packages' => [],
+            'missing_classes' => [],
+            'notes' => [],
+        ];
+
+        $autoload = $composerWorkDir . '/vendor/autoload.php';
+        if (!is_file($autoload) || !$this->isNonEmptyFile($autoload)) {
+            $issues[] = 'vendor/autoload.php';
+            $report['missing_artifacts'][] = 'vendor/autoload.php';
+        }
+
+        $autoloadFiles = [
+            'vendor/composer/autoload_real.php',
+            'vendor/composer/autoload_psr4.php',
+            'vendor/composer/autoload_classmap.php',
+        ];
+        foreach ($autoloadFiles as $relative) {
+            $path = $composerWorkDir . '/' . $relative;
+            if (!is_file($path) || !$this->isNonEmptyFile($path)) {
+                $issues[] = $relative;
+                $report['missing_artifacts'][] = $relative;
+            }
+        }
+
+        $packages = $this->composerInstalledPackages($composerWorkDir, $report);
+        $report['package_count'] = count($packages);
+        if ($report['installed_path'] === null) {
+            $issues[] = 'vendor/composer/installed.php (or installed.json)';
+            $report['missing_artifacts'][] = 'vendor/composer/installed.php';
+        } elseif ($packages === []) {
+            $issues[] = 'composer installed metadata is empty';
+        }
+
+        // Migrations/seeders use Artisan (Illuminate Console) which requires Symfony Console.
+        $requiredPackages = [
+            'symfony/console',
+            'symfony/http-kernel',
+            'symfony/routing',
+            'illuminate/support',
+            'illuminate/console',
+        ];
+        if ($packages !== []) {
+            foreach ($requiredPackages as $pkg) {
+                if (!in_array($pkg, $packages, true)) {
+                    $issues[] = 'missing package: ' . $pkg;
+                    $report['missing_packages'][] = $pkg;
+                }
+            }
+        }
+
+        $requiredFiles = [
+            ['vendor/symfony/console/Application.php', 'symfony/console'],
+            ['vendor/symfony/http-kernel/Kernel.php', 'symfony/http-kernel'],
+            ['vendor/symfony/routing/RouteCollection.php', 'symfony/routing'],
+            ['vendor/illuminate/console/Application.php', 'illuminate/console'],
+        ];
+        foreach ($requiredFiles as $entry) {
+            [$relative, $label] = $entry;
+            $path = $composerWorkDir . '/' . $relative;
+            if (!is_file($path) || !$this->isNonEmptyFile($path)) {
+                $issues[] = 'missing file: ' . $label;
+                $report['missing_artifacts'][] = $relative;
+            }
+        }
+
+        $macroableCandidates = [
+            'vendor/illuminate/macroable/Traits/Macroable.php',
+            'vendor/illuminate/support/Traits/Macroable.php',
+        ];
+        $macroableFound = false;
+        foreach ($macroableCandidates as $relative) {
+            $path = $composerWorkDir . '/' . $relative;
+            if (is_file($path) && $this->isNonEmptyFile($path)) {
+                $macroableFound = true;
+                break;
+            }
+        }
+        if (!$macroableFound) {
+            $issues[] = 'missing file: Macroable trait';
+            foreach ($macroableCandidates as $relative) {
+                $report['missing_artifacts'][] = $relative;
+            }
+        }
+
+        $requiredClasses = [
+            'Symfony\\Component\\Console\\Application',
+            'Symfony\\Component\\HttpKernel\\Kernel',
+            'Symfony\\Component\\Routing\\RouteCollection',
+            'Illuminate\\Console\\Application',
+        ];
+        $missingClasses = $this->checkComposerAutoloadClasses($composerWorkDir, $requiredClasses, $report);
+        foreach ($missingClasses as $className) {
+            $issues[] = 'missing class: ' . $className;
+            $report['missing_classes'][] = $className;
+        }
+
+        $macroableClasses = [
+            'Illuminate\\Macroable\\Traits\\Macroable',
+            'Illuminate\\Support\\Traits\\Macroable',
+        ];
+        $macroableMissing = $this->checkComposerAutoloadClasses($composerWorkDir, $macroableClasses, $report);
+        if (count($macroableMissing) === count($macroableClasses)) {
+            foreach ($macroableMissing as $className) {
+                $issues[] = 'missing class: ' . $className;
+                $report['missing_classes'][] = $className;
+            }
+        }
+
+        return $issues;
+    }
+
     protected function isNonEmptyFile(string $path): bool
     {
         $size = @filesize($path);
         return is_int($size) && $size > 0;
     }
 
-    protected function fileContains(string $path, string $needle): bool
+    protected function ensureArtisanDependencies(string $projectPath, array $options): void
     {
-        if (!is_file($path) || !$this->isNonEmptyFile($path)) {
-            return false;
-        }
-        $fh = @fopen($path, 'rb');
-        if (!is_resource($fh)) {
-            return false;
-        }
-        try {
-            $buf = @fread($fh, 8192);
-        } finally {
-            @fclose($fh);
-        }
-        if (!is_string($buf) || $buf === '') {
-            return false;
-        }
-        return strpos($buf, $needle) !== false;
-    }
-
-    protected function ensureArtisanDependencies(string $projectPath): void
-    {
-        $composerWorkDir = is_file($projectPath . '/core/composer.json') ? ($projectPath . '/core') : $projectPath;
-
-        if ($this->verifyComposerVendor($composerWorkDir)) {
-            return;
-        }
-
-        $this->tui->addLog('Composer vendor is incomplete (missing Symfony Console). Reinstalling dependencies...', 'warning');
-
-        $composerCommand = $this->resolveComposerCommand($composerWorkDir);
-        $vendorDir = $composerWorkDir . '/vendor';
-
-        if (is_dir($vendorDir)) {
-            $this->removeDirectory($vendorDir);
-        }
-
-        $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts', '--no-cache'];
-        $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
-        if ($process->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
-            $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
-            return;
-        }
-
-        // Best-effort fallback: use source installs when dist downloads are blocked (GitHub rate limit).
-        if ($this->hasGitExecutable()) {
-            $this->tui->addLog('Retrying with --prefer-source...', 'warning');
-            if (is_dir($vendorDir)) {
-                $this->removeDirectory($vendorDir);
-            }
-            $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts', '--no-cache'], $composerWorkDir);
-            if ($process->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
-                $this->tui->addLog('Dependencies installed successfully (prefer-source).', 'success');
-                return;
-            }
-        }
-
-        $fullOutput = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
-        throw new \RuntimeException(
-            "Composer completed but vendor is incomplete (Symfony components missing). Please run 'composer install' manually in {$composerWorkDir}.\n" .
-                trim($fullOutput)
-        );
+        return;
     }
 
     protected function hasGitExecutable(): bool
@@ -1590,48 +1576,91 @@ class InstallCommand extends Command
 
     protected function runComposer(array $composerCommand, array $args, string $workingDir): Process
     {
-        $process = new Process([
+        $fullCommand = [
             ...$composerCommand,
             ...$args,
             '--no-interaction',
             '--no-ansi',
             '--no-progress',
-        ], $workingDir);
-        $process->setTimeout(600);
-        $process->setEnv($this->buildProcessEnv());
+        ];
+        $process = new Process($fullCommand, $workingDir);
+        $timeout = $this->composerTimeoutSeconds();
+        $idleTimeout = $this->composerIdleTimeoutSeconds();
+        if ($timeout > 0) {
+            $process->setTimeout($timeout);
+        }
+        if ($idleTimeout !== null) {
+            $process->setIdleTimeout($idleTimeout);
+        }
+
+        $env = $this->buildProcessEnv();
+        if (!isset($env['COMPOSER_PROCESS_TIMEOUT']) && $timeout > 0) {
+            $env['COMPOSER_PROCESS_TIMEOUT'] = (string) $timeout;
+        }
+        $process->setEnv($env);
+
+        $this->tui->addLog('Composer executable: ' . $this->describeComposerExecutable($composerCommand));
+        $version = $this->getComposerVersion($composerCommand, $workingDir);
+        if ($version !== null) {
+            $this->tui->addLog('Composer version: ' . $version);
+        } else {
+            $this->tui->addLog('Composer version: unknown', 'warning');
+        }
+        $this->tui->addLog('Composer command: ' . $this->formatComposerCommand($fullCommand));
+        $this->tui->addLog('Composer working dir: ' . $workingDir);
+        $this->tui->addLog('Composer timeout: ' . $this->formatComposerTimeout($timeout, $idleTimeout));
+        $this->tui->addLog('Composer env: ' . $this->formatComposerEnvSummary($env));
 
         $buffers = [
             Process::OUT => '',
             Process::ERR => '',
         ];
 
-        $process->run(function ($type, $buffer) use (&$buffers) {
-            $buffers[$type] .= $buffer;
+        $start = microtime(true);
+        try {
+            $process->run(function ($type, $buffer) use (&$buffers) {
+                $buffers[$type] .= $buffer;
 
-            while (($pos = strpos($buffers[$type], "\n")) !== false) {
-                $line = rtrim(substr($buffers[$type], 0, $pos), "\r");
-                $buffers[$type] = substr($buffers[$type], $pos + 1);
+                while (($pos = strpos($buffers[$type], "\n")) !== false) {
+                    $line = rtrim(substr($buffers[$type], 0, $pos), "\r");
+                    $buffers[$type] = substr($buffers[$type], $pos + 1);
 
-                if ($line === '') {
-                    continue;
+                    if ($line === '') {
+                        continue;
+                    }
+
+                    $lower = strtolower($line);
+
+                    // Suppress noisy PHP deprecation notices coming from system Composer/Symfony packages.
+                    if (str_starts_with($lower, 'deprecation notice:') || str_starts_with($lower, 'php deprecated:')) {
+                        continue;
+                    }
+
+                    $isErrorLine =
+                        str_contains($lower, 'fatal error') ||
+                        str_contains($lower, 'uncaught exception') ||
+                        str_contains($lower, 'error:') ||
+                        str_contains($lower, 'exception');
+
+                    $this->tui->addLog($line, $isErrorLine ? 'error' : 'info');
                 }
-
-                $lower = strtolower($line);
-
-                // Suppress noisy PHP deprecation notices coming from system Composer/Symfony packages.
-                if (str_starts_with($lower, 'deprecation notice:') || str_starts_with($lower, 'php deprecated:')) {
-                    continue;
-                }
-
-                $isErrorLine =
-                    str_contains($lower, 'fatal error') ||
-                    str_contains($lower, 'uncaught exception') ||
-                    str_contains($lower, 'error:') ||
-                    str_contains($lower, 'exception');
-
-                $this->tui->addLog($line, $isErrorLine ? 'error' : 'info');
-            }
-        });
+            });
+        } catch (\Symfony\Component\Process\Exception\ProcessTimedOutException $e) {
+            $duration = microtime(true) - $start;
+            $timeoutType = $e->isGeneralTimeout() ? 'overall timeout' : 'idle timeout';
+            $this->tui->addLog(
+                sprintf(
+                    'Composer process killed by %s after %.1fs (timeout=%ss, idle=%s). Working dir: %s',
+                    $timeoutType,
+                    $duration,
+                    $timeout > 0 ? (string) $timeout : 'disabled',
+                    $idleTimeout !== null ? (string) $idleTimeout : 'disabled',
+                    $workingDir
+                ),
+                'error'
+            );
+            throw $e;
+        }
 
         foreach ($buffers as $type => $tail) {
             $tail = trim($tail);
@@ -1653,7 +1682,397 @@ class InstallCommand extends Command
             $this->tui->addLog($tail, $isErrorLine ? 'error' : 'info');
         }
 
+        $duration = microtime(true) - $start;
+        $exit = $process->getExitCode();
+        $signal = method_exists($process, 'getSignal') ? $process->getSignal() : null;
+        $suffix = $signal ? sprintf(' (signal %s)', (string) $signal) : '';
+        $level = $process->isSuccessful() ? 'info' : 'warning';
+        $this->tui->addLog(sprintf('Composer finished in %.1fs with exit code %s%s.', $duration, (string) ($exit ?? 0), $suffix), $level);
+
+        $fullOutput = $this->sanitizeComposerOutput($process->getOutput() . "\n" . $process->getErrorOutput());
+        $diag = $this->analyzeComposerOutput($fullOutput);
+        $this->logComposerDiagnostics($diag);
+
         return $process;
+    }
+
+    protected function composerTimeoutSeconds(): int
+    {
+        $raw = getenv('EVO_COMPOSER_TIMEOUT');
+        if ($raw !== false && is_numeric($raw)) {
+            $val = (int) $raw;
+            if ($val > 0) {
+                return $val;
+            }
+        }
+        return 1800;
+    }
+
+    protected function composerIdleTimeoutSeconds(): ?int
+    {
+        $raw = getenv('EVO_COMPOSER_IDLE_TIMEOUT');
+        if ($raw === false || trim((string) $raw) === '') {
+            return null;
+        }
+        if (is_numeric($raw)) {
+            $val = (int) $raw;
+            if ($val > 0) {
+                return $val;
+            }
+        }
+        return null;
+    }
+
+    protected function formatComposerTimeout(int $timeout, ?int $idleTimeout): string
+    {
+        if ($timeout <= 0 && $idleTimeout === null) {
+            return 'disabled';
+        }
+        $parts = [];
+        if ($timeout > 0) {
+            $parts[] = $timeout . 's';
+        } else {
+            $parts[] = 'disabled';
+        }
+        if ($idleTimeout !== null) {
+            $parts[] = 'idle ' . $idleTimeout . 's';
+        }
+        return implode(', ', $parts);
+    }
+
+    protected function formatComposerCommand(array $command): string
+    {
+        $parts = [];
+        foreach ($command as $part) {
+            $part = (string) $part;
+            if ($part === '') {
+                continue;
+            }
+            if (preg_match('/\\s/', $part) === 1) {
+                $parts[] = '"' . $part . '"';
+            } else {
+                $parts[] = $part;
+            }
+        }
+        return implode(' ', $parts);
+    }
+
+    protected function describeComposerExecutable(array $command): string
+    {
+        if ($command === []) {
+            return 'unknown';
+        }
+        $first = (string) $command[0];
+        if (strtolower($first) === 'php' && isset($command[1])) {
+            return 'php ' . $command[1];
+        }
+        return $first;
+    }
+
+    protected function getComposerVersion(array $command, string $workingDir): ?string
+    {
+        $key = implode("\0", $command);
+        if (array_key_exists($key, $this->composerVersionCache)) {
+            $cached = $this->composerVersionCache[$key];
+            return $cached !== '' ? $cached : null;
+        }
+
+        $process = new Process([...$command, '--version'], $workingDir, $this->buildProcessEnv());
+        $process->setTimeout(10);
+        $process->run();
+
+        $output = trim((string) $process->getOutput());
+        $err = trim((string) $process->getErrorOutput());
+        $line = $output !== '' ? $output : $err;
+        if ($line !== '') {
+            $line = strtok($line, "\n") ?: $line;
+            $line = preg_replace('/\\s+/', ' ', $line) ?? $line;
+        }
+
+        if ($line === '') {
+            $this->composerVersionCache[$key] = '';
+            return null;
+        }
+
+        $this->composerVersionCache[$key] = $line;
+        return $line;
+    }
+
+    protected function formatComposerEnvSummary(array $env): string
+    {
+        $keys = [
+            'COMPOSER_HOME',
+            'COMPOSER_CACHE_DIR',
+            'COMPOSER_PROCESS_TIMEOUT',
+        ];
+        $summary = [];
+        foreach ($keys as $key) {
+            if (isset($env[$key]) && trim((string) $env[$key]) !== '') {
+                $summary[] = $key . '=' . $env[$key];
+            }
+        }
+        $summary[] = 'GITHUB_TOKEN=' . (getenv('GITHUB_TOKEN') ? 'present' : 'absent');
+        $summary[] = 'COMPOSER_AUTH=' . (getenv('COMPOSER_AUTH') ? 'present' : 'absent');
+        return implode(', ', $summary);
+    }
+
+    protected function analyzeComposerOutput(string $output): array
+    {
+        $lower = strtolower($output);
+        $rateLimit = str_contains($lower, 'api rate limit')
+            || str_contains($lower, 'github api rate limit')
+            || str_contains($lower, 'rate limit exceeded')
+            || str_contains($lower, '429 too many requests')
+            || (str_contains($lower, '403') && str_contains($lower, 'github'));
+        $distFailure = str_contains($lower, 'failed to download')
+            || str_contains($lower, 'could not download')
+            || str_contains($lower, 'curl error 22')
+            || str_contains($lower, 'the requested url returned error: 404');
+        $networkFailure = str_contains($lower, 'could not resolve host')
+            || str_contains($lower, 'connection timed out')
+            || str_contains($lower, 'operation timed out');
+
+        $messages = [];
+        if ($rateLimit) {
+            $messages[] = 'Composer hit a GitHub rate limit.';
+            if (!getenv('GITHUB_TOKEN')) {
+                $messages[] = 'Tip: set GITHUB_TOKEN to increase GitHub API limits.';
+            }
+        }
+        if ($distFailure) {
+            $messages[] = 'Composer failed to download dist packages (consider retrying).';
+        }
+        if ($networkFailure) {
+            $messages[] = 'Network timeout detected while running Composer.';
+        }
+
+        return [
+            'messages' => $messages,
+            'rate_limit' => $rateLimit,
+            'prefer_source' => $rateLimit || $distFailure,
+        ];
+    }
+
+    protected function logComposerDiagnostics(array $diag): void
+    {
+        if (!isset($diag['messages']) || $diag['messages'] === []) {
+            return;
+        }
+        foreach ($diag['messages'] as $msg) {
+            $this->tui->addLog($msg, 'warning');
+        }
+    }
+
+    protected function logComposerVendorIssues(string $composerWorkDir, array &$report, string $prefix): void
+    {
+        if ($report === []) {
+            $this->composerVendorIssues($composerWorkDir, $report);
+        }
+        $this->tui->addLog($prefix, 'warning');
+
+        $installedPath = $report['installed_path'] ?? null;
+        if ($installedPath) {
+            $pkgCount = (int) ($report['package_count'] ?? 0);
+            $this->tui->addLog("Composer installed metadata: {$installedPath} (packages: {$pkgCount}).", 'warning');
+        } else {
+            $this->tui->addLog("Composer installed metadata not found in {$composerWorkDir}/vendor/composer.", 'warning');
+        }
+
+        $missingArtifacts = $report['missing_artifacts'] ?? [];
+        if ($missingArtifacts !== []) {
+            $this->tui->addLog('Missing artifacts: ' . implode(', ', $missingArtifacts), 'warning');
+            foreach ($missingArtifacts as $artifact) {
+                if (is_string($artifact) && str_starts_with($artifact, 'vendor/')) {
+                    $this->tui->addLog('Missing file: ' . $composerWorkDir . '/' . $artifact, 'warning');
+                }
+            }
+        }
+
+        $missingPackages = $report['missing_packages'] ?? [];
+        if ($missingPackages !== []) {
+            $this->tui->addLog('Missing packages: ' . implode(', ', $missingPackages), 'warning');
+        }
+
+        $missingClasses = $report['missing_classes'] ?? [];
+        if ($missingClasses !== []) {
+            $this->tui->addLog('Missing classes: ' . implode(', ', $missingClasses), 'warning');
+        }
+
+        $notes = $report['notes'] ?? [];
+        if ($notes !== []) {
+            $this->tui->addLog('Notes: ' . implode(' | ', $notes), 'warning');
+        }
+    }
+
+    protected function logComposerVendorFileStatus(string $composerWorkDir): void
+    {
+        $checks = [
+            'vendor/autoload.php',
+            'vendor/symfony/console/Application.php',
+        ];
+
+        $installedPhp = $composerWorkDir . '/vendor/composer/installed.php';
+        $installedJson = $composerWorkDir . '/vendor/composer/installed.json';
+        $installedOk = is_file($installedPhp) || is_file($installedJson);
+        $checks[] = 'vendor/composer/installed.(php|json)';
+
+        $statusParts = [];
+        foreach ($checks as $relative) {
+            if ($relative === 'vendor/composer/installed.(php|json)') {
+                $statusParts[] = $relative . '=' . ($installedOk ? 'ok' : 'missing');
+                if (!$installedOk) {
+                    $this->tui->addLog('Missing file: ' . $composerWorkDir . '/vendor/composer/installed.php', 'warning');
+                }
+                continue;
+            }
+            $path = $composerWorkDir . '/' . $relative;
+            $ok = is_file($path) && $this->isNonEmptyFile($path);
+            $statusParts[] = $relative . '=' . ($ok ? 'ok' : 'missing');
+            if (!$ok) {
+                $this->tui->addLog('Missing file: ' . $composerWorkDir . '/' . $relative, 'warning');
+            }
+        }
+
+        $this->tui->addLog('Vendor file check: ' . implode(', ', $statusParts), 'warning');
+    }
+
+    protected function composerInstalledPackages(string $composerWorkDir, array &$report): array
+    {
+        $packages = [];
+
+        $installedPhp = $composerWorkDir . '/vendor/composer/installed.php';
+        if (is_file($installedPhp)) {
+            $report['installed_path'] = $installedPhp;
+            $data = @include $installedPhp;
+            if (is_array($data)) {
+                $report['installed_format'] = 'php';
+                $packages = $this->extractComposerPackageNames($data);
+            } else {
+                $report['missing_artifacts'][] = 'vendor/composer/installed.php (invalid)';
+            }
+        }
+
+        if ($packages === []) {
+            $installedJson = $composerWorkDir . '/vendor/composer/installed.json';
+            if (is_file($installedJson)) {
+                $report['installed_path'] = $installedJson;
+                $data = json_decode((string) @file_get_contents($installedJson), true);
+                if (is_array($data)) {
+                    $report['installed_format'] = 'json';
+                    $packages = $this->extractComposerPackageNames($data);
+                } else {
+                    $report['missing_artifacts'][] = 'vendor/composer/installed.json (invalid)';
+                }
+            }
+        }
+
+        return array_values(array_unique($packages));
+    }
+
+    protected function extractComposerPackageNames(mixed $data): array
+    {
+        $names = [];
+        $push = static function ($name) use (&$names) {
+            if (!is_string($name) || $name === '' || $name === 'root') {
+                return;
+            }
+            $names[$name] = true;
+        };
+
+        if (is_array($data)) {
+            if (isset($data['versions']) && is_array($data['versions'])) {
+                foreach (array_keys($data['versions']) as $name) {
+                    $push($name);
+                }
+                return array_keys($names);
+            }
+            if (isset($data['packages']) && is_array($data['packages'])) {
+                foreach ($data['packages'] as $pkg) {
+                    if (is_array($pkg) && isset($pkg['name'])) {
+                        $push($pkg['name']);
+                    }
+                }
+            }
+            if (isset($data['packages-dev']) && is_array($data['packages-dev'])) {
+                foreach ($data['packages-dev'] as $pkg) {
+                    if (is_array($pkg) && isset($pkg['name'])) {
+                        $push($pkg['name']);
+                    }
+                }
+            }
+            if (isset($data['installed']) && is_array($data['installed'])) {
+                foreach ($data['installed'] as $installed) {
+                    foreach ($this->extractComposerPackageNames($installed) as $name) {
+                        $push($name);
+                    }
+                }
+            }
+            if (isset($data[0]) && is_array($data[0]) && isset($data[0]['name'])) {
+                foreach ($data as $pkg) {
+                    if (is_array($pkg) && isset($pkg['name'])) {
+                        $push($pkg['name']);
+                    }
+                }
+            }
+        }
+
+        return array_keys($names);
+    }
+
+    protected function checkComposerAutoloadClasses(string $composerWorkDir, array $classes, array &$report): array
+    {
+        $autoload = $composerWorkDir . '/vendor/autoload.php';
+        if (!is_file($autoload)) {
+            return $classes;
+        }
+
+        $classes = array_values(array_filter(array_unique($classes), 'is_string'));
+        if ($classes === []) {
+            return [];
+        }
+
+        $script = '$autoload=$argv[1]??"";$classes=json_decode($argv[2]??"[]",true);'
+            . 'if(!is_array($classes)){$classes=[];}'
+            . 'if(!is_file($autoload)){fwrite(STDERR,"autoload missing\n");exit(2);}require $autoload;'
+            . '$missing=[];foreach($classes as $class){if(!class_exists($class)){ $missing[]=$class; }}'
+            . 'echo json_encode($missing);';
+
+        $process = new Process([
+            PHP_BINARY ?: 'php',
+            '-r',
+            $script,
+            $autoload,
+            json_encode($classes),
+        ], $composerWorkDir, $this->buildProcessEnv());
+        $process->setTimeout(20);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            $err = trim($process->getErrorOutput());
+            if ($err === '') {
+                $err = trim($process->getOutput());
+            }
+            if ($err === '') {
+                $err = 'autoload class check failed';
+            }
+            $err = preg_replace('/\\s+/', ' ', $err) ?? $err;
+            $report['notes'][] = 'autoload_check_failed: ' . $err;
+            return $classes;
+        }
+
+        $decoded = json_decode(trim($process->getOutput()), true);
+        if (!is_array($decoded)) {
+            $report['notes'][] = 'autoload_check_failed: invalid json';
+            return $classes;
+        }
+
+        return array_values(array_filter($decoded, 'is_string'));
+    }
+
+    protected function removeVendorDirectory(string $vendorDir, string $reason): void
+    {
+        $this->tui->addLog("Removing vendor directory ({$reason}): {$vendorDir}", 'warning');
+        $this->removeDirectory($vendorDir);
     }
 
     protected function buildProcessEnv(): array
@@ -1974,7 +2393,7 @@ class InstallCommand extends Command
     {
         $this->tui->addLog('Running database migrations...');
 
-        $this->ensureArtisanDependencies($projectPath);
+        $this->ensureArtisanDependencies($projectPath, $options);
 
         if (($options['database']['type'] ?? null) === 'pgsql') {
             $this->patchPostgresInetDefaultsInMigrations($projectPath);
@@ -2045,6 +2464,7 @@ class InstallCommand extends Command
             $phpCode,
         ], $projectPath);
         $process->setTimeout(300);
+        $process->setEnv($this->buildProcessEnv());
         $process->setEnv([
             ...$this->buildProcessEnv(),
             ...$this->buildDatabaseEnv($projectPath, $options['database'] ?? []),
@@ -2094,14 +2514,15 @@ class InstallCommand extends Command
 
             if ($process->isSuccessful()) {
                 $this->tui->addLog('Database migrations completed.', 'success');
+                $this->assertDatabaseReadyForPackageDiscovery($projectPath, $options);
                 $this->runPackageDiscovery($projectPath, $artisanScript);
             } else {
                 $errorOutput = $process->getErrorOutput();
                 throw new \RuntimeException("Migration failed: " . $errorOutput);
             }
         } catch (\Exception $e) {
-            $this->tui->addLog('Migration failed: ' . $e->getMessage(), 'error');
-            throw new \RuntimeException("Failed to run migrations. Please run 'php core/artisan migrate' manually.");
+            $this->tui->addLog('Migration/package discovery failed: ' . $e->getMessage(), 'error');
+            throw new \RuntimeException("Failed to complete migrations or package discovery. Please run 'php core/artisan migrate' and 'php core/artisan package:discover' manually.");
         }
     }
 
@@ -2165,7 +2586,7 @@ class InstallCommand extends Command
 
     protected function runPackageDiscovery(string $projectPath, string $artisanScript): void
     {
-        $this->tui->addLog('Running package discovery...');
+        $this->tui->addLog('Running artisan package:discover...');
 
         $sessionDir = $projectPath . '/core/storage/sessions';
         if (!str_starts_with($artisanScript, 'core/')) {
@@ -2173,7 +2594,7 @@ class InstallCommand extends Command
         }
         @mkdir($sessionDir, 0755, true);
 
-        $argv = ['artisan', 'package:discover'];
+        $argv = ['artisan', 'package:discover', '--no-interaction', '--no-ansi'];
         $phpCode =
             'define("IN_INSTALL_MODE", true);' .
             'define("EVO_CLI", true);' .
@@ -2227,8 +2648,48 @@ class InstallCommand extends Command
         if ($process->isSuccessful()) {
             $this->tui->replaceLastLogs('<fg=green>✔</> Package discovery completed.');
         } else {
-            $this->tui->replaceLastLogs('<fg=red>✗</> Package discovery failed (you can run it manually later)');
+            $fullOutput = trim($process->getOutput() . "\n" . $process->getErrorOutput());
+            $this->tui->replaceLastLogs('<fg=red>✗</> Package discovery failed.');
+            if ($fullOutput !== '') {
+                $this->tui->addLog($fullOutput, 'error');
+            }
+            throw new \RuntimeException('Package discovery failed.');
         }
+    }
+
+    protected function assertDatabaseReadyForPackageDiscovery(string $projectPath, array $options): void
+    {
+        $this->tui->addLog('Database ready check...');
+
+        $dbConfig = $options['database'] ?? [];
+        if (!is_array($dbConfig) || $dbConfig === []) {
+            throw new \RuntimeException('Database configuration missing for readiness check.');
+        }
+
+        $dbConfigForOps = $this->getDatabaseConfigForOperations($projectPath, $dbConfig);
+        $type = (string) ($dbConfigForOps['type'] ?? '');
+        $dbName = (string) ($dbConfigForOps['name'] ?? '');
+
+        if ($type === 'sqlite') {
+            if ($dbName === '') {
+                throw new \RuntimeException('SQLite database path is empty.');
+            }
+            if ($dbName !== ':memory:' && !str_starts_with($dbName, 'file:') && !is_file($dbName)) {
+                throw new \RuntimeException("SQLite database file not found: {$dbName}");
+            }
+        }
+
+        $dbh = $this->createConnection($dbConfigForOps);
+        $prefix = (string) ($dbConfigForOps['prefix'] ?? ($dbConfig['prefix'] ?? 'evo_'));
+        $table = $prefix . 'system_settings';
+
+        $tables = $this->listDatabaseTables($dbh);
+        $tablesLower = array_map('strtolower', $tables);
+        if (!in_array(strtolower($table), $tablesLower, true)) {
+            throw new \RuntimeException("Database ready check failed: missing table {$table}");
+        }
+
+        $this->tui->addLog('Database ready check: OK', 'success');
     }
 
     /**
