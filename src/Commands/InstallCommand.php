@@ -1581,7 +1581,6 @@ class InstallCommand extends Command
             ...$args,
             '--no-interaction',
             '--no-ansi',
-            '--no-progress',
         ];
         $process = new Process($fullCommand, $workingDir);
         $timeout = $this->composerTimeoutSeconds();

@@ -359,7 +359,6 @@ final class EvoBootstrapper
                 'evolution-cms/installer',
                 '--no-interaction',
                 '--no-ansi',
-                '--no-progress',
             ],
             $workDir,
             [
@@ -405,7 +404,6 @@ final class EvoBootstrapper
                 'evolution-cms/installer',
                 '--no-interaction',
                 '--no-ansi',
-                '--no-progress',
             ],
             null,
             $env
