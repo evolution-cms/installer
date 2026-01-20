@@ -1370,14 +1370,14 @@ class InstallCommand extends Command
 
             $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts', '--no-cache'];
             $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
-            if ($process->isSuccessful() && !$this->isComposerVendorHealthy($composerWorkDir)) {
+            if ($process->isSuccessful() && !$this->verifyComposerVendor($composerWorkDir)) {
                 $this->tui->addLog('Composer install finished but vendor is incomplete. Retrying with clean vendor and --prefer-source (this can happen due to GitHub rate limits)...', 'warning');
                 if (is_dir($vendorDir)) {
                     $this->removeDirectory($vendorDir);
                 }
                 $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts', '--no-cache'], $composerWorkDir);
             }
-            if ($process->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
+            if ($process->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
                 $this->tui->addLog('Dependencies installed successfully.', 'success');
                 return;
             }
@@ -1403,7 +1403,7 @@ class InstallCommand extends Command
 
                 // Reinstall with prefer-dist
                 $reinstall = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
-                if ($reinstall->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
+                if ($reinstall->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
                     $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
                     return;
                 }
@@ -1411,7 +1411,7 @@ class InstallCommand extends Command
                 // If install fails, try update as fallback
                 $this->tui->addLog('Install failed. Trying composer update...', 'warning');
                 $update = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
-                if ($update->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
+                if ($update->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
                     $this->tui->addLog('Dependencies updated successfully.', 'success');
                     return;
                 }
@@ -1425,7 +1425,7 @@ class InstallCommand extends Command
                 || str_contains($fullOutput, 'requires php >=8.4')) {
                 $this->tui->addLog('composer.lock is not compatible with current PHP. Running composer update...', 'warning');
                 $update = $this->runComposer($composerCommand, ['update', '--no-dev', '--prefer-dist', '--no-scripts'], $composerWorkDir);
-                if ($update->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
+                if ($update->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
                     $this->tui->addLog('Dependencies updated successfully.', 'success');
                     return;
                 }
@@ -1450,7 +1450,7 @@ class InstallCommand extends Command
 
                     // Reinstall with prefer-dist
                     $reinstall = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
-                    if ($reinstall->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
+                    if ($reinstall->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
                         $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
                         return;
                     }
@@ -1492,6 +1492,20 @@ class InstallCommand extends Command
         return true;
     }
 
+    protected function verifyComposerVendor(string $composerWorkDir, int $attempts = 3, int $sleepMs = 400): bool
+    {
+        $this->tui->addLog('Verifying Composer dependencies...');
+        for ($i = 0; $i < $attempts; $i++) {
+            if ($this->isComposerVendorHealthy($composerWorkDir)) {
+                return true;
+            }
+            if ($i < $attempts - 1) {
+                usleep($sleepMs * 1000);
+            }
+        }
+        return false;
+    }
+
     protected function isNonEmptyFile(string $path): bool
     {
         $size = @filesize($path);
@@ -1522,7 +1536,7 @@ class InstallCommand extends Command
     {
         $composerWorkDir = is_file($projectPath . '/core/composer.json') ? ($projectPath . '/core') : $projectPath;
 
-        if ($this->isComposerVendorHealthy($composerWorkDir)) {
+        if ($this->verifyComposerVendor($composerWorkDir)) {
             return;
         }
 
@@ -1537,7 +1551,7 @@ class InstallCommand extends Command
 
         $installArgs = ['install', '--no-dev', '--prefer-dist', '--no-scripts', '--no-cache'];
         $process = $this->runComposer($composerCommand, $installArgs, $composerWorkDir);
-        if ($process->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
+        if ($process->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
             $this->tui->addLog('Dependencies reinstalled successfully.', 'success');
             return;
         }
@@ -1549,7 +1563,7 @@ class InstallCommand extends Command
                 $this->removeDirectory($vendorDir);
             }
             $process = $this->runComposer($composerCommand, ['install', '--no-dev', '--prefer-source', '--no-scripts', '--no-cache'], $composerWorkDir);
-            if ($process->isSuccessful() && $this->isComposerVendorHealthy($composerWorkDir)) {
+            if ($process->isSuccessful() && $this->verifyComposerVendor($composerWorkDir)) {
                 $this->tui->addLog('Dependencies installed successfully (prefer-source).', 'success');
                 return;
             }
