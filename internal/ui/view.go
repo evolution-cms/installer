@@ -21,7 +21,7 @@ func (m *Model) View() string {
 	}
 
 	usableH := max(0, m.height-1) // reserve 1 row for the global footer hints
-	footer := footerHints(m.width)
+	footer := footerHints(m.width, m.footerHintText())
 	if usableH == 0 {
 		return footer
 	}
@@ -45,6 +45,8 @@ func (m *Model) View() string {
 		line1 := m.spin.View() + " " + msg
 		line2 := mutedStyle.Render("Starting installer…")
 		body = lipgloss.Place(m.width, usableH, lipgloss.Center, lipgloss.Center, line1+"\n"+line2)
+	case m.extras.active:
+		body = m.renderExtrasView(m.width, usableH)
 	default:
 		if m.layout.width != m.width || m.layout.height != usableH {
 			m.reflow()
@@ -86,8 +88,30 @@ func keyHintsLine() string {
 	return "↑/↓ Navigate/Scroll  PgUp/PgDn Scroll  End Follow  Enter Select  ctrl+c Cancel  ctrl+q Quit"
 }
 
-func footerHints(width int) string {
-	hint := mutedStyle.Render(truncatePlain(keyHintsLine(), width))
+func (m *Model) footerHintText() string {
+	if !m.extras.active {
+		return keyHintsLine()
+	}
+	switch m.extras.stage {
+	case domain.ExtrasStageSelect:
+		if m.extras.versionPickerActive {
+			return "↑/↓ Move  Enter Select  Esc Close  ctrl+q Quit"
+		}
+		return "↑/↓ Move  Space Toggle  Enter Version  Down Actions  Enter Select  ctrl+c Cancel  ctrl+q Quit"
+	case domain.ExtrasStageProgress:
+		return "Installing extras...  ctrl+c Cancel  ctrl+q Quit"
+	case domain.ExtrasStageSummary:
+		return "Enter Close  Esc/Q Close  ctrl+q Quit"
+	default:
+		return keyHintsLine()
+	}
+}
+
+func footerHints(width int, hint string) string {
+	if hint == "" {
+		hint = keyHintsLine()
+	}
+	hint = mutedStyle.Render(truncatePlain(hint, width))
 	return lipgloss.Place(width, 1, lipgloss.Center, lipgloss.Center, hint)
 }
 

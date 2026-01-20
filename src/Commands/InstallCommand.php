@@ -59,6 +59,8 @@ class InstallCommand extends Command
             ->addOption('admin-email', null, InputOption::VALUE_OPTIONAL, 'The admin email')
             ->addOption('admin-password', null, InputOption::VALUE_OPTIONAL, 'The admin password')
             ->addOption('admin-directory', null, InputOption::VALUE_OPTIONAL, 'The admin directory')
+            ->addOption('github-pat', null, InputOption::VALUE_OPTIONAL, 'GitHub PAT token for API requests')
+            ->addOption('github_pat', null, InputOption::VALUE_OPTIONAL, 'GitHub PAT token for API requests')
             ->addOption('branch', null, InputOption::VALUE_OPTIONAL, 'Install from specific Git branch (e.g., develop, nightly, main) instead of latest release')
             ->addOption('language', null, InputOption::VALUE_OPTIONAL, 'The installation language')
             ->addOption('composer-clear-cache', null, InputOption::VALUE_NONE, 'Clear Composer cache before install')
@@ -248,6 +250,11 @@ class InstallCommand extends Command
         $adminDirectoryInput = ($input->getOption('admin-directory') !== null) ? $input->getOption('admin-directory') : $this->askAdminDirectory();
         $inputs['admin']['directory'] = $this->sanitizeAdminDirectory($adminDirectoryInput);
         $inputs['language'] = ($input->getOption('language') !== null) ? $input->getOption('language') : $this->askLanguage();
+        $githubPat = $input->getOption('github-pat');
+        if ($githubPat === null) {
+            $githubPat = $input->getOption('github_pat');
+        }
+        $inputs['github_pat'] = $githubPat !== null ? $githubPat : null;
 
         // Mark Step 2 (database connection) as completed
         $this->steps['database']['completed'] = true;
@@ -2207,6 +2214,11 @@ class InstallCommand extends Command
         $vars = [
             ...$this->buildDatabaseEnv($projectPath, $options['database'] ?? []),
         ];
+
+        $githubPat = $options['github_pat'] ?? null;
+        if (is_string($githubPat) && trim($githubPat) !== '') {
+            $vars['GITHUB_PAT'] = trim($githubPat);
+        }
 
         $adminDir = $this->sanitizeAdminDirectory($options['admin']['directory'] ?? null);
         if ($adminDir !== 'manager') {

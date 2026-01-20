@@ -195,6 +195,16 @@ func applyCLIEvent(ev domain.Event, stepLabels map[string]string, actions chan<-
 				printCLILine("✗", ev.StepID, msg, os.Stderr)
 			}
 		}
+	case domain.EventExtras:
+		if p, ok := ev.Payload.(domain.ExtrasState); ok && p.Stage == domain.ExtrasStageSelect {
+			sendAction(actions, domain.Action{
+				Type:       domain.ActionExtrasDecision,
+				QuestionID: "extras_select",
+				OptionID:   "skip",
+			})
+			fmt.Fprintln(os.Stdout, "Extras selection skipped in --cli mode.")
+			return true
+		}
 	}
 	return false
 }
@@ -217,6 +227,14 @@ func handleCLIQuestion(q domain.QuestionState, actions chan<- domain.Action, can
 		})
 		*hadError = true
 		fmt.Fprintln(os.Stderr, "Database connection failed; exiting (no retry in --cli mode).")
+		return true
+	case "extras_prompt":
+		sendAction(actions, domain.Action{
+			Type:       domain.ActionAnswerSelect,
+			QuestionID: q.ID,
+			OptionID:   "no",
+		})
+		fmt.Fprintln(os.Stdout, "Extras installation skipped in --cli mode.")
 		return true
 	default:
 		*hadError = true

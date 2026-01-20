@@ -14,6 +14,7 @@ const (
 	EventWarning      EventType = "warning"
 	EventError        EventType = "error"
 	EventExecRequest  EventType = "exec_request"
+	EventExtras       EventType = "extras"
 )
 
 type Severity string

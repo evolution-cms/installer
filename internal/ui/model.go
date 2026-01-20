@@ -70,6 +70,8 @@ type Model struct {
 	quitRequested   bool
 
 	logger *logging.EventLogger
+
+	extras extrasUIState
 }
 
 func NewModel(ctx context.Context, mode Mode, events <-chan domain.Event, actions chan<- domain.Action, meta Meta, cancel func(), logger *logging.EventLogger) *Model {
@@ -131,7 +133,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case pulseMsg:
-		if m.hasActiveStep() && !m.engineDone && !m.cancelling {
+		pulseActive := m.hasActiveStep() && !m.engineDone && !m.cancelling
+		if m.extras.active && m.extras.stage == domain.ExtrasStageProgress {
+			pulseActive = true
+		}
+		if pulseActive {
 			m.pulseOn = !m.pulseOn
 			m.reflow()
 		} else {
@@ -216,6 +222,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.followLogs = true
 			m.logVP.GotoBottom()
 			m.reflow()
+			return m, nil
+		}
+
+		if m.extras.active {
+			if m.handleExtrasKey(key, lowerKey) {
+				m.reflow()
+				if m.quitRequested {
+					if m.cancel != nil {
+						m.cancel()
+					}
+					return m, tea.Quit
+				}
+			}
 			return m, nil
 		}
 
@@ -492,6 +511,10 @@ func (m *Model) applyEvent(ev domain.Event) {
 			m.addLog(ev, domain.LogInfo)
 		default:
 			// Ignore unknown payload types; UI must not parse text.
+		}
+	case domain.EventExtras:
+		if p, ok := ev.Payload.(domain.ExtrasState); ok {
+			m.applyExtrasState(p)
 		}
 	}
 }

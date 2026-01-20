@@ -45,6 +45,9 @@ type Options struct {
 	AdminPassword  string
 	AdminDirectory string
 	Language       string
+
+	GithubPat string
+	Extras    []domain.ExtrasSelection
 }
 
 type Engine struct {
@@ -85,6 +88,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 					{ID: "presets", Label: "Step 5: Install presets", Status: domain.StepPending},
 					{ID: "dependencies", Label: "Step 6: Install dependencies", Status: domain.StepPending},
 					{ID: "finalize", Label: "Step 7: Finalize installation", Status: domain.StepPending},
+					{ID: "extras", Label: "Step 8: Install Extras (optional)", Status: domain.StepPending},
 				},
 			},
 		})
@@ -316,7 +320,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload: domain.StepStartPayload{
 				Label: "Step 1: Validate PHP version",
 				Index: 1,
-				Total: 7,
+				Total: 8,
 			},
 		})
 
@@ -388,7 +392,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload: domain.StepStartPayload{
 				Label: "Step 2: Check database connection",
 				Index: 2,
-				Total: 7,
+				Total: 8,
 			},
 		})
 
@@ -950,7 +954,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload: domain.StepStartPayload{
 				Label: "Step 3: Download Evolution CMS",
 				Index: 3,
-				Total: 7,
+				Total: 8,
 			},
 		})
 
@@ -971,6 +975,8 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			WorkDir:            workDir,
 			ComposerClearCache: e.opt.ComposerClearCache,
 			ComposerUpdate:     e.opt.ComposerUpdate,
+			GithubPat:          strings.TrimSpace(e.opt.GithubPat),
+			Extras:             e.opt.Extras,
 		}); err != nil {
 			_ = emit(domain.Event{
 				Type:     domain.EventError,
@@ -984,6 +990,8 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			})
 			return
 		}
+
+		e.maybeRunExtras(ctx, emit, actions, workDir)
 	}()
 }
 
@@ -1000,6 +1008,9 @@ type phpNewOptions struct {
 	AdminPassword  string
 	AdminDirectory string
 	Language       string
+
+	GithubPat string
+	Extras    []domain.ExtrasSelection
 
 	Force   bool
 	Branch  string
@@ -1099,6 +1110,9 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 	}
 	if strings.TrimSpace(opt.Branch) != "" {
 		args = append(args, "--branch="+strings.TrimSpace(opt.Branch))
+	}
+	if strings.TrimSpace(opt.GithubPat) != "" {
+		args = append(args, "--github-pat="+strings.TrimSpace(opt.GithubPat))
 	}
 	if opt.Force {
 		args = append(args, "--force")
@@ -1342,7 +1356,7 @@ func (t *stepTracker) start(stepID, label string, index int) {
 		Payload: domain.StepStartPayload{
 			Label: label,
 			Index: index,
-			Total: 7,
+			Total: 8,
 		},
 	})
 }

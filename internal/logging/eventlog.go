@@ -303,7 +303,11 @@ func groupEntries(stepLabels map[string]string, entries []domain.LogEntry) ([]st
 func writeStepSection(w *bufio.Writer, g stepGroup) {
 	label := formatStepHeading(g.label, g.stepID)
 	fmt.Fprintln(w, label)
-	writeEntries(w, g.entries)
+	if g.stepID == "extras" {
+		writeExtrasEntries(w, g.entries)
+	} else {
+		writeEntries(w, g.entries)
+	}
 	fmt.Fprintln(w)
 }
 
@@ -358,6 +362,111 @@ func writeEntries(w *bufio.Writer, entries []domain.LogEntry) {
 		fmt.Fprintln(w, "```")
 		fmt.Fprintln(w, "</details>")
 	}
+}
+
+func writeExtrasEntries(w *bufio.Writer, entries []domain.LogEntry) {
+	if len(entries) == 0 {
+		fmt.Fprintln(w, "_No logs recorded._")
+		return
+	}
+
+	known := extractExtrasLabels(entries)
+	byLabel := map[string][]domain.LogEntry{}
+	order := []string{}
+	var general []domain.LogEntry
+
+	for _, entry := range entries {
+		msg := sanitizeMessage(formatMessage(entry))
+		label, _, ok := splitExtrasMessage(msg, known)
+		if !ok {
+			general = append(general, entry)
+			continue
+		}
+		if _, exists := byLabel[label]; !exists {
+			order = append(order, label)
+		}
+		byLabel[label] = append(byLabel[label], entry)
+	}
+
+	if len(general) > 0 {
+		writeEntries(w, general)
+		fmt.Fprintln(w)
+	}
+
+	if len(order) == 0 {
+		return
+	}
+
+	for _, label := range order {
+		fmt.Fprintf(w, "## %s\n", label)
+		items := compressEntries(byLabel[label])
+		if len(items) == 0 {
+			fmt.Fprintln(w, "_No logs recorded._")
+			fmt.Fprintln(w)
+			continue
+		}
+		fmt.Fprintln(w, "```text")
+		for _, item := range items {
+			fmt.Fprintln(w, formatExtrasItemLine(item, label))
+		}
+		fmt.Fprintln(w, "```")
+		fmt.Fprintln(w)
+	}
+}
+
+func extractExtrasLabels(entries []domain.LogEntry) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, entry := range entries {
+		msg := sanitizeMessage(formatMessage(entry))
+		lower := strings.ToLower(msg)
+		if strings.HasPrefix(lower, "extras preselected:") || strings.HasPrefix(lower, "installing extras:") || strings.HasPrefix(lower, "extras selected:") {
+			if idx := strings.Index(msg, ":"); idx != -1 {
+				tail := strings.TrimSpace(msg[idx+1:])
+				for _, part := range strings.Split(tail, ",") {
+					part = strings.TrimSpace(part)
+					if part != "" {
+						out[part] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+func splitExtrasMessage(message string, known map[string]struct{}) (string, string, bool) {
+	idx := strings.Index(message, ": ")
+	if idx <= 0 {
+		return "", "", false
+	}
+	label := strings.TrimSpace(message[:idx])
+	rest := strings.TrimSpace(message[idx+2:])
+	if label == "" || rest == "" {
+		return "", "", false
+	}
+	if _, ok := known[label]; ok {
+		return label, rest, true
+	}
+	if strings.Contains(label, "@") {
+		return label, rest, true
+	}
+	switch strings.ToLower(label) {
+	case "artisan migrate", "artisan cache:clear-full":
+		return label, rest, true
+	default:
+		return "", "", false
+	}
+}
+
+func formatExtrasItemLine(item logItem, label string) string {
+	msg := item.message
+	prefix := label + ": "
+	if strings.HasPrefix(msg, prefix) {
+		msg = strings.TrimSpace(strings.TrimPrefix(msg, prefix))
+	}
+	clean := item
+	clean.message = msg
+	return formatItemLine(clean, true)
 }
 
 func compressEntries(entries []domain.LogEntry) []logItem {

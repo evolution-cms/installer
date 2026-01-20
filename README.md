@@ -112,6 +112,8 @@ evo install my-project --force  # Force install even if directory exists
 evo install my-project --cli --log  # Non-interactive mode + write log.md
 evo install my-project --composer-update  # Use composer update during setup
 evo install my-project --composer-clear-cache  # Clear Composer cache before install
+evo install my-project --github-pat=TOKEN  # GitHub PAT for API requests
+evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (optional)
 ```
 
 ### Available Options
@@ -136,6 +138,30 @@ evo install my-project --composer-clear-cache  # Clear Composer cache before ins
 - `--quiet`: Reduce CLI output (warnings/errors only)
 - `--composer-clear-cache`: Clear Composer cache before install
 - `--composer-update`: Use `composer update` instead of `composer install` during setup
+- `--github-pat` / `--github_pat`: GitHub PAT token for API requests (avoids GitHub rate limits)
+- `--extras`: Comma-separated extras to install after setup (e.g., `sTask@main,sSeo`)
+
+### CLI Example (Non-interactive)
+
+```bash
+evo install demo \
+  --cli \
+  --branch=3.5.x \
+  --db-type=sqlite \
+  --db-name=database.sqlite \
+  --admin-username=admin \
+  --admin-email=admin@example.com \
+  --admin-password=123456 \
+  --admin-directory=manager \
+  --language=uk \
+  --composer-clear-cache \
+  --github-pat=YOUR_GITHUB_PAT \
+  --extras=sTask@main,sSeo
+```
+
+Notes:
+- `--cli` skips the Extras wizard prompt; use `--extras` to auto-install.
+- `--extras` works in both TUI and CLI; when provided, the wizard is skipped and installation starts immediately.
 
 ## Presets
 
@@ -171,6 +197,14 @@ You can create custom presets by extending the `Preset` class. See the `src/Pres
 - **Collation Resolution**: Intelligently handles database collations, including those not in the server's collation list
 - **Install Type Detection**: Automatically detects if this is a fresh install or an update
 - **Secure Configuration**: Creates database config files with proper permissions (read-only)
+
+### Managed Extras Wizard (TUI)
+
+- **Post-install prompt**: After the success screen, the installer asks whether to install additional Extras.
+- **Selection UI**: Shows the full managed Extras list (type 0, install via Composer) with checkboxes, versions, and descriptions.
+- **Batch install**: Installs selected Extras one-by-one via `php artisan extras extras <Name>` and shows progress/status.
+- **Post steps**: Runs `php artisan migrate` once after all Extras, then `php artisan cache:clear-full`.
+- **Flow**: Install -> Success screen -> Prompt -> Extras selection -> Progress -> Summary
 
 ### Inspired by Docker Implementation
 

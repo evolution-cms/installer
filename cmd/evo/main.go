@@ -221,6 +221,9 @@ func runInstall(ctx context.Context, args []string) int {
 	adminPassword := fs.String("admin-password", "", "Admin password")
 	adminDirectory := fs.String("admin-directory", "", "Admin directory (default: manager)")
 	language := fs.String("language", "", "Installation language (e.g., en, uk)")
+	githubPat := fs.String("github-pat", "", "GitHub PAT token for API requests")
+	githubPatAlt := fs.String("github_pat", "", "GitHub PAT token for API requests")
+	extras := fs.String("extras", "", "Comma-separated extras to install (e.g., sTask@main,sSeo)")
 	logToFile := fs.Bool("log", false, "Write installer log to file")
 	cliMode := fs.Bool("cli", false, "Run in non-interactive CLI mode (no TUI)")
 	quiet := fs.Bool("quiet", false, "Reduce CLI output (warnings/errors only)")
@@ -230,6 +233,11 @@ func runInstall(ctx context.Context, args []string) int {
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
 	}
+	pat := strings.TrimSpace(*githubPat)
+	if pat == "" {
+		pat = strings.TrimSpace(*githubPatAlt)
+	}
+
 	opt := installengine.Options{
 		Force:              *force,
 		Dir:                installDir,
@@ -248,7 +256,14 @@ func runInstall(ctx context.Context, args []string) int {
 		AdminPassword:      *adminPassword,
 		AdminDirectory:     strings.TrimSpace(*adminDirectory),
 		Language:           strings.ToLower(strings.TrimSpace(*language)),
+		GithubPat:          pat,
 	}
+	extrasSelections, err := parseExtrasSelections(*extras)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	opt.Extras = extrasSelections
 	if *cliMode {
 		if err := applyCLIDefaults(&opt); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -258,13 +273,42 @@ func runInstall(ctx context.Context, args []string) int {
 	return runInstaller(ctx, ui.ModeInstall, &opt, *logToFile, *cliMode, *quiet)
 }
 
+func parseExtrasSelections(raw string) ([]domain.ExtrasSelection, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]domain.ExtrasSelection, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name := part
+		version := ""
+		if strings.Contains(part, "@") {
+			chunks := strings.SplitN(part, "@", 2)
+			name = strings.TrimSpace(chunks[0])
+			if len(chunks) > 1 {
+				version = strings.TrimSpace(chunks[1])
+			}
+		}
+		if name == "" {
+			return nil, fmt.Errorf("invalid --extras value: %q", part)
+		}
+		out = append(out, domain.ExtrasSelection{Name: name, Version: version})
+	}
+	return out, nil
+}
+
 func splitInstallArgs(args []string) (installDir string, flagArgs []string, err error) {
 	flagArgs = make([]string, 0, len(args))
 
 	expectsValue := func(flag string) bool {
 		switch flag {
 		case "branch", "db-type", "db-host", "db-port", "db-name", "db-user", "db-password",
-			"admin-username", "admin-email", "admin-password", "admin-directory", "language":
+			"admin-username", "admin-email", "admin-password", "admin-directory", "language", "github-pat", "github_pat", "extras":
 			return true
 		default:
 			return false
