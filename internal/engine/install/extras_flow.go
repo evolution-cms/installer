@@ -35,7 +35,7 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			Source:   "extras",
 			Severity: domain.SeverityInfo,
 			Payload: domain.StepStartPayload{
-				Label: "Step 8: Install Extras (optional)",
+				Label: "Step 7: Install Extras (optional)",
 				Index: 8,
 				Total: 8,
 			},

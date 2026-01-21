@@ -34,8 +34,8 @@ class InstallCommand extends Command
         'download' => ['label' => 'Step 3: Download Evolution CMS', 'completed' => false],
         'install' => ['label' => 'Step 4: Install Evolution CMS', 'completed' => false],
         'presets' => ['label' => 'Step 5: Install presets', 'completed' => false],
-        'dependencies' => ['label' => 'Step 6: Install dependencies', 'completed' => false],
-        'finalize' => ['label' => 'Step 7: Finalize installation', 'completed' => false],
+        'finalize' => ['label' => 'Step 6: Finalize installation', 'completed' => false],
+        'extras' => ['label' => 'Step 7: Install Extras (optional)', 'completed' => false],
     ];
 
     /**
@@ -127,8 +127,6 @@ class InstallCommand extends Command
 
         // Step 6: Install dependencies
         $this->installDependencies($name, $options);
-
-        // Step 7: Finalize installation
         $this->finalizeInstallation($name, $options);
 
         $this->tui->addLog("<fg=green>Evolution CMS application ready! Build something amazing.</>", 'success');
@@ -3436,6 +3434,7 @@ class InstallCommand extends Command
             'LICENSE',
             'ng.inx',
             'README.md',
+            'phpstan.neon',
         ] as $file) {
             $path = $projectPath . '/' . $file;
             if (file_exists($path) && !is_dir($path)) {

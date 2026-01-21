@@ -86,9 +86,8 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 					{ID: "download", Label: "Step 3: Download Evolution CMS", Status: domain.StepPending},
 					{ID: "install", Label: "Step 4: Install Evolution CMS", Status: domain.StepPending},
 					{ID: "presets", Label: "Step 5: Install presets", Status: domain.StepPending},
-					{ID: "dependencies", Label: "Step 6: Install dependencies", Status: domain.StepPending},
-					{ID: "finalize", Label: "Step 7: Finalize installation", Status: domain.StepPending},
-					{ID: "extras", Label: "Step 8: Install Extras (optional)", Status: domain.StepPending},
+					{ID: "finalize", Label: "Step 6: Finalize installation", Status: domain.StepPending},
+					{ID: "extras", Label: "Step 7: Install Extras (optional)", Status: domain.StepPending},
 				},
 			},
 		})
@@ -1405,20 +1404,9 @@ func (t *stepTracker) OnLine(line string) {
 		t.start("install", "Step 4: Install Evolution CMS", 4)
 	}
 
-	// Step 6 marker: deps update starts after install + presets.
-	if strings.Contains(line, "Updating dependencies with Composer") {
-		t.doneStep("install", true)
-		t.doneStep("presets", true)
-		t.start("dependencies", "Step 6: Install dependencies", 6)
-	}
-	if strings.Contains(line, "Dependencies updated successfully") || strings.Contains(line, "composer.json not found. Skipping dependency update") {
-		t.doneStep("dependencies", true)
-		t.start("finalize", "Step 7: Finalize installation", 7)
-	}
-
 	// Finalize marker.
 	if strings.Contains(line, "Finalizing installation") {
-		t.start("finalize", "Step 7: Finalize installation", 7)
+		t.start("finalize", "Step 6: Finalize installation", 6)
 	}
 	if strings.Contains(line, "Installation finalized successfully") {
 		t.doneStep("finalize", true)
