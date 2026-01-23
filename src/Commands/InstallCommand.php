@@ -3411,21 +3411,21 @@ class InstallCommand extends Command
         $installDir = $projectPath . '/install';
         if (is_dir($installDir)) {
             $this->removeDirectory($installDir);
-            $this->tui->addLog('Removed install directory.', 'info');
+            $this->tui->addLog('Removed install directory.');
         }
 
         // Remove localization tooling dir (not needed in production)
         $txDir = $projectPath . '/.tx';
         if (is_dir($txDir)) {
             $this->removeDirectory($txDir);
-            $this->tui->addLog('Removed .tx directory.', 'info');
+            $this->tui->addLog('Removed .tx directory.');
         }
 
         // Remove composer.json from root (not the one in core/)
         $rootComposerJson = $projectPath . '/composer.json';
         if (file_exists($rootComposerJson) && !is_dir($rootComposerJson)) {
             @unlink($rootComposerJson);
-            $this->tui->addLog('Removed root composer.json.', 'info');
+            $this->tui->addLog('Removed root composer.json.');
         }
 
         // Remove repository-only files from project root
@@ -3439,7 +3439,7 @@ class InstallCommand extends Command
             $path = $projectPath . '/' . $file;
             if (file_exists($path) && !is_dir($path)) {
                 @unlink($path);
-                $this->tui->addLog("Removed {$file}.", 'info');
+                $this->tui->addLog("Removed {$file}.");
             }
         }
 
@@ -3447,7 +3447,7 @@ class InstallCommand extends Command
         $configExample = $projectPath . '/config.php.example';
         if (file_exists($configExample)) {
             @unlink($configExample);
-            $this->tui->addLog('Removed config.php.example.', 'info');
+            $this->tui->addLog('Removed config.php.example.');
         }
 
         // Rename sample-robots.txt to robots.txt
@@ -3458,7 +3458,7 @@ class InstallCommand extends Command
                 @unlink($robotsTxt);
             }
             if (@rename($sampleRobots, $robotsTxt)) {
-                $this->tui->addLog('Renamed sample-robots.txt to robots.txt.', 'info');
+                $this->tui->addLog('Renamed sample-robots.txt to robots.txt.');
             }
         }
 
@@ -3470,7 +3470,7 @@ class InstallCommand extends Command
                 @unlink($htaccessTarget);
             }
             if (@rename($htaccessSource, $htaccessTarget)) {
-                $this->tui->addLog('Renamed ht.access to .htaccess.', 'info');
+                $this->tui->addLog('Renamed ht.access to .htaccess.');
             } else {
                 $this->tui->addLog('Failed to rename ht.access to .htaccess.', 'warning');
             }
@@ -3492,7 +3492,7 @@ class InstallCommand extends Command
                 }
             }
             if ($removedCount > 0) {
-                $this->tui->addLog("Removed {$removedCount} file(s) from seeders directory.", 'info');
+                $this->tui->addLog("Removed {$removedCount} file(s) from seeders directory.");
             }
         }
 
@@ -3504,7 +3504,7 @@ class InstallCommand extends Command
             throw new \RuntimeException('Failed to create installation marker file core/.install.');
         }
         @chmod($installMarker, 0644);
-        $this->tui->addLog('Created installation marker: core/.install', 'info');
+        $this->tui->addLog('Created installation marker: core/.install');
 
         $this->steps['finalize']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
@@ -3533,7 +3533,7 @@ class InstallCommand extends Command
         }
 
         if (@rename($source, $target)) {
-            $this->tui?->addLog("Renamed manager directory to {$adminDir}.", 'info');
+            $this->tui?->addLog("Renamed manager directory to {$adminDir}.");
             return;
         }
 

@@ -124,7 +124,7 @@ evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (o
 - `--db-port`: Database port (defaults: 3306 for MySQL, 5432 for PostgreSQL, 1433 for SQL Server)
 - `--db-name`: Database name (for SQLite: path to database file, default: `database.sqlite`)
 - `--db-user`: Database user (not used for SQLite)
-- `--db-password`: Database password (not used for SQLite)
+- `--db-password`: Database password (not used for SQLite). If it contains shell special characters (e.g. `;`, `&`, `!`), quote it: `--db-password='p;ass'`.
 - `--admin-username`: Admin username
 - `--admin-email`: Admin email
 - `--admin-password`: Admin password
