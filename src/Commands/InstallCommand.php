@@ -326,9 +326,9 @@ class InstallCommand extends Command
     protected function askDatabaseType(): string
     {
         $driverNames = [
+            'sqlite' => 'SQLite',
             'mysql' => 'MySQL or MariaDB',
             'pgsql' => 'PostgreSQL',
-            'sqlite' => 'SQLite',
             'sqlsrv' => 'SQL Server'
         ];
 

@@ -1830,9 +1830,9 @@ func dbDriverQuestionOptions(status domain.SystemStatus) []domain.QuestionOption
 	// If we don't have system status yet, don't block the user.
 	if len(status.Items) == 0 {
 		return []domain.QuestionOption{
+			{ID: "sqlite", Label: "SQLite", Enabled: true},
 			{ID: "mysql", Label: "MySQL or MariaDB", Enabled: true},
 			{ID: "pgsql", Label: "PostgreSQL", Enabled: true},
-			{ID: "sqlite", Label: "SQLite", Enabled: true},
 			{ID: "sqlsrv", Label: "SQL Server", Enabled: true},
 		}
 	}
@@ -1841,9 +1841,9 @@ func dbDriverQuestionOptions(status domain.SystemStatus) []domain.QuestionOption
 	pdoOK := ok && pdoLevel == domain.StatusOK
 
 	return []domain.QuestionOption{
+		dbDriverOption(status, pdoOK, "sqlite", "SQLite", "pdo_sqlite"),
 		dbDriverOption(status, pdoOK, "mysql", "MySQL or MariaDB", "pdo_mysql"),
 		dbDriverOption(status, pdoOK, "pgsql", "PostgreSQL", "pdo_pgsql"),
-		dbDriverOption(status, pdoOK, "sqlite", "SQLite", "pdo_sqlite"),
 		dbDriverOption(status, pdoOK, "sqlsrv", "SQL Server", "pdo_sqlsrv"),
 	}
 }
