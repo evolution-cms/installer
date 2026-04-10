@@ -83,6 +83,95 @@ function helper_chunk_code(string $path): string
     return helper_remove_installer_docblock((string) file_get_contents($path));
 }
 
+function helper_parse_csv(string $value): array
+{
+    return array_values(array_filter(array_map('trim', explode(',', $value)), static function ($value) {
+        return $value !== '';
+    }));
+}
+
+function helper_install_template(array $item, string $path): void
+{
+    $name = trim((string) ($item['name'] ?? ''));
+    if ($name === '') {
+        return;
+    }
+    $desc = trim((string) ($item['description'] ?? ''));
+    $category = getCreateDbCategory(trim((string) ($item['category'] ?? '')));
+    $locked = !empty($item['locked']) ? 1 : 0;
+    $code = helper_chunk_code($path);
+    $template = \EvolutionCMS\Models\SiteTemplate::query()->where('templatename', $name)->first();
+    if ($template !== null) {
+        \EvolutionCMS\Models\SiteTemplate::query()->where('templatename', $name)->update([
+            'content' => $code,
+            'description' => $desc,
+            'category' => $category,
+            'locked' => $locked,
+        ]);
+    } else {
+        \EvolutionCMS\Models\SiteTemplate::query()->create([
+            'templatename' => $name,
+            'content' => $code,
+            'description' => $desc,
+            'category' => $category,
+            'locked' => $locked,
+        ]);
+    }
+
+    helper_log("Installed template: {$name}");
+}
+
+function helper_install_tv(array $item, string $path): void
+{
+    unset($path);
+
+    $name = trim((string) ($item['name'] ?? ''));
+    if ($name === '') {
+        return;
+    }
+    $desc = trim((string) ($item['description'] ?? ''));
+    $caption = trim((string) ($item['caption'] ?? ''));
+    $category = getCreateDbCategory(trim((string) ($item['category'] ?? '')));
+    $locked = !empty($item['locked']) ? 1 : 0;
+    $assignments = $item['assignments'] ?? [];
+    if (!is_array($assignments)) {
+        $assignments = helper_parse_csv((string) $assignments);
+    }
+
+    $tv = \EvolutionCMS\Models\SiteTmplvar::query()->updateOrCreate(
+        ['name' => $name],
+        [
+            'type' => trim((string) ($item['inputType'] ?? '')),
+            'caption' => $caption,
+            'description' => $desc,
+            'category' => $category,
+            'locked' => $locked,
+            'elements' => trim((string) ($item['inputOptions'] ?? '')),
+            'display' => trim((string) ($item['outputWidget'] ?? '')),
+            'display_params' => trim((string) ($item['outputWidgetParams'] ?? '')),
+            'default_text' => trim((string) ($item['inputDefault'] ?? '')),
+        ]
+    );
+
+    \EvolutionCMS\Models\SiteTmplvarTemplate::query()->where('tmplvarid', $tv->getKey())->delete();
+    foreach ($assignments as $assignment) {
+        $templateName = trim((string) $assignment);
+        if ($templateName === '') {
+            continue;
+        }
+        $template = \EvolutionCMS\Models\SiteTemplate::query()->where('templatename', $templateName)->first();
+        if ($template === null) {
+            continue;
+        }
+        \EvolutionCMS\Models\SiteTmplvarTemplate::query()->firstOrCreate([
+            'tmplvarid' => $tv->getKey(),
+            'templateid' => $template->getKey(),
+        ]);
+    }
+
+    helper_log("Installed TV: {$name}");
+}
+
 function helper_install_plugin(array $item, string $path): void
 {
     $name = trim((string) ($item['name'] ?? ''));
@@ -276,31 +365,46 @@ function helper_install_chunk(array $item, string $path): void
     }
     $desc = trim((string) ($item['description'] ?? ''));
     $category = getCreateDbCategory(trim((string) ($item['category'] ?? '')));
+    $overwrite = strtolower(trim((string) ($item['overwrite'] ?? 'true')));
     $code = helper_chunk_code($path);
-    $chunk = \EvolutionCMS\Models\SiteHtmlsnippet::query()->where('name', $name)->first();
-    if ($chunk !== null) {
+    $chunkRecord = \EvolutionCMS\Models\SiteHtmlsnippet::query()->where('name', $name)->first();
+    $countNewName = 0;
+    if ($overwrite === 'false') {
+        $newName = $name . '-' . str_replace('.', '_', (string) evo()->getVersionData('version'));
+        $countNewName = \EvolutionCMS\Models\SiteHtmlsnippet::query()->where('name', $newName)->count();
+    }
+    $update = $chunkRecord !== null && $overwrite === 'true';
+    if ($update) {
         \EvolutionCMS\Models\SiteHtmlsnippet::query()->where('name', $name)->update([
             'snippet' => $code,
             'description' => $desc,
             'category' => $category,
         ]);
-    } else {
+        helper_log("Installed chunk: {$name}");
+        return;
+    }
+    if ($countNewName === 0) {
+        if ($chunkRecord !== null && $overwrite === 'false') {
+            $name = $newName;
+        }
         \EvolutionCMS\Models\SiteHtmlsnippet::query()->create([
             'name' => $name,
             'snippet' => $code,
             'description' => $desc,
             'category' => $category,
         ]);
+        helper_log("Installed chunk: {$name}");
+        return;
     }
 
-    helper_log("Installed chunk: {$name}");
+    helper_log("Skipped chunk (already exists and overwrite=false): {$name}");
 }
 
-function helper_scan_tpl_dir(string $dir, string $kind): array
+function helper_docblock_entries(string $dir): array
 {
-    $items = [];
+    $entries = [];
     if (!is_dir($dir)) {
-        return $items;
+        return $entries;
     }
     $files = scandir($dir) ?: [];
     foreach ($files as $file) {
@@ -316,22 +420,172 @@ function helper_scan_tpl_dir(string $dir, string $kind): array
         if ($version !== '') {
             $description = "<strong>{$version}</strong> {$description}";
         }
-        $items[] = [
-            'kind' => $kind,
-            'name' => trim((string) ($params['name'] ?? '')),
-            'description' => $description,
+        $entries[] = [
             'path' => $dir . DIRECTORY_SEPARATOR . $file,
+            'params' => $params,
+            'description' => $description,
+        ];
+    }
+    return $entries;
+}
+
+function helper_collect_install_assets(string $assetRoot): array
+{
+    $items = [];
+    $dependencies = [];
+    $templateNames = [];
+
+    foreach (helper_docblock_entries($assetRoot . '/templates') as $entry) {
+        $params = $entry['params'];
+        $name = trim((string) ($params['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $templateNames[] = $name;
+        $items[] = [
+            'kind' => 'template',
+            'name' => $name,
+            'description' => $entry['description'],
+            'path' => $entry['path'],
+            'category' => trim((string) ($params['modx_category'] ?? '')),
+            'locked' => (int) trim((string) ($params['lock_template'] ?? '0')),
+        ];
+    }
+
+    foreach (helper_docblock_entries($assetRoot . '/tvs') as $entry) {
+        $params = $entry['params'];
+        $name = trim((string) ($params['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $assignments = trim((string) ($params['template_assignments'] ?? ''));
+        if ($assignments === '*') {
+            $assignments = $templateNames;
+        } else {
+            $assignments = helper_parse_csv($assignments);
+        }
+        $items[] = [
+            'kind' => 'tv',
+            'name' => $name,
+            'caption' => trim((string) ($params['caption'] ?? '')),
+            'description' => $entry['description'],
+            'path' => $entry['path'],
+            'category' => trim((string) ($params['modx_category'] ?? '')),
+            'locked' => (int) trim((string) ($params['lock_tv'] ?? '0')),
+            'inputType' => trim((string) ($params['input_type'] ?? '')),
+            'inputOptions' => trim((string) ($params['input_options'] ?? '')),
+            'inputDefault' => trim((string) ($params['input_default'] ?? '')),
+            'outputWidget' => trim((string) ($params['output_widget'] ?? '')),
+            'outputWidgetParams' => trim((string) ($params['output_widget_params'] ?? '')),
+            'assignments' => $assignments,
+        ];
+    }
+
+    foreach (helper_docblock_entries($assetRoot . '/chunks') as $entry) {
+        $params = $entry['params'];
+        $name = trim((string) ($params['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $items[] = [
+            'kind' => 'chunk',
+            'name' => $name,
+            'description' => $entry['description'],
+            'path' => $entry['path'],
+            'category' => trim((string) ($params['modx_category'] ?? '')),
+            'overwrite' => trim((string) ($params['overwrite'] ?? 'true')),
+        ];
+    }
+
+    foreach (helper_docblock_entries($assetRoot . '/snippets') as $entry) {
+        $params = $entry['params'];
+        $name = trim((string) ($params['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $items[] = [
+            'kind' => 'snippet',
+            'name' => $name,
+            'description' => $entry['description'],
+            'path' => $entry['path'],
+            'properties' => trim((string) ($params['properties'] ?? '')),
+            'category' => trim((string) ($params['modx_category'] ?? '')),
+        ];
+    }
+
+    foreach (helper_docblock_entries($assetRoot . '/plugins') as $entry) {
+        $params = $entry['params'];
+        $name = trim((string) ($params['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $items[] = [
+            'kind' => 'plugin',
+            'name' => $name,
+            'description' => $entry['description'],
+            'path' => $entry['path'],
             'properties' => trim((string) ($params['properties'] ?? '')),
             'events' => trim((string) ($params['events'] ?? '')),
             'guid' => trim((string) ($params['guid'] ?? '')),
             'category' => trim((string) ($params['modx_category'] ?? '')),
             'legacyNames' => trim((string) ($params['legacy_names'] ?? '')),
             'disabled' => trim((string) ($params['disabled'] ?? '')) === '1',
+        ];
+    }
+
+    foreach (helper_docblock_entries($assetRoot . '/modules') as $entry) {
+        $params = $entry['params'];
+        $name = trim((string) ($params['name'] ?? ''));
+        if ($name === '') {
+            continue;
+        }
+        $items[] = [
+            'kind' => 'module',
+            'name' => $name,
+            'description' => $entry['description'],
+            'path' => $entry['path'],
+            'properties' => trim((string) ($params['properties'] ?? '')),
+            'guid' => trim((string) ($params['guid'] ?? '')),
+            'category' => trim((string) ($params['modx_category'] ?? '')),
             'shareParams' => (int) trim((string) ($params['shareparams'] ?? '0')),
             'icon' => trim((string) ($params['icon'] ?? '')),
         ];
+
+        $moduleDependencies = helper_parse_csv((string) ($params['dependencies'] ?? ''));
+        foreach ($moduleDependencies as $dependency) {
+            $parts = array_map('trim', explode(':', $dependency, 2));
+            if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
+                continue;
+            }
+            switch ($parts[0]) {
+                case 'template':
+                    $dependencies[] = ['module' => $name, 'kind' => 'template', 'name' => $parts[1], 'type' => 50];
+                    break;
+                case 'tv':
+                case 'tmplvar':
+                    $dependencies[] = ['module' => $name, 'kind' => 'tv', 'name' => $parts[1], 'type' => 60];
+                    break;
+                case 'chunk':
+                case 'htmlsnippet':
+                    $dependencies[] = ['module' => $name, 'kind' => 'chunk', 'name' => $parts[1], 'type' => 10];
+                    break;
+                case 'snippet':
+                    $dependencies[] = ['module' => $name, 'kind' => 'snippet', 'name' => $parts[1], 'type' => 40];
+                    break;
+                case 'plugin':
+                    $dependencies[] = ['module' => $name, 'kind' => 'plugin', 'name' => $parts[1], 'type' => 30];
+                    break;
+                case 'resource':
+                    $dependencies[] = ['module' => $name, 'kind' => 'resource', 'name' => $parts[1], 'type' => 20];
+                    break;
+            }
+        }
     }
-    return $items;
+
+    return [
+        'items' => $items,
+        'dependencies' => $dependencies,
+    ];
 }
 
 function helper_import_items(array $items): void
@@ -342,6 +596,12 @@ function helper_import_items(array $items): void
             continue;
         }
         switch ((string) ($item['kind'] ?? '')) {
+            case 'template':
+                helper_install_template($item, $path);
+                break;
+            case 'tv':
+                helper_install_tv($item, $path);
+                break;
             case 'plugin':
                 helper_install_plugin($item, $path);
                 break;
@@ -355,6 +615,69 @@ function helper_import_items(array $items): void
                 helper_install_chunk($item, $path);
                 break;
         }
+    }
+}
+
+function helper_install_module_dependencies(array $dependencies): void
+{
+    foreach ($dependencies as $dependency) {
+        $moduleName = trim((string) ($dependency['module'] ?? ''));
+        $dependencyName = trim((string) ($dependency['name'] ?? ''));
+        if ($moduleName === '' || $dependencyName === '') {
+            continue;
+        }
+
+        $module = \EvolutionCMS\Models\SiteModule::query()->where('name', $moduleName)->first();
+        if ($module === null) {
+            continue;
+        }
+
+        $resourceId = null;
+        switch ((string) ($dependency['kind'] ?? '')) {
+            case 'template':
+                $resource = \EvolutionCMS\Models\SiteTemplate::query()->where('templatename', $dependencyName)->first();
+                $resourceId = $resource?->getKey();
+                break;
+            case 'tv':
+                $resource = \EvolutionCMS\Models\SiteTmplvar::query()->where('name', $dependencyName)->first();
+                $resourceId = $resource?->getKey();
+                break;
+            case 'chunk':
+                $resource = \EvolutionCMS\Models\SiteHtmlsnippet::query()->where('name', $dependencyName)->first();
+                $resourceId = $resource?->getKey();
+                break;
+            case 'snippet':
+                $resource = \EvolutionCMS\Models\SiteSnippet::query()->where('name', $dependencyName)->first();
+                $resourceId = $resource?->getKey();
+                break;
+            case 'plugin':
+                $resource = \EvolutionCMS\Models\SitePlugin::query()->where('name', $dependencyName)->first();
+                $resourceId = $resource?->getKey();
+                break;
+            case 'resource':
+                $resource = \EvolutionCMS\Models\SiteContent::query()->where('pagetitle', $dependencyName)->first();
+                $resourceId = $resource?->getKey();
+                break;
+        }
+
+        if ($resourceId === null) {
+            continue;
+        }
+
+        \EvolutionCMS\Models\SiteModuleDepobj::query()->updateOrCreate([
+            'module' => (int) $module->getKey(),
+            'resource' => (int) $resourceId,
+            'type' => (int) ($dependency['type'] ?? 0),
+        ]);
+
+        if ((int) ($dependency['type'] ?? 0) === 30) {
+            \EvolutionCMS\Models\SitePlugin::query()->where('id', $resourceId)->update(['moduleguid' => (string) $module->guid]);
+        }
+        if ((int) ($dependency['type'] ?? 0) === 40) {
+            \EvolutionCMS\Models\SiteSnippet::query()->where('id', $resourceId)->update(['moduleguid' => (string) $module->guid]);
+        }
+
+        helper_log("Linked module dependency: {$moduleName} -> {$dependencyName}");
     }
 }
 
@@ -428,13 +751,59 @@ function helper_find_asset_root(string $baseDir): ?string
             continue;
         }
         $path = $item->getPathname();
-        if (is_dir($path . '/plugins') || is_dir($path . '/modules') || is_dir($path . '/snippets') || is_dir($path . '/chunks')) {
+        if (
+            is_dir($path . '/plugins') ||
+            is_dir($path . '/modules') ||
+            is_dir($path . '/snippets') ||
+            is_dir($path . '/chunks') ||
+            is_dir($path . '/templates') ||
+            is_dir($path . '/tvs')
+        ) {
             if (basename($path) === 'assets') {
                 return $path;
             }
         }
     }
     return null;
+}
+
+function helper_detect_legacy_install_profile(array $items, array $dependencies, string $packageRoot): string
+{
+    $kinds = [];
+    foreach ($items as $item) {
+        $kind = trim((string) ($item['kind'] ?? ''));
+        if ($kind !== '') {
+            $kinds[$kind] = true;
+        }
+    }
+    if (isset($kinds['template']) || isset($kinds['tv'])) {
+        return 'full';
+    }
+    if (count($items) > 1 || count($kinds) > 1 || count($dependencies) > 0) {
+        return 'full';
+    }
+    if (is_file($packageRoot . '/setup.sql') || is_file($packageRoot . '/setup.data.sql')) {
+        return 'full';
+    }
+    return 'fast';
+}
+
+function helper_process_sql_file(string $path): void
+{
+    $parserPath = EVO_BASE_PATH . 'assets/modules/store/installer/sqlParser.class.php';
+    if (!is_file($parserPath)) {
+        helper_fail('Legacy SQL payload detected, but SqlParser is not available in the project.');
+    }
+    require_once $parserPath;
+    $sqlParser = new SqlParser();
+    $sqlParser->mode = 'upd';
+    $sqlParser->ignoreDuplicateErrors = true;
+    $sqlParser->process($path);
+    if (!empty($sqlParser->installFailed)) {
+        $error = $sqlParser->mysqlErrors[0]['error'] ?? 'unknown SQL import error';
+        helper_fail('Legacy package SQL import failed: ' . $error);
+    }
+    helper_log('Applied legacy SQL payload: ' . basename($path));
 }
 
 function helper_install_legacy_store_package(string $projectPath, array $item): void
@@ -460,28 +829,35 @@ function helper_install_legacy_store_package(string $projectPath, array $item): 
 
     $packageRoot = helper_find_package_root($extractDir);
     helper_recursive_copy($packageRoot, $projectPath);
+    $setupSql = $packageRoot . '/setup.sql';
+    $setupDataSql = $packageRoot . '/setup.data.sql';
 
     $assetRoot = helper_find_asset_root($packageRoot);
     if ($assetRoot === null) {
+        if (is_file($setupSql)) {
+            helper_process_sql_file($setupSql);
+        }
+        if (is_file($setupDataSql)) {
+            helper_log('Legacy sample-data SQL detected and skipped by default: ' . basename($setupDataSql));
+        }
         helper_log('Legacy package copied; no install/assets payload detected for inline import.');
         return;
     }
 
-    $items = [];
-    $items = array_merge($items, helper_scan_tpl_dir($assetRoot . '/chunks', 'chunk'));
-    $items = array_merge($items, helper_scan_tpl_dir($assetRoot . '/snippets', 'snippet'));
-    $items = array_merge($items, helper_scan_tpl_dir($assetRoot . '/plugins', 'plugin'));
-    $items = array_merge($items, helper_scan_tpl_dir($assetRoot . '/modules', 'module'));
+    $payload = helper_collect_install_assets($assetRoot);
+    $items = $payload['items'] ?? [];
+    $dependencies = $payload['dependencies'] ?? [];
+    $profile = helper_detect_legacy_install_profile($items, $dependencies, $packageRoot);
+    helper_log('Legacy package install profile: ' . $profile);
     helper_import_items($items);
+    helper_install_module_dependencies($dependencies);
 
-    $sqlCandidates = [
-        dirname($assetRoot) . '/setup.sql',
-        dirname($assetRoot) . '/setup.data.sql',
-    ];
-    foreach ($sqlCandidates as $candidate) {
-        if (is_file($candidate)) {
-            helper_log('SQL payload detected and skipped for now: ' . basename($candidate));
-        }
+    if (is_file($setupSql)) {
+        helper_process_sql_file($setupSql);
+    }
+
+    if (is_file($setupDataSql)) {
+        helper_log('Legacy sample-data SQL detected and skipped by default: ' . basename($setupDataSql));
     }
 
     helper_log('Installed legacy package: ' . trim((string) ($item['name'] ?? 'package')));
