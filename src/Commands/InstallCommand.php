@@ -3471,9 +3471,11 @@ class InstallCommand extends Command
 
         // Remove repository-only files from project root
         foreach ([
+            'AGENTS.md',
             '.gitattributes',
             'LICENSE',
             'ng.inx',
+            'publiccode.yml',
             'README.md',
             'phpstan.neon',
         ] as $file) {

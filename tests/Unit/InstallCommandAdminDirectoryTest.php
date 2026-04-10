@@ -162,6 +162,30 @@ final class InstallCommandAdminDirectoryTest extends TestCase
         $this->removeTempDir($projectPath);
     }
 
+    public function testFinalizeInstallationRemovesDevelopmentOnlyRootFiles(): void
+    {
+        $cmd = $this->makeCommand();
+
+        $projectPath = $this->makeTempProjectDir();
+        @mkdir($projectPath . '/core/database/seeders', 0755, true);
+
+        file_put_contents($projectPath . '/AGENTS.md', "dev notes\n");
+        file_put_contents($projectPath . '/publiccode.yml', "publiccode\n");
+
+        $cmd->finalizeInstallationPublic($projectPath, [
+            'install_in_current_dir' => true,
+            'admin' => [
+                'directory' => 'manager',
+            ],
+        ]);
+
+        $this->assertFileDoesNotExist($projectPath . '/AGENTS.md');
+        $this->assertFileDoesNotExist($projectPath . '/publiccode.yml');
+        $this->assertFileExists($projectPath . '/core/.install');
+
+        $this->removeTempDir($projectPath);
+    }
+
     private function makeTempProjectDir(): string
     {
         $base = rtrim(sys_get_temp_dir(), '/\\');
@@ -212,5 +236,10 @@ final class TestableInstallCommand extends InstallCommand
     public function applyManagerDirectoryPublic(string $projectPath, array $options): void
     {
         $this->applyManagerDirectory($projectPath, $options);
+    }
+
+    public function finalizeInstallationPublic(string $projectPath, array $options): void
+    {
+        $this->finalizeInstallation($projectPath, $options);
     }
 }
