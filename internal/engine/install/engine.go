@@ -510,7 +510,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 						ID:      "db_sqlite_path",
 						Kind:    domain.QuestionInput,
 						Prompt:  "What is the path to your SQLite database file?",
-						Default: "database.sqlite",
+						Default: defaultSQLiteDatabasePath(),
 					})
 					if !ok {
 						return
@@ -1761,6 +1761,10 @@ func defaultPort(dbType string) int {
 	default:
 		return 3306
 	}
+}
+
+func defaultSQLiteDatabasePath() string {
+	return filepath.ToSlash(filepath.Join("core", "database", "database.sqlite"))
 }
 
 func dbDriverLabel(dbType string) string {

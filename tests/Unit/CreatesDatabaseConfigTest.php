@@ -73,6 +73,34 @@ class CreatesDatabaseConfigTest extends TestCase
         $this->assertStringContainsString("'engine' => env('DB_ENGINE', '')", $content);
     }
 
+    public function testGenerateConfigContentForSqliteUsesCoreDatabaseDefaultPath(): void
+    {
+        $reflection = new \ReflectionClass($this->processor);
+        $method = $reflection->getMethod('generateConfigContent');
+        $method->setAccessible(true);
+
+        $params = [
+            'driver' => 'sqlite',
+            'host' => '',
+            'port' => null,
+            'database' => 'database.sqlite',
+            'username' => '',
+            'password' => '',
+            'charset' => 'utf8',
+            'collation' => 'utf8',
+            'prefix' => 'evo_',
+            'method' => 'SET CHARACTER SET',
+            'engine' => '',
+        ];
+
+        $content = $method->invoke($this->processor, $params);
+
+        $this->assertStringContainsString(
+            "'database' => env('DB_DATABASE', dirname(__DIR__, 4) . '/core/database/database.sqlite')",
+            $content
+        );
+    }
+
     public function testGetDefaultPortForMySQL(): void
     {
         $reflection = new \ReflectionClass($this->processor);

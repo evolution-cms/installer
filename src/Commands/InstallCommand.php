@@ -396,14 +396,15 @@ class InstallCommand extends Command
     protected function askDatabaseName(?string $type = null): string
     {
         if ($type === 'sqlite') {
+            $defaultPath = $this->defaultSqliteDatabasePath();
             $answer = $this->tui->ask(
                 'What is the path to your SQLite database file?',
-                'database.sqlite'
+                $defaultPath
             );
 
             $this->tui->replaceLastLogs('<fg=green>✔</> Selected database path: ' . $answer . '.', 2);
 
-            return $answer ?: 'database.sqlite';
+            return $this->normalizeSqliteDatabasePath($answer ?: $defaultPath);
         }
 
         $answer = $this->tui->ask(
@@ -3323,7 +3324,8 @@ class InstallCommand extends Command
             return $dbConfig;
         }
 
-        $name = (string) ($dbConfig['name'] ?? '');
+        $name = $this->normalizeSqliteDatabasePath((string) ($dbConfig['name'] ?? ''));
+        $dbConfig['name'] = $name;
         if ($name === '' || $name === ':memory:' || str_starts_with($name, 'file:')) {
             return $dbConfig;
         }
@@ -3336,6 +3338,40 @@ class InstallCommand extends Command
 
         $dbConfig['name'] = rtrim($projectPath, '/\\') . DIRECTORY_SEPARATOR . $name;
         return $dbConfig;
+    }
+
+    protected function defaultSqliteDatabasePath(): string
+    {
+        return 'core/database/database.sqlite';
+    }
+
+    protected function normalizeSqliteDatabasePath(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return $this->defaultSqliteDatabasePath();
+        }
+
+        if ($path === ':memory:' || str_starts_with($path, 'file:')) {
+            return $path;
+        }
+
+        if (str_starts_with($path, '/') || preg_match('/^[A-Za-z]:[\\\\\\/]/', $path) === 1) {
+            return $path;
+        }
+
+        $normalized = str_replace('\\', '/', $path);
+        $normalized = preg_replace('#^(?:\./)+#', '', $normalized) ?? $normalized;
+        $normalized = ltrim($normalized, '/');
+        if ($normalized === '') {
+            return $this->defaultSqliteDatabasePath();
+        }
+
+        if (!str_contains($normalized, '/')) {
+            return 'core/database/' . $normalized;
+        }
+
+        return $normalized;
     }
 
     /**

@@ -89,10 +89,13 @@ class CreatesDatabaseConfig
     protected function generateConfigContent(array $params): string
     {
         $rawDriver = (string) $params['driver'];
+        $rawDatabase = (string) $params['database'];
+        if ($rawDriver === 'sqlite') {
+            $rawDatabase = $this->normalizeSqliteDatabasePath($rawDatabase);
+        }
         $driver = $this->escapePhpString($rawDriver);
         $host = $this->escapePhpString((string) $params['host']);
         $port = $this->escapePhpString((string) ($params['port'] ?? ''));
-        $rawDatabase = (string) $params['database'];
         $database = $this->escapePhpString($rawDatabase);
         $username = $this->escapePhpString((string) $params['username']);
         $password = $this->escapePhpString((string) $params['password']);
@@ -131,6 +134,31 @@ class CreatesDatabaseConfig
     ]
 ];
 PHP;
+    }
+
+    protected function normalizeSqliteDatabasePath(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return 'core/database/database.sqlite';
+        }
+
+        if ($path === ':memory:' || str_starts_with($path, 'file:') || $this->isAbsolutePath($path)) {
+            return $path;
+        }
+
+        $normalized = str_replace('\\', '/', $path);
+        $normalized = preg_replace('#^(?:\./)+#', '', $normalized) ?? $normalized;
+        $normalized = ltrim($normalized, '/');
+        if ($normalized === '') {
+            return 'core/database/database.sqlite';
+        }
+
+        if (!str_contains($normalized, '/')) {
+            return 'core/database/' . $normalized;
+        }
+
+        return $normalized;
     }
 
     protected function isAbsolutePath(string $path): bool
