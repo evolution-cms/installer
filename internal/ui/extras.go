@@ -649,12 +649,12 @@ func (m *Model) renderExtrasSummary(width int, height int) string {
 		return minSizeView(width, height)
 	}
 	contentW := panelContentWidth(width)
+	introLines := m.renderExtrasSummaryIntro(contentW)
 
 	lines := []string{
 		truncatePlain("Extras installation summary.", contentW),
 		"",
 	}
-	lines = append(lines, m.renderExtrasSummaryIntro(contentW)...)
 
 	contentHeight := innerH - len(lines) - 2
 	if contentHeight < 1 {
@@ -662,18 +662,38 @@ func (m *Model) renderExtrasSummary(width int, height int) string {
 	}
 
 	if len(m.extras.details) > 0 {
+		introH := len(introLines)
+		if introH > 0 {
+			introH++
+		}
 		detailsLabelH := 1
-		contentMain := contentHeight - detailsLabelH
+		contentMain := contentHeight - introH - detailsLabelH
 		if contentMain < 1 {
 			contentMain = 1
 		}
 		resH := max(1, contentMain/2)
 		detH := max(1, contentMain-resH)
 		lines = append(lines, m.renderExtrasSummaryResults(contentW, resH)...)
+		if len(introLines) > 0 {
+			lines = append(lines, "")
+			lines = append(lines, introLines...)
+		}
 		lines = append(lines, "", truncatePlain("Details:", contentW))
 		lines = append(lines, m.renderExtrasSummaryDetail(contentW, detH)...)
 	} else {
-		lines = append(lines, m.renderExtrasSummaryResults(contentW, contentHeight)...)
+		introH := len(introLines)
+		if introH > 0 {
+			introH++
+		}
+		resH := contentHeight - introH
+		if resH < 1 {
+			resH = 1
+		}
+		lines = append(lines, m.renderExtrasSummaryResults(contentW, resH)...)
+		if len(introLines) > 0 {
+			lines = append(lines, "")
+			lines = append(lines, introLines...)
+		}
 	}
 
 	lines = append(lines, "", m.renderExtrasSummaryActions(contentW))
@@ -705,11 +725,8 @@ func (m *Model) renderExtrasSummaryIntro(width int) []string {
 	}
 
 	if strings.TrimSpace(m.extras.projectPath) != "" {
-		lines = append(lines, "")
 		lines = append(lines, m.renderExtrasSummaryLocalRunHint(width)...)
 	}
-
-	lines = append(lines, "")
 	return lines
 }
 
@@ -737,10 +754,6 @@ func (m *Model) renderExtrasSummaryLocalRunHint(width int) []string {
 			truncatePlain("cd "+quoted, width),
 			truncatePlain("php -S localhost:8000", width),
 			truncatePlain("Then open http://localhost:8000", width),
-			"",
-			truncatePlain("On Windows use PowerShell: cd "+quoted, width),
-			truncatePlain("Or cmd.exe: cd /d "+quoted, width),
-			truncatePlain("Then run: php -S localhost:8000", width),
 		)
 	}
 
