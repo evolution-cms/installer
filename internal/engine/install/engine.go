@@ -1892,6 +1892,15 @@ try {
     if ($name !== ":memory:" && !str_starts_with($name, "file:") && !preg_match('/^(\/|[A-Za-z]:[\\\\\\/])/', $name)) {
       $name = "core/database/" . basename(str_replace("\\", "/", $name));
     }
+    if ($name !== ":memory:" && !str_starts_with($name, "file:")) {
+      $dir = dirname($name);
+      if ($dir !== "" && $dir !== "." && !is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+      }
+      if (!file_exists($name)) {
+        @touch($name);
+      }
+    }
     new \PDO("sqlite:".$name, null, null, $timeout);
     echo json_encode(["ok"=>true]); exit(0);
   }
