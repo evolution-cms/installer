@@ -240,6 +240,10 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 			return
 		}
 		m.extras.cursor++
+	case "right":
+		m.extras.focus = extrasFocusActions
+		m.extras.action = 0
+		return
 	case "pgup", "pageup":
 		m.extras.cursor -= listHeight
 	case "pgdown", "pagedown":

@@ -745,6 +745,27 @@ func emitExtrasSkippedSummary(emit func(domain.Event) bool) {
 
 func detectExtrasFailure(out string) string {
 	lines := strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n")
+
+	priorityHints := []string{
+		"sqlstate[",
+		"thrown in ",
+	}
+	for _, raw := range lines {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		lower := strings.ToLower(raw)
+		for _, hint := range priorityHints {
+			if strings.Contains(lower, hint) {
+				return raw
+			}
+		}
+		if strings.HasPrefix(lower, "fatal:") || strings.HasPrefix(lower, "error:") {
+			return raw
+		}
+	}
+
 	hints := []string{
 		"the limit that is provided for free use of github has been exceeded",
 		"github api rate limit exceeded",
@@ -758,6 +779,7 @@ func detectExtrasFailure(out string) string {
 		"could not resolve host",
 		"failed to download",
 		"failed to open stream",
+		"stack trace:",
 		"package operations: 0 installs, 0 updates, 0 removals",
 	}
 
@@ -776,6 +798,9 @@ func detectExtrasFailure(out string) string {
 			}
 		}
 		if strings.HasPrefix(lower, "fatal:") || strings.HasPrefix(lower, "error:") {
+			return raw
+		}
+		if strings.HasSuffix(lower, " fail") {
 			return raw
 		}
 		if strings.Contains(lower, "exception") {

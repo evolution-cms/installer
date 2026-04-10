@@ -96,6 +96,7 @@ func (l *EventLogger) Record(ev domain.Event) {
 			ok = p.OK
 		}
 		if !ok && ev.StepID != "" {
+			l.hadError = true
 			l.failedSteps[ev.StepID] = true
 		}
 		label := l.stepLabels[ev.StepID]

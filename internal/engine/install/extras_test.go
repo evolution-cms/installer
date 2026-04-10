@@ -201,3 +201,26 @@ func TestLoadBundledInlineExtrasUsesRuntimeCacheFallback(t *testing.T) {
 		t.Fatalf("unexpected fallback path: %q", pkgs[0].Path)
 	}
 }
+
+func TestDetectExtrasFailureRecognizesSqliteStackTrace(t *testing.T) {
+	t.Parallel()
+
+	out := `
+   INFO  Running migrations.
+
+  2026_03_29_000000_create_file_groups_table ..................... 1.07ms FAIL
+SQLSTATE[HY000]: General error: 1 table "evo_file_groups" already exists
+File: /tmp/core/vendor/illuminate/database/Connection.php
+Line: 838
+Stack trace:
+#1. Symfony\Component\Console\Application->run(...)
+`
+
+	got := detectExtrasFailure(out)
+	if got == "" {
+		t.Fatalf("expected detectExtrasFailure to recognize SQLSTATE stack trace")
+	}
+	if got != `SQLSTATE[HY000]: General error: 1 table "evo_file_groups" already exists` {
+		t.Fatalf("unexpected detected failure: %q", got)
+	}
+}
