@@ -121,6 +121,28 @@ final class InstallCommandAdminDirectoryTest extends TestCase
         $this->removeTempDir($projectPath);
     }
 
+    public function testWriteCoreCustomEnvStoresOnlySqliteFileNameInsideCoreDatabase(): void
+    {
+        $cmd = $this->makeCommand();
+
+        $projectPath = $this->makeTempProjectDir();
+        @mkdir($projectPath . '/core/custom', 0755, true);
+
+        $cmd->writeCoreCustomEnvPublic($projectPath, [
+            'database' => [
+                'type' => 'sqlite',
+                'name' => 'nested/custom.sqlite',
+                'prefix' => 'evo_',
+            ],
+        ]);
+
+        $env = (string) file_get_contents($projectPath . '/core/custom/.env');
+        $expected = 'DB_DATABASE="' . $projectPath . '/core/database/custom.sqlite"' . "\n";
+        $this->assertStringContainsString($expected, $env);
+
+        $this->removeTempDir($projectPath);
+    }
+
     public function testApplyManagerDirectoryRenamesManagerFolder(): void
     {
         $cmd = $this->makeCommand();

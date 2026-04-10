@@ -270,16 +270,13 @@ trait ConfiguresDatabase
     {
         $normalized = trim(str_replace('\\', '/', $path));
         $normalized = preg_replace('#^(?:\./)+#', '', $normalized) ?? $normalized;
-        $normalized = ltrim($normalized, '/');
-        if ($normalized === '') {
+        $normalized = trim($normalized, '/');
+        $basename = basename($normalized);
+        if ($basename === '' || $basename === '.') {
             return $this->defaultSqliteDatabasePath();
         }
 
-        if (!str_contains($normalized, '/')) {
-            return 'core/database/' . $normalized;
-        }
-
-        return $normalized;
+        return 'core/database/' . $basename;
     }
 
     protected function isAbsolutePath(string $path): bool

@@ -73,7 +73,7 @@ class CreatesDatabaseConfigTest extends TestCase
         $this->assertStringContainsString("'engine' => env('DB_ENGINE', '')", $content);
     }
 
-    public function testGenerateConfigContentForSqliteUsesCoreDatabaseDefaultPath(): void
+    public function testGenerateConfigContentForSqliteStoresFileInsideCoreDatabase(): void
     {
         $reflection = new \ReflectionClass($this->processor);
         $method = $reflection->getMethod('generateConfigContent');

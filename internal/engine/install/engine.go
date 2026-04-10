@@ -509,8 +509,8 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 						Active:  true,
 						ID:      "db_sqlite_path",
 						Kind:    domain.QuestionInput,
-						Prompt:  "What is the path to your SQLite database file?",
-						Default: defaultSQLiteDatabasePath(),
+						Prompt:  "What is the name of your SQLite database file?",
+						Default: defaultSQLiteDatabaseName(),
 					})
 					if !ok {
 						return
@@ -524,7 +524,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 					Source:   "install",
 					Severity: domain.SeverityInfo,
 					Payload: domain.LogPayload{
-						Message: "Selected database path: " + dbName + ".",
+						Message: "Selected database name: " + dbName + ".",
 					},
 				})
 			default:
@@ -1763,8 +1763,8 @@ func defaultPort(dbType string) int {
 	}
 }
 
-func defaultSQLiteDatabasePath() string {
-	return filepath.ToSlash(filepath.Join("core", "database", "database.sqlite"))
+func defaultSQLiteDatabaseName() string {
+	return "database.sqlite"
 }
 
 func dbDriverLabel(dbType string) string {
@@ -1854,7 +1854,10 @@ try {
   $pass = $cfg["password"] ?? "";
   $timeout = [\PDO::ATTR_TIMEOUT => 5];
   if ($type === "sqlite") {
-    if ($name === "") { echo json_encode(["ok"=>false,"error"=>"SQLite database path is required."]); exit(0); }
+    if ($name === "") { echo json_encode(["ok"=>false,"error"=>"SQLite database name is required."]); exit(0); }
+    if ($name !== ":memory:" && !str_starts_with($name, "file:") && !preg_match('/^(\/|[A-Za-z]:[\\\\\\/])/', $name)) {
+      $name = "core/database/" . basename(str_replace("\\", "/", $name));
+    }
     new \PDO("sqlite:".$name, null, null, $timeout);
     echo json_encode(["ok"=>true]); exit(0);
   }

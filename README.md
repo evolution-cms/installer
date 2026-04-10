@@ -122,7 +122,7 @@ evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (o
 - `--db-type`: Database type (`mysql`, `pgsql`, `sqlite`, or `sqlsrv`)
 - `--db-host`: Database host (default: `localhost`, not used for SQLite)
 - `--db-port`: Database port (defaults: 3306 for MySQL, 5432 for PostgreSQL, 1433 for SQL Server)
-- `--db-name`: Database name (for SQLite: path to database file, default: `core/database/database.sqlite`)
+- `--db-name`: Database name (for SQLite: database file name stored under `core/database/`, default: `database.sqlite`)
 - `--db-user`: Database user (not used for SQLite)
 - `--db-password`: Database password (not used for SQLite). If it contains shell special characters (e.g. `;`, `&`, `!`), quote it: `--db-password='p;ass'`.
 - `--admin-username`: Admin username
@@ -148,7 +148,7 @@ evo install demo \
   --cli \
   --branch=3.5.x \
   --db-type=sqlite \
-  --db-name=core/database/database.sqlite \
+  --db-name=database.sqlite \
   --admin-username=admin \
   --admin-email=admin@example.com \
   --admin-password=123456 \
