@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -704,18 +705,50 @@ func (m *Model) renderExtrasSummaryIntro(width int) []string {
 	}
 
 	if strings.TrimSpace(m.extras.projectPath) != "" {
-		lines = append(lines,
-			"",
-			truncatePlain("If this is a local install on your computer, run:", width),
-			truncatePlain("cd "+strconv.Quote(m.extras.projectPath), width),
-			truncatePlain("php -S localhost:8000", width),
-			truncatePlain("Then open http://localhost:8000", width),
-			"",
-			truncatePlain("If this was installed on a server, open the site by its configured URL/domain.", width),
-		)
+		lines = append(lines, "")
+		lines = append(lines, m.renderExtrasSummaryLocalRunHint(width)...)
 	}
 
 	lines = append(lines, "")
+	return lines
+}
+
+func (m *Model) renderExtrasSummaryLocalRunHint(width int) []string {
+	path := strings.TrimSpace(m.extras.projectPath)
+	if path == "" {
+		return nil
+	}
+
+	quoted := strconv.Quote(path)
+	lines := []string{}
+
+	switch runtime.GOOS {
+	case "windows":
+		lines = append(lines,
+			truncatePlain("If this is a local install on Windows, run:", width),
+			truncatePlain("PowerShell: cd "+quoted, width),
+			truncatePlain("cmd.exe: cd /d "+quoted, width),
+			truncatePlain("php -S localhost:8000", width),
+			truncatePlain("Then open http://localhost:8000", width),
+		)
+	default:
+		lines = append(lines,
+			truncatePlain("If this is a local install on macOS/Linux, run:", width),
+			truncatePlain("cd "+quoted, width),
+			truncatePlain("php -S localhost:8000", width),
+			truncatePlain("Then open http://localhost:8000", width),
+			"",
+			truncatePlain("On Windows use PowerShell: cd "+quoted, width),
+			truncatePlain("Or cmd.exe: cd /d "+quoted, width),
+			truncatePlain("Then run: php -S localhost:8000", width),
+		)
+	}
+
+	lines = append(lines,
+		"",
+		truncatePlain("If this was installed on a server, open the site by its configured URL/domain.", width),
+	)
+
 	return lines
 }
 
