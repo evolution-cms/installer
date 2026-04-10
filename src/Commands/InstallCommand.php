@@ -391,19 +391,20 @@ class InstallCommand extends Command
     /**
      * Ask for database name.
      *
-     * @param string|null $type Database type (for SQLite, asks for file path)
+     * @param string|null $type Database type (for SQLite, asks for file name)
      */
     protected function askDatabaseName(?string $type = null): string
     {
         if ($type === 'sqlite') {
+            $defaultName = $this->defaultSqliteDatabaseName();
             $answer = $this->tui->ask(
-                'What is the path to your SQLite database file?',
-                'database.sqlite'
+                'What is the name of your SQLite database file?',
+                $defaultName
             );
 
-            $this->tui->replaceLastLogs('<fg=green>✔</> Selected database path: ' . $answer . '.', 2);
+            $this->tui->replaceLastLogs('<fg=green>✔</> Selected database name: ' . $answer . '.', 2);
 
-            return $answer ?: 'database.sqlite';
+            return $this->normalizeSqliteDatabaseName($answer ?: $defaultName);
         }
 
         $answer = $this->tui->ask(
@@ -490,8 +491,8 @@ class InstallCommand extends Command
             if ($type === 'sqlite') {
                 // SQLite: Connect directly to the database file
                 if (empty($config['name'])) {
-                    $this->tui->replaceLastLogs('<fg=red>✗</> Database connection failed: SQLite database path is required.', 2);
-                    $this->lastDatabaseConnectionError = 'SQLite database path is required.';
+                    $this->tui->replaceLastLogs('<fg=red>✗</> Database connection failed: SQLite database name is required.', 2);
+                    $this->lastDatabaseConnectionError = 'SQLite database name is required.';
                     return false;
                 }
                 $this->createConnection($config);
@@ -2681,7 +2682,7 @@ class InstallCommand extends Command
 
         if ($type === 'sqlite') {
             if ($dbName === '') {
-                throw new \RuntimeException('SQLite database path is empty.');
+                throw new \RuntimeException('SQLite database name is empty.');
             }
             if ($dbName !== ':memory:' && !str_starts_with($dbName, 'file:') && !is_file($dbName)) {
                 throw new \RuntimeException("SQLite database file not found: {$dbName}");
@@ -3323,7 +3324,8 @@ class InstallCommand extends Command
             return $dbConfig;
         }
 
-        $name = (string) ($dbConfig['name'] ?? '');
+        $name = $this->resolveSqliteDatabasePath((string) ($dbConfig['name'] ?? ''));
+        $dbConfig['name'] = $name;
         if ($name === '' || $name === ':memory:' || str_starts_with($name, 'file:')) {
             return $dbConfig;
         }
@@ -3336,6 +3338,44 @@ class InstallCommand extends Command
 
         $dbConfig['name'] = rtrim($projectPath, '/\\') . DIRECTORY_SEPARATOR . $name;
         return $dbConfig;
+    }
+
+    protected function defaultSqliteDatabaseName(): string
+    {
+        return 'database.sqlite';
+    }
+
+    protected function resolveSqliteDatabasePath(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return 'core/database/' . $this->defaultSqliteDatabaseName();
+        }
+
+        if ($path === ':memory:' || str_starts_with($path, 'file:')) {
+            return $path;
+        }
+
+        if (str_starts_with($path, '/') || preg_match('/^[A-Za-z]:[\\\\\\/]/', $path) === 1) {
+            return $path;
+        }
+
+        return 'core/database/' . $this->normalizeSqliteDatabaseName($path);
+    }
+
+    protected function normalizeSqliteDatabaseName(string $name): string
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return $this->defaultSqliteDatabaseName();
+        }
+
+        $normalized = str_replace('\\', '/', $name);
+        $normalized = preg_replace('#^(?:\./)+#', '', $normalized) ?? $normalized;
+        $normalized = trim($normalized, '/');
+        $basename = basename($normalized);
+
+        return ($basename !== '' && $basename !== '.') ? $basename : $this->defaultSqliteDatabaseName();
     }
 
     /**

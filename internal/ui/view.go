@@ -523,7 +523,7 @@ var logValuePrefixes = []string{
 	"Selected database name:",
 	"Selected database user:",
 	"Selected database password:",
-	"Selected database path:",
+	"Selected database name:",
 	"Your Admin username:",
 	"Your Admin email:",
 	"Your Admin password:",

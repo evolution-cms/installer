@@ -82,7 +82,10 @@ trait ConfiguresDatabase
     {
         if ($type === 'sqlite') {
             // SQLite: database is the path to the file
-            $path = $database ?: ':memory:';
+            $path = $database ?: $this->defaultSqliteDatabasePath();
+            if ($path !== ':memory:' && !str_starts_with($path, 'file:') && !$this->isAbsolutePath($path)) {
+                $path = $this->normalizeRelativeSqliteDatabasePath($path);
+            }
             return "sqlite:{$path}";
         }
 
@@ -153,7 +156,10 @@ trait ConfiguresDatabase
 
         if ($type === 'sqlite') {
             // SQLite: Create database file
-            $databasePath = $databaseName ?: 'database.sqlite';
+            $databasePath = $databaseName ?: $this->defaultSqliteDatabasePath();
+            if ($databasePath !== ':memory:' && !str_starts_with($databasePath, 'file:') && !$this->isAbsolutePath($databasePath)) {
+                $databasePath = $this->normalizeRelativeSqliteDatabasePath($databasePath);
+            }
             $directory = dirname($databasePath);
             
             if (!empty($directory) && !is_dir($directory)) {
@@ -253,5 +259,30 @@ trait ConfiguresDatabase
             Console::error("Failed to create database: " . $e->getMessage());
             return false;
         }
+    }
+
+    protected function defaultSqliteDatabasePath(): string
+    {
+        return 'core/database/database.sqlite';
+    }
+
+    protected function normalizeRelativeSqliteDatabasePath(string $path): string
+    {
+        $normalized = trim(str_replace('\\', '/', $path));
+        $normalized = preg_replace('#^(?:\./)+#', '', $normalized) ?? $normalized;
+        $normalized = trim($normalized, '/');
+        $basename = basename($normalized);
+        if ($basename === '' || $basename === '.') {
+            return $this->defaultSqliteDatabasePath();
+        }
+
+        return 'core/database/' . $basename;
+    }
+
+    protected function isAbsolutePath(string $path): bool
+    {
+        return str_starts_with($path, '/')
+            || str_starts_with($path, '\\\\')
+            || preg_match('/^[A-Za-z]:[\\\\\\/]/', $path) === 1;
     }
 }
