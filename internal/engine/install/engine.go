@@ -991,7 +991,41 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 		}
 
 		e.maybeRunExtras(ctx, emit, actions, workDir)
+		e.cleanupExtrasRuntimeArtifacts(emit, workDir)
 	}()
+}
+
+func (e *Engine) cleanupExtrasRuntimeArtifacts(emit func(domain.Event) bool, workDir string) {
+	cacheDir := filepath.Join(absDir(workDir), extrasRuntimeCacheDir)
+	if _, err := os.Stat(cacheDir); err != nil {
+		return
+	}
+	if err := os.RemoveAll(cacheDir); err != nil {
+		if emit != nil {
+			_ = emit(domain.Event{
+				Type:     domain.EventWarning,
+				StepID:   extrasStepID,
+				Source:   "extras",
+				Severity: domain.SeverityWarn,
+				Payload: domain.LogPayload{
+					Message: "Failed to remove installer extras runtime cache.",
+					Fields:  map[string]string{"error": err.Error()},
+				},
+			})
+		}
+		return
+	}
+	if emit != nil {
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   extrasStepID,
+			Source:   "extras",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Removed installer extras runtime cache.",
+			},
+		})
+	}
 }
 
 type phpNewOptions struct {

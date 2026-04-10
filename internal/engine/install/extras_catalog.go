@@ -13,11 +13,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/evolution-cms/installer/internal/domain"
 )
 
 const legacyStoreCatalogURL = "https://extras.evo.im/get.php"
+const extrasRuntimeCacheDir = "core/.evo-installer-runtime"
 
 type extrasDocblock struct {
 	Name        string
@@ -136,7 +138,16 @@ func sortExtrasPackages(pkgs []domain.ExtrasPackage) {
 }
 
 func loadBundledInlineExtras(workDir string) ([]domain.ExtrasPackage, error) {
-	baseDir := filepath.Join(absDir(workDir), "install", "assets")
+	projectDir := absDir(workDir)
+	baseDir := filepath.Join(projectDir, "install", "assets")
+	pathPrefix := filepath.Join("install", "assets")
+	if _, err := os.Stat(baseDir); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		baseDir = filepath.Join(projectDir, extrasRuntimeCacheDir, "install", "assets")
+		pathPrefix = filepath.Join(extrasRuntimeCacheDir, "install", "assets")
+	}
 	specs := []struct {
 		subdir  string
 		kind    string
@@ -180,7 +191,7 @@ func loadBundledInlineExtras(workDir string) ([]domain.ExtrasPackage, error) {
 				Kind:               spec.kind,
 				InstallMode:        "bundled-inline",
 				Preselected:        strings.Contains(installset, "base"),
-				Path:               filepath.ToSlash(filepath.Join("install", "assets", spec.subdir, entry.Name())),
+				Path:               filepath.ToSlash(filepath.Join(pathPrefix, spec.subdir, entry.Name())),
 				Properties:         strings.TrimSpace(doc.Tags["properties"]),
 				Events:             strings.TrimSpace(doc.Tags["events"]),
 				GUID:               strings.TrimSpace(doc.Tags["guid"]),
@@ -276,8 +287,11 @@ func loadLegacyStoreCatalog(ctx context.Context) ([]domain.ExtrasPackage, error)
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "EvolutionCMS-Installer/Go")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

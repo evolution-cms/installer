@@ -1,6 +1,7 @@
 package install
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -154,5 +155,49 @@ func TestParseExtrasDocblockFile(t *testing.T) {
 	}
 	if doc.Tags["events"] == "" {
 		t.Fatalf("expected events tag to be parsed")
+	}
+}
+
+func TestLoadBundledInlineExtrasUsesRuntimeCacheFallback(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	pluginDir := filepath.Join(workDir, extrasRuntimeCacheDir, "install", "assets", "plugins")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatalf("mkdir plugin dir: %v", err)
+	}
+
+	path := filepath.Join(pluginDir, "CodeMirror.tpl")
+	raw := `//<?php
+/**
+ * CodeMirror
+ *
+ * Bundled plugin description
+ *
+ * @internal    @events OnDocFormRender
+ * @internal    @modx_category Manager and Admin
+ * @internal    @installset base
+ * @version     1.6
+ */
+`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write plugin tpl: %v", err)
+	}
+
+	pkgs, err := loadBundledInlineExtras(workDir)
+	if err != nil {
+		t.Fatalf("loadBundledInlineExtras error: %v", err)
+	}
+	if len(pkgs) != 1 {
+		t.Fatalf("expected 1 bundled package, got %d", len(pkgs))
+	}
+	if pkgs[0].Source != "bundled-inline" {
+		t.Fatalf("unexpected source: %q", pkgs[0].Source)
+	}
+	if !pkgs[0].Preselected {
+		t.Fatalf("expected bundled package to be preselected from installset base")
+	}
+	if pkgs[0].Path != "core/.evo-installer-runtime/install/assets/plugins/CodeMirror.tpl" {
+		t.Fatalf("unexpected fallback path: %q", pkgs[0].Path)
 	}
 }

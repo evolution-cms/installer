@@ -49,7 +49,10 @@ function helper_bootstrap(string $projectPath): void
 
     $installFunctions = $projectPath . '/install/src/functions.php';
     if (!is_file($installFunctions)) {
-        helper_fail("install/src/functions.php is not available. Run extras before finalize removes install/.");
+        $installFunctions = $projectPath . '/core/.evo-installer-runtime/install/src/functions.php';
+    }
+    if (!is_file($installFunctions)) {
+        helper_fail("install/src/functions.php is not available.");
     }
     require_once $installFunctions;
 }
