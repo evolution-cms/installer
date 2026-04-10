@@ -73,13 +73,13 @@ func (m *Model) applyExtrasState(state domain.ExtrasState) {
 			m.extras.selected = map[string]bool{}
 			m.extras.versions = map[string]string{}
 			for _, sel := range state.Selections {
-				name := strings.TrimSpace(sel.Name)
-				if name == "" {
+				key := extrasSelectionKey(sel)
+				if key == "" {
 					continue
 				}
-				m.extras.selected[name] = true
+				m.extras.selected[key] = true
 				if v := strings.TrimSpace(sel.Version); v != "" {
-					m.extras.versions[name] = v
+					m.extras.versions[key] = v
 				}
 			}
 			m.extras.cursor = 0
@@ -119,7 +119,7 @@ func extrasPackagesEqual(a []domain.ExtrasPackage, b []domain.ExtrasPackage) boo
 		return false
 	}
 	for i := range a {
-		if a[i].Name != b[i].Name || a[i].Version != b[i].Version {
+		if a[i].ID != b[i].ID || a[i].Name != b[i].Name || a[i].Version != b[i].Version || a[i].Source != b[i].Source || a[i].Section != b[i].Section || a[i].Preselected != b[i].Preselected {
 			return false
 		}
 		if len(a[i].Versions) != len(b[i].Versions) {
@@ -255,20 +255,20 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 		if listLen == 0 || m.extras.cursor < 0 || m.extras.cursor >= listLen {
 			return
 		}
-		name := m.extras.packages[m.extras.cursor].Name
-		if name == "" {
+		key := extrasPackageKey(m.extras.packages[m.extras.cursor])
+		if key == "" {
 			return
 		}
 		if m.extras.selected == nil {
 			m.extras.selected = map[string]bool{}
 		}
-		if m.extras.selected[name] {
-			delete(m.extras.selected, name)
+		if m.extras.selected[key] {
+			delete(m.extras.selected, key)
 			if m.extras.versions != nil {
-				delete(m.extras.versions, name)
+				delete(m.extras.versions, key)
 			}
 		} else {
-			m.extras.selected[name] = true
+			m.extras.selected[key] = true
 		}
 	}
 
@@ -320,15 +320,16 @@ func (m *Model) extrasSelectedNames() []domain.ExtrasSelection {
 	}
 	out := make([]domain.ExtrasSelection, 0, len(m.extras.selected))
 	for _, pkg := range m.extras.packages {
-		if pkg.Name == "" {
+		key := extrasPackageKey(pkg)
+		if key == "" {
 			continue
 		}
-		if m.extras.selected[pkg.Name] {
+		if m.extras.selected[key] {
 			version := ""
 			if m.extras.versions != nil {
-				version = strings.TrimSpace(m.extras.versions[pkg.Name])
+				version = strings.TrimSpace(m.extras.versions[key])
 			}
-			out = append(out, domain.ExtrasSelection{Name: pkg.Name, Version: version})
+			out = append(out, domain.ExtrasSelection{ID: key, Name: pkg.Name, Source: pkg.Source, Version: version})
 		}
 	}
 	return out
@@ -340,23 +341,23 @@ func selectionsToValues(selections []domain.ExtrasSelection) []string {
 	}
 	out := make([]string, 0, len(selections))
 	for _, sel := range selections {
-		name := strings.TrimSpace(sel.Name)
-		if name == "" {
+		key := extrasSelectionKey(sel)
+		if key == "" {
 			continue
 		}
 		version := strings.TrimSpace(sel.Version)
 		if version == "" {
-			out = append(out, name)
+			out = append(out, key)
 		} else {
-			out = append(out, name+"@"+version)
+			out = append(out, key+"@"+version)
 		}
 	}
 	return out
 }
 
 func (m *Model) openExtrasVersionPicker(pkg domain.ExtrasPackage) {
-	name := strings.TrimSpace(pkg.Name)
-	if name == "" {
+	key := extrasPackageKey(pkg)
+	if key == "" {
 		return
 	}
 	options, values := buildExtrasVersionOptions(pkg)
@@ -364,14 +365,14 @@ func (m *Model) openExtrasVersionPicker(pkg domain.ExtrasPackage) {
 		return
 	}
 	m.extras.versionPickerActive = true
-	m.extras.versionPickerPkg = name
+	m.extras.versionPickerPkg = key
 	m.extras.versionPickerOptions = options
 	m.extras.versionPickerValues = values
 	m.extras.versionPickerCursor = 0
 
 	current := ""
 	if m.extras.versions != nil {
-		current = strings.TrimSpace(m.extras.versions[name])
+		current = strings.TrimSpace(m.extras.versions[key])
 	}
 	for i, v := range values {
 		if strings.TrimSpace(v) == current {
@@ -574,7 +575,7 @@ func (m *Model) renderExtrasVersionPicker(width int, height int) string {
 
 	contentW := panelContentWidth(boxW)
 	lines := []string{
-		truncatePlain("Select version for "+m.extras.versionPickerPkg, contentW),
+		truncatePlain("Select package version", contentW),
 		"",
 	}
 	lines = append(lines, m.renderExtrasVersionOptions(contentW, listH)...)
@@ -793,9 +794,20 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 	}
 
 	out := make([]string, 0, height)
+	currentSection := ""
 	for i := 0; i < visible; i++ {
 		idx := start + i
 		pkg := m.extras.packages[idx]
+		key := extrasPackageKey(pkg)
+		section := strings.TrimSpace(pkg.Section)
+		if section != "" && section != currentSection && len(out) < height {
+			header := truncatePlain("  "+section, width)
+			out = append(out, mutedStyle.Copy().Bold(true).Render(header))
+			currentSection = section
+			if len(out) >= height {
+				break
+			}
+		}
 
 		cursor := " "
 		style := mutedStyle
@@ -805,13 +817,13 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 		}
 
 		checked := "[ ]"
-		if m.extras.selected != nil && m.extras.selected[pkg.Name] {
+		if m.extras.selected != nil && m.extras.selected[key] {
 			checked = "[x]"
 		}
 
 		version := ""
 		if m.extras.versions != nil {
-			version = strings.TrimSpace(m.extras.versions[pkg.Name])
+			version = strings.TrimSpace(m.extras.versions[key])
 		}
 		if version == "" {
 			version = strings.TrimSpace(pkg.Version)
@@ -823,7 +835,7 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 			version = "default"
 		}
 		desc := strings.TrimSpace(pkg.Description)
-		label := fmt.Sprintf("%s %s %s @ %s", cursor, checked, pkg.Name, version)
+		label := fmt.Sprintf("%s %s %s%s @ %s", cursor, checked, extrasSourcePrefix(pkg), pkg.Name, version)
 		if desc != "" {
 			label += " - " + desc
 		}
@@ -836,6 +848,37 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 		out = append(out, "")
 	}
 	return out[:height]
+}
+
+func extrasPackageKey(pkg domain.ExtrasPackage) string {
+	if id := strings.TrimSpace(pkg.ID); id != "" {
+		return id
+	}
+	if source := strings.TrimSpace(pkg.Source); source != "" {
+		return source + ":" + strings.TrimSpace(pkg.Name)
+	}
+	return strings.TrimSpace(pkg.Name)
+}
+
+func extrasSelectionKey(sel domain.ExtrasSelection) string {
+	if id := strings.TrimSpace(sel.ID); id != "" {
+		return id
+	}
+	if source := strings.TrimSpace(sel.Source); source != "" {
+		return source + ":" + strings.TrimSpace(sel.Name)
+	}
+	return strings.TrimSpace(sel.Name)
+}
+
+func extrasSourcePrefix(pkg domain.ExtrasPackage) string {
+	switch strings.TrimSpace(pkg.Source) {
+	case "bundled-inline":
+		return "[bundled] "
+	case "legacy-store":
+		return "[legacy] "
+	default:
+		return "[managed] "
+	}
 }
 
 func (m *Model) renderExtrasVersionOptions(width int, height int) []string {

@@ -112,16 +112,27 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 		Source:   "extras",
 		Severity: domain.SeverityInfo,
 		Payload: domain.LogPayload{
-			Message: "Fetching extras list...",
+			Message: "Fetching extras catalogs...",
 		},
 	})
 
 	token := strings.TrimSpace(e.opt.GithubPat)
-	pkgs, err := fetchExtrasList(ctx, coreDir, token)
+	pkgs, defaults, warnings, err := loadAllExtrasCatalogs(ctx, workDir, token)
+	for _, msg := range warnings {
+		_ = emit(domain.Event{
+			Type:     domain.EventWarning,
+			StepID:   extrasStepID,
+			Source:   "extras",
+			Severity: domain.SeverityWarn,
+			Payload: domain.LogPayload{
+				Message: msg,
+			},
+		})
+	}
 	if err != nil || len(pkgs) == 0 {
-		msg := "Extras list unavailable."
+		msg := "Extras catalogs unavailable."
 		if err != nil {
-			msg = "Extras list unavailable: " + err.Error()
+			msg = "Extras catalogs unavailable: " + err.Error()
 		}
 		_ = emit(domain.Event{
 			Type:     domain.EventWarning,
@@ -145,9 +156,10 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			Source:   "extras",
 			Severity: domain.SeverityInfo,
 			Payload: domain.ExtrasState{
-				Active:   true,
-				Stage:    domain.ExtrasStageSelect,
-				Packages: pkgs,
+				Active:     true,
+				Stage:      domain.ExtrasStageSelect,
+				Packages:   pkgs,
+				Selections: defaults,
 			},
 		})
 	}
@@ -237,6 +249,12 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 	})
 
 	results := make([]domain.ExtrasItemResult, 0, len(selections)+2)
+	pkgByID := map[string]domain.ExtrasPackage{}
+	for _, pkg := range pkgs {
+		if id := strings.TrimSpace(pkg.ID); id != "" {
+			pkgByID[id] = pkg
+		}
+	}
 	for _, sel := range selections {
 		results = append(results, domain.ExtrasItemResult{
 			Name:   formatExtrasSelectionLabel(sel),
@@ -276,12 +294,7 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			Payload:  state,
 		})
 
-		args := []string{"extras", "extras", sel.Name}
-		if strings.TrimSpace(sel.Version) != "" {
-			args = append(args, sel.Version)
-		}
-		args = append(args, "--no-ansi", "--no-interaction")
-		out, err := runArtisanCommand(ctx, coreDir, token, args)
+		out, err := runExtrasSelection(ctx, coreDir, token, pkgByID, sel)
 		emitExtrasOutputLogs(emit, extrasStepID, label, out)
 		message := lastNonEmptyLine(out)
 		detectedErr := detectExtrasFailure(out)
@@ -466,11 +479,11 @@ func selectionsFromValues(values []string) []domain.ExtrasSelection {
 		if v == "" {
 			continue
 		}
-		name, version := splitSelectionValue(v)
-		if name == "" {
+		id, version := splitSelectionValue(v)
+		if id == "" {
 			continue
 		}
-		out = append(out, domain.ExtrasSelection{Name: name, Version: version})
+		out = append(out, domain.ExtrasSelection{ID: id, Version: version})
 	}
 	return out
 }
@@ -489,48 +502,118 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		return nil
 	}
 	allowed := map[string]struct{}{}
+	pkgByID := map[string]domain.ExtrasPackage{}
 	pkgByName := map[string]domain.ExtrasPackage{}
 	for _, p := range pkgs {
+		if p.ID != "" {
+			allowed[p.ID] = struct{}{}
+			pkgByID[p.ID] = p
+		}
 		if p.Name != "" {
-			allowed[p.Name] = struct{}{}
-			pkgByName[p.Name] = p
+			pkgByName[strings.ToLower(p.Name)] = p
 		}
 	}
 	out := make([]domain.ExtrasSelection, 0, len(selections))
 	seen := map[string]int{}
 	for _, sel := range selections {
-		name := strings.TrimSpace(sel.Name)
-		if name == "" {
+		id := strings.TrimSpace(sel.ID)
+		pkg := domain.ExtrasPackage{}
+		var ok bool
+		if id != "" {
+			pkg, ok = pkgByID[id]
+		}
+		if !ok {
+			name := strings.ToLower(strings.TrimSpace(sel.Name))
+			if name == "" {
+				continue
+			}
+			pkg, ok = pkgByName[name]
+		}
+		if !ok {
 			continue
 		}
-		if _, ok := allowed[name]; !ok {
+		id = strings.TrimSpace(pkg.ID)
+		if _, ok := allowed[id]; !ok {
 			continue
 		}
 		version := strings.TrimSpace(sel.Version)
 		if version == "" {
-			if pkg, ok := pkgByName[name]; ok {
-				version = strings.TrimSpace(defaultExtrasVersion(pkg))
-			}
+			version = strings.TrimSpace(defaultExtrasVersion(pkg))
 		}
-		if idx, ok := seen[name]; ok {
+		if idx, ok := seen[id]; ok {
 			if out[idx].Version == "" && version != "" {
 				out[idx].Version = version
 			}
 			continue
 		}
-		seen[name] = len(out)
-		out = append(out, domain.ExtrasSelection{Name: name, Version: version})
+		seen[id] = len(out)
+		out = append(out, domain.ExtrasSelection{
+			ID:      id,
+			Name:    pkg.Name,
+			Source:  pkg.Source,
+			Version: version,
+		})
 	}
 	return out
 }
 
 func formatExtrasSelectionLabel(sel domain.ExtrasSelection) string {
 	name := strings.TrimSpace(sel.Name)
-	version := strings.TrimSpace(sel.Version)
-	if version == "" {
-		return name
+	if name == "" {
+		name = strings.TrimSpace(sel.ID)
 	}
-	return name + "@" + version
+	version := strings.TrimSpace(sel.Version)
+	prefix := ""
+	switch strings.TrimSpace(sel.Source) {
+	case "bundled-inline":
+		prefix = "[bundled] "
+	case "legacy-store":
+		prefix = "[legacy] "
+	}
+	if version == "" {
+		return prefix + name
+	}
+	return prefix + name + "@" + version
+}
+
+func runExtrasSelection(ctx context.Context, coreDir string, token string, pkgByID map[string]domain.ExtrasPackage, sel domain.ExtrasSelection) (string, error) {
+	pkg, ok := pkgByID[strings.TrimSpace(sel.ID)]
+	if !ok {
+		args := []string{"extras", "extras", sel.Name}
+		if strings.TrimSpace(sel.Version) != "" {
+			args = append(args, sel.Version)
+		}
+		args = append(args, "--no-ansi", "--no-interaction")
+		return runArtisanCommand(ctx, coreDir, token, args)
+	}
+
+	switch pkg.InstallMode {
+	case "bundled-inline":
+		payload := map[string]any{
+			"items": []domain.ExtrasPackage{pkg},
+		}
+		return runExtrasHelper(ctx, coreDir, "bundled-inline", payload)
+	case "legacy-store-zip":
+		if strings.TrimSpace(pkg.DownloadURL) == "" {
+			return "", fmt.Errorf("legacy store package is missing a download URL")
+		}
+		payload := map[string]any{
+			"item": map[string]any{
+				"name":         pkg.Name,
+				"downloadUrl":  pkg.DownloadURL,
+				"dependencies": pkg.Dependencies,
+			},
+		}
+		return runExtrasHelper(ctx, coreDir, "legacy-store", payload)
+	default:
+		args := []string{"extras", "extras", pkg.Name}
+		version := strings.TrimSpace(sel.Version)
+		if version != "" {
+			args = append(args, version)
+		}
+		args = append(args, "--no-ansi", "--no-interaction")
+		return runArtisanCommand(ctx, coreDir, token, args)
+	}
 }
 
 func defaultExtrasVersion(pkg domain.ExtrasPackage) string {

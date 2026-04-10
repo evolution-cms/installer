@@ -61,6 +61,20 @@ func sanitizeExtrasPackages(pkgs []domain.ExtrasPackage) []domain.ExtrasPackage 
 		p.Description = strings.TrimSpace(p.Description)
 		p.DefaultInstallMode = strings.TrimSpace(p.DefaultInstallMode)
 		p.DefaultBranch = strings.TrimSpace(p.DefaultBranch)
+		p.Source = strings.TrimSpace(p.Source)
+		p.Section = strings.TrimSpace(p.Section)
+		p.Kind = strings.TrimSpace(p.Kind)
+		p.InstallMode = strings.TrimSpace(p.InstallMode)
+		p.Path = strings.TrimSpace(p.Path)
+		p.Properties = strings.TrimSpace(p.Properties)
+		p.Events = strings.TrimSpace(p.Events)
+		p.GUID = strings.TrimSpace(p.GUID)
+		p.Category = strings.TrimSpace(p.Category)
+		p.LegacyNames = strings.TrimSpace(p.LegacyNames)
+		p.Icon = strings.TrimSpace(p.Icon)
+		p.DownloadURL = strings.TrimSpace(p.DownloadURL)
+		p.Dependencies = strings.TrimSpace(p.Dependencies)
+		p.Method = strings.TrimSpace(p.Method)
 		if len(p.Versions) > 0 {
 			seen := map[string]struct{}{}
 			clean := make([]string, 0, len(p.Versions))
@@ -76,6 +90,18 @@ func sanitizeExtrasPackages(pkgs []domain.ExtrasPackage) []domain.ExtrasPackage 
 				clean = append(clean, v)
 			}
 			p.Versions = clean
+		}
+		if p.Source == "" {
+			p.Source = "managed"
+		}
+		if p.Section == "" {
+			p.Section = "Managed extras"
+		}
+		if p.InstallMode == "" {
+			p.InstallMode = "managed-artisan"
+		}
+		if p.ID == "" {
+			p.ID = p.Source + ":" + p.Name
 		}
 		out = append(out, p)
 	}

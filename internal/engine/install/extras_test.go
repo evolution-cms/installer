@@ -1,6 +1,11 @@
 package install
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/evolution-cms/installer/internal/domain"
+)
 
 func TestParseExtrasListJSONWrapped(t *testing.T) {
 	t.Parallel()
@@ -49,5 +54,105 @@ func TestParseExtrasListJSONError(t *testing.T) {
 	raw := []byte(`{"ok":false,"error":"rate limit"}`)
 	if _, err := parseExtrasListJSON(raw); err == nil {
 		t.Fatalf("expected error for ok=false payload")
+	}
+}
+
+func TestParseLegacyStoreCatalogJSON(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte(`{
+		"category":[{"id":"2","title":"Catalog"}],
+		"allcategory":{
+			"2":[
+				{
+					"id":"84",
+					"url":{"fieldValue":[
+						{"file":"https://github.com/extras-evolution/ajaxSearch/archive/1.12.2.zip","version":"1.12.2","date":"25-01-2021"},
+						{"file":"https://github.com/extras-evolution/ajaxSearch/archive/master.zip","version":"master","date":"04-11-2017"}
+					]},
+					"method":"package",
+					"type":"snippet",
+					"downloads":"25791",
+					"dependencies":"",
+					"description":"Ajax and non-Ajax search",
+					"title":"AjaxSearch",
+					"author":"Coroico",
+					"name_in_modx":"AjaxSearch",
+					"deprecated":"0"
+				}
+			]
+		}
+	}`)
+
+	pkgs, err := parseLegacyStoreCatalogJSON(raw)
+	if err != nil {
+		t.Fatalf("parseLegacyStoreCatalogJSON error: %v", err)
+	}
+	if len(pkgs) != 1 {
+		t.Fatalf("expected 1 package, got %d", len(pkgs))
+	}
+	pkg := pkgs[0]
+	if pkg.ID != "legacy-store:84" {
+		t.Fatalf("unexpected id: %q", pkg.ID)
+	}
+	if pkg.Source != "legacy-store" {
+		t.Fatalf("unexpected source: %q", pkg.Source)
+	}
+	if pkg.DownloadURL == "" {
+		t.Fatalf("expected download url to be populated")
+	}
+	if len(pkg.Versions) != 2 {
+		t.Fatalf("expected 2 versions, got %d", len(pkg.Versions))
+	}
+}
+
+func TestNormalizeExtrasSelectionsUsesIDsAndDefaults(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "bundled-inline:codemirror",
+			Name:               "CodeMirror",
+			Source:             "bundled-inline",
+			DefaultInstallMode: "bundled-inline",
+			Preselected:        true,
+		},
+		{
+			ID:                 "managed:sSeo",
+			Name:               "sSeo",
+			Source:             "managed",
+			Version:            "1.2.3",
+			DefaultInstallMode: "latest-release",
+		},
+	}
+
+	selections := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{ID: "bundled-inline:codemirror"},
+		{Name: "sSeo"},
+	})
+	if len(selections) != 2 {
+		t.Fatalf("expected 2 selections, got %d", len(selections))
+	}
+	if selections[0].Source != "bundled-inline" {
+		t.Fatalf("unexpected source for bundled selection: %q", selections[0].Source)
+	}
+	if selections[1].Version != "1.2.3" {
+		t.Fatalf("expected managed default version, got %q", selections[1].Version)
+	}
+}
+
+func TestParseExtrasDocblockFile(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join("testdata", "bundled_plugin.tpl")
+	doc, err := parseExtrasDocblockFile(path)
+	if err != nil {
+		t.Fatalf("parseExtrasDocblockFile error: %v", err)
+	}
+	if doc.Name != "CodeMirror" {
+		t.Fatalf("unexpected name: %q", doc.Name)
+	}
+	if doc.Tags["events"] == "" {
+		t.Fatalf("expected events tag to be parsed")
 	}
 }
