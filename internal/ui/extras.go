@@ -674,12 +674,12 @@ func (m *Model) renderExtrasSummary(width int, height int) string {
 		resH := max(1, contentMain/2)
 		detH := max(1, contentMain-resH)
 		lines = append(lines, m.renderExtrasSummaryResults(contentW, resH)...)
+		lines = append(lines, "", truncatePlain("Details:", contentW))
+		lines = append(lines, m.renderExtrasSummaryDetail(contentW, detH)...)
 		if len(introLines) > 0 {
 			lines = append(lines, "")
 			lines = append(lines, introLines...)
 		}
-		lines = append(lines, "", truncatePlain("Details:", contentW))
-		lines = append(lines, m.renderExtrasSummaryDetail(contentW, detH)...)
 	} else {
 		introH := len(introLines)
 		if introH > 0 {
