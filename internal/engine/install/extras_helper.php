@@ -33,9 +33,11 @@ function helper_bootstrap(string $projectPath): void
 {
     defined('EVO_API_MODE') || define('EVO_API_MODE', true);
     defined('IN_INSTALL_MODE') || define('IN_INSTALL_MODE', true);
+    defined('IN_MANAGER_MODE') || define('IN_MANAGER_MODE', false);
     defined('EVO_CLI') || define('EVO_CLI', true);
     defined('EVO_BASE_PATH') || define('EVO_BASE_PATH', rtrim($projectPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
     defined('EVO_CORE_PATH') || define('EVO_CORE_PATH', EVO_BASE_PATH . 'core' . DIRECTORY_SEPARATOR);
+    defined('EVO_BASE_URL') || define('EVO_BASE_URL', '/');
     defined('EVO_SITE_URL') || define('EVO_SITE_URL', '/');
 
     chdir($projectPath);
@@ -54,6 +56,11 @@ function helper_bootstrap(string $projectPath): void
     if (!is_file($installFunctions)) {
         helper_fail("install/src/functions.php is not available.");
     }
+
+    if (function_exists('evo')) {
+        evo()->getDatabase();
+    }
+
     require_once $installFunctions;
 }
 
