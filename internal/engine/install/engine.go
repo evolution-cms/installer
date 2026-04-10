@@ -991,7 +991,41 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 		}
 
 		e.maybeRunExtras(ctx, emit, actions, workDir)
+		e.cleanupExtrasRuntimeArtifacts(emit, workDir)
 	}()
+}
+
+func (e *Engine) cleanupExtrasRuntimeArtifacts(emit func(domain.Event) bool, workDir string) {
+	cacheDir := filepath.Join(absDir(workDir), extrasRuntimeCacheDir)
+	if _, err := os.Stat(cacheDir); err != nil {
+		return
+	}
+	if err := os.RemoveAll(cacheDir); err != nil {
+		if emit != nil {
+			_ = emit(domain.Event{
+				Type:     domain.EventWarning,
+				StepID:   extrasStepID,
+				Source:   "extras",
+				Severity: domain.SeverityWarn,
+				Payload: domain.LogPayload{
+					Message: "Failed to remove installer extras runtime cache.",
+					Fields:  map[string]string{"error": err.Error()},
+				},
+			})
+		}
+		return
+	}
+	if emit != nil {
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   extrasStepID,
+			Source:   "extras",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Removed installer extras runtime cache.",
+			},
+		})
+	}
 }
 
 type phpNewOptions struct {
@@ -1796,9 +1830,9 @@ func dbDriverQuestionOptions(status domain.SystemStatus) []domain.QuestionOption
 	// If we don't have system status yet, don't block the user.
 	if len(status.Items) == 0 {
 		return []domain.QuestionOption{
+			{ID: "sqlite", Label: "SQLite", Enabled: true},
 			{ID: "mysql", Label: "MySQL or MariaDB", Enabled: true},
 			{ID: "pgsql", Label: "PostgreSQL", Enabled: true},
-			{ID: "sqlite", Label: "SQLite", Enabled: true},
 			{ID: "sqlsrv", Label: "SQL Server", Enabled: true},
 		}
 	}
@@ -1807,9 +1841,9 @@ func dbDriverQuestionOptions(status domain.SystemStatus) []domain.QuestionOption
 	pdoOK := ok && pdoLevel == domain.StatusOK
 
 	return []domain.QuestionOption{
+		dbDriverOption(status, pdoOK, "sqlite", "SQLite", "pdo_sqlite"),
 		dbDriverOption(status, pdoOK, "mysql", "MySQL or MariaDB", "pdo_mysql"),
 		dbDriverOption(status, pdoOK, "pgsql", "PostgreSQL", "pdo_pgsql"),
-		dbDriverOption(status, pdoOK, "sqlite", "SQLite", "pdo_sqlite"),
 		dbDriverOption(status, pdoOK, "sqlsrv", "SQL Server", "pdo_sqlsrv"),
 	}
 }
@@ -1857,6 +1891,15 @@ try {
     if ($name === "") { echo json_encode(["ok"=>false,"error"=>"SQLite database name is required."]); exit(0); }
     if ($name !== ":memory:" && !str_starts_with($name, "file:") && !preg_match('/^(\/|[A-Za-z]:[\\\\\\/])/', $name)) {
       $name = "core/database/" . basename(str_replace("\\", "/", $name));
+    }
+    if ($name !== ":memory:" && !str_starts_with($name, "file:")) {
+      $dir = dirname($name);
+      if ($dir !== "" && $dir !== "." && !is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+      }
+      if (!file_exists($name)) {
+        @touch($name);
+      }
     }
     new \PDO("sqlite:".$name, null, null, $timeout);
     echo json_encode(["ok"=>true]); exit(0);

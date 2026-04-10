@@ -326,9 +326,9 @@ class InstallCommand extends Command
     protected function askDatabaseType(): string
     {
         $driverNames = [
+            'sqlite' => 'SQLite',
             'mysql' => 'MySQL or MariaDB',
             'pgsql' => 'PostgreSQL',
-            'sqlite' => 'SQLite',
             'sqlsrv' => 'SQL Server'
         ];
 
@@ -3446,6 +3446,7 @@ class InstallCommand extends Command
         $this->removeInstallerAdminEnvVars($projectPath);
         $this->removeCoreCustomExampleFiles($projectPath);
         $this->applyManagerDirectory($projectPath, $options);
+        $this->preserveExtrasRuntimeArtifacts($projectPath);
 
         // Remove install directory
         $installDir = $projectPath . '/install';
@@ -3470,9 +3471,11 @@ class InstallCommand extends Command
 
         // Remove repository-only files from project root
         foreach ([
+            'AGENTS.md',
             '.gitattributes',
             'LICENSE',
             'ng.inx',
+            'publiccode.yml',
             'README.md',
             'phpstan.neon',
         ] as $file) {
@@ -3549,6 +3552,90 @@ class InstallCommand extends Command
         $this->steps['finalize']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
         $this->tui->addLog('Installation finalized successfully.', 'success');
+    }
+
+    protected function preserveExtrasRuntimeArtifacts(string $projectPath): void
+    {
+        $installDir = rtrim($projectPath, '/\\') . DIRECTORY_SEPARATOR . 'install';
+        if (!is_dir($installDir)) {
+            return;
+        }
+
+        $runtimeRoot = rtrim($projectPath, '/\\') . DIRECTORY_SEPARATOR . 'core/.evo-installer-runtime';
+        $runtimeInstall = $runtimeRoot . DIRECTORY_SEPARATOR . 'install';
+
+        if (is_dir($runtimeRoot)) {
+            $this->removeDirectory($runtimeRoot);
+        }
+        if (!@mkdir($runtimeInstall, 0755, true) && !is_dir($runtimeInstall)) {
+            $this->tui->addLog('Failed to create extras runtime cache directory.', 'warning');
+            return;
+        }
+
+        $preserved = 0;
+        foreach (['assets', 'src'] as $subdir) {
+            $source = $installDir . DIRECTORY_SEPARATOR . $subdir;
+            if (!is_dir($source)) {
+                continue;
+            }
+            try {
+                $this->copyDirectoryQuiet($source, $runtimeInstall . DIRECTORY_SEPARATOR . $subdir);
+                $preserved++;
+            } catch (\Throwable $e) {
+                $this->tui->addLog("Failed to preserve install/{$subdir} for extras runtime: " . $e->getMessage(), 'warning');
+            }
+        }
+
+        if ($preserved > 0) {
+            $this->tui->addLog('Preserved installer extras runtime artifacts.');
+        }
+    }
+
+    protected function copyDirectoryQuiet(string $source, string $destination): void
+    {
+        $source = rtrim($source, "/\\");
+        $destination = rtrim($destination, "/\\");
+
+        if (!is_dir($source)) {
+            throw new \RuntimeException("Source directory not found: {$source}");
+        }
+
+        if (!is_dir($destination) && !@mkdir($destination, 0755, true) && !is_dir($destination)) {
+            throw new \RuntimeException("Failed to create destination directory: {$destination}");
+        }
+
+        $it = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($it as $item) {
+            $srcPath = $item->getPathname();
+            $rel = substr($srcPath, strlen($source) + 1);
+            if ($rel === false || $rel === '') {
+                continue;
+            }
+            if ($this->shouldSkipCopiedPath($rel)) {
+                continue;
+            }
+
+            $dstPath = $destination . DIRECTORY_SEPARATOR . str_replace('\\', DIRECTORY_SEPARATOR, $rel);
+            if ($item->isDir()) {
+                if (!is_dir($dstPath) && !@mkdir($dstPath, 0755, true) && !is_dir($dstPath)) {
+                    throw new \RuntimeException("Failed to create directory: {$dstPath}");
+                }
+                continue;
+            }
+
+            $dstDir = dirname($dstPath);
+            if (!is_dir($dstDir) && !@mkdir($dstDir, 0755, true) && !is_dir($dstDir)) {
+                throw new \RuntimeException("Failed to create directory: {$dstDir}");
+            }
+
+            if (!@copy($srcPath, $dstPath)) {
+                throw new \RuntimeException("Failed to copy file: {$rel}");
+            }
+            @chmod($dstPath, $item->getPerms() & 0777);
+        }
     }
 
     protected function applyManagerDirectory(string $projectPath, array $options): void

@@ -269,9 +269,9 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, _ <-chan domai
 					ID:     "db_driver",
 					Prompt: "Which database driver do you want to use?",
 					Options: []domain.QuestionOption{
+						{ID: "sqlite", Label: "SQLite", Enabled: true},
 						{ID: "mysql", Label: "MySQL or MariaDB", Enabled: true},
 						{ID: "pgsql", Label: "PostgreSQL", Enabled: true},
-						{ID: "sqlite", Label: "SQLite", Enabled: true},
 						{ID: "sqlsrv", Label: "SQL Server", Enabled: true, Reason: "Driver may be missing"},
 					},
 					Selected: 0,
