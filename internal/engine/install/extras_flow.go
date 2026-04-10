@@ -263,11 +263,12 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 	}
 
 	state := domain.ExtrasState{
-		Active:     true,
-		Stage:      domain.ExtrasStageProgress,
-		Selections: selections,
-		Results:    results,
-		Total:      len(selections),
+		Active:      true,
+		Stage:       domain.ExtrasStageProgress,
+		ProjectPath: workDir,
+		Selections:  selections,
+		Results:     results,
+		Total:       len(selections),
 	}
 	_ = emit(domain.Event{
 		Type:     domain.EventExtras,

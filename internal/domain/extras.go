@@ -66,6 +66,7 @@ type ExtrasItemDetail struct {
 type ExtrasState struct {
 	Active       bool
 	Stage        ExtrasStage
+	ProjectPath  string
 	Packages     []ExtrasPackage
 	Selections   []ExtrasSelection
 	Results      []ExtrasItemResult

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -43,6 +44,7 @@ type extrasUIState struct {
 	current       string
 	currentIndex  int
 	total         int
+	projectPath   string
 	details       []domain.ExtrasItemDetail
 	showDetails   bool
 	summaryCursor int
@@ -62,6 +64,7 @@ func (m *Model) applyExtrasState(state domain.ExtrasState) {
 	m.extras.current = state.Current
 	m.extras.currentIndex = state.CurrentIndex
 	m.extras.total = state.Total
+	m.extras.projectPath = state.ProjectPath
 	m.extras.details = state.Details
 	if state.Stage != domain.ExtrasStageSelect {
 		m.extras.versionPickerActive = false
@@ -650,6 +653,7 @@ func (m *Model) renderExtrasSummary(width int, height int) string {
 		truncatePlain("Extras installation summary.", contentW),
 		"",
 	}
+	lines = append(lines, m.renderExtrasSummaryIntro(contentW)...)
 
 	contentHeight := innerH - len(lines) - 2
 	if contentHeight < 1 {
@@ -674,6 +678,57 @@ func (m *Model) renderExtrasSummary(width int, height int) string {
 	lines = append(lines, "", m.renderExtrasSummaryActions(contentW))
 	body := strings.Join(lines, "\n")
 	return panel("Extras summary", body, width, height)
+}
+
+func (m *Model) renderExtrasSummaryIntro(width int) []string {
+	if width <= 0 {
+		return nil
+	}
+
+	if len(m.extras.results) == 1 && m.extras.results[0].Name == "Extras skipped" {
+		return []string{
+			truncatePlain("Extras were skipped for this installation.", width),
+			"",
+		}
+	}
+
+	if !m.extrasSummaryAllSuccess() {
+		return []string{
+			truncatePlain("Some extras finished with warnings or errors. Review the results below before testing.", width),
+			"",
+		}
+	}
+
+	lines := []string{
+		okStyle.Copy().Bold(true).Render(truncatePlain("All selected extras were installed successfully.", width)),
+	}
+
+	if strings.TrimSpace(m.extras.projectPath) != "" {
+		lines = append(lines,
+			"",
+			truncatePlain("If this is a local install on your computer, run:", width),
+			truncatePlain("cd "+strconv.Quote(m.extras.projectPath), width),
+			truncatePlain("php -S localhost:8000", width),
+			truncatePlain("Then open http://localhost:8000", width),
+			"",
+			truncatePlain("If this was installed on a server, open the site by its configured URL/domain.", width),
+		)
+	}
+
+	lines = append(lines, "")
+	return lines
+}
+
+func (m *Model) extrasSummaryAllSuccess() bool {
+	if len(m.extras.results) == 0 {
+		return false
+	}
+	for _, result := range m.extras.results {
+		if result.Status != domain.ExtrasStatusSuccess {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Model) renderExtrasSummaryResults(width int, height int) []string {
