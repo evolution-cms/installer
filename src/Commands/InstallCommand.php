@@ -2450,6 +2450,11 @@ class InstallCommand extends Command
             return;
         }
 
+        $registeredHistory = $this->bootstrapInstallMigrationHistory($projectPath, $options['database'] ?? []);
+        if ($registeredHistory > 0) {
+            $this->tui->addLog("Registered {$registeredHistory} historical install migration(s) before upgrade.");
+        }
+
         $this->tui->addLog("Using migrations from: {$migrationPath}");
 
         $sessionDir = $projectPath . '/core/storage/sessions';
@@ -2534,6 +2539,94 @@ class InstallCommand extends Command
             $this->tui->addLog('Migration/package discovery failed: ' . $e->getMessage(), 'error');
             throw new \RuntimeException("Failed to complete migrations or package discovery. Please run 'php core/artisan migrate' and 'php core/artisan package:discover' manually.");
         }
+    }
+
+    protected function bootstrapInstallMigrationHistory(
+        string $projectPath,
+        array $dbConfig,
+        string $baselineMigration = '2025_12_25_000000_initial_schema'
+    ): int {
+        $migrationsPath = rtrim($projectPath, '/\\') . '/install/stubs/migrations';
+        if (!is_dir($migrationsPath)) {
+            return 0;
+        }
+
+        $dbConfigForOps = $this->getDatabaseConfigForOperations($projectPath, $dbConfig);
+        $type = (string) ($dbConfigForOps['type'] ?? ($dbConfig['type'] ?? 'mysql'));
+        $prefix = (string) ($dbConfigForOps['prefix'] ?? ($dbConfig['prefix'] ?? 'evo_'));
+        $migrationsTable = $prefix . 'migrations_install';
+        $guardTable = $prefix . 'active_user_locks';
+
+        try {
+            $dbh = $this->createConnection($dbConfigForOps, true);
+        } catch (\Throwable $exception) {
+            return 0;
+        }
+
+        if (!$this->tableExists($dbh, $type, $migrationsTable) || !$this->tableExists($dbh, $type, $guardTable)) {
+            return 0;
+        }
+
+        $registered = $this->fetchMigrationHistory($dbh, $type, $migrationsTable);
+        if (!in_array($baselineMigration, $registered, true)) {
+            return 0;
+        }
+
+        $historical = [];
+        foreach (glob($migrationsPath . '/*.php') as $migrationFile) {
+            $migration = basename($migrationFile, '.php');
+            if (strcmp($migration, $baselineMigration) < 0 && !in_array($migration, $registered, true)) {
+                $historical[] = $migration;
+            }
+        }
+
+        if ($historical === []) {
+            return 0;
+        }
+
+        sort($historical);
+        $batch = $this->fetchMaxMigrationBatch($dbh, $type, $migrationsTable);
+        $statement = $dbh->prepare(
+            'INSERT INTO ' . $this->quoteIdentifier($type, $migrationsTable) . ' (migration, batch) VALUES (?, ?)'
+        );
+
+        foreach ($historical as $migration) {
+            $statement->execute([$migration, $batch]);
+        }
+
+        return count($historical);
+    }
+
+    protected function tableExists(\PDO $dbh, string $type, string $table): bool
+    {
+        try {
+            $dbh->query('SELECT 1 FROM ' . $this->quoteIdentifier($type, $table) . ' LIMIT 1');
+            return true;
+        } catch (\Throwable $exception) {
+            return false;
+        }
+    }
+
+    protected function fetchMigrationHistory(\PDO $dbh, string $type, string $table): array
+    {
+        $statement = $dbh->query('SELECT migration FROM ' . $this->quoteIdentifier($type, $table));
+        if ($statement === false) {
+            return [];
+        }
+
+        $rows = $statement->fetchAll(\PDO::FETCH_COLUMN);
+        return array_values(array_filter(array_map('strval', $rows)));
+    }
+
+    protected function fetchMaxMigrationBatch(\PDO $dbh, string $type, string $table): int
+    {
+        $statement = $dbh->query('SELECT MAX(batch) FROM ' . $this->quoteIdentifier($type, $table));
+        if ($statement === false) {
+            return 1;
+        }
+
+        $batch = $statement->fetchColumn();
+        return max(1, (int) $batch);
     }
 
     protected function patchPostgresInetDefaultsInMigrations(string $projectPath): void
