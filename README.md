@@ -219,6 +219,17 @@ evo install /path/to/my-site \
 
 The default preset does not install Extras. Use `--extras=sTask,sSeo` only when you intentionally want those packages in the project.
 
+Presets can declare required Extras in `core/custom/preset.json`. Required Extras are automatically selected after the preset is applied, stay locked in the TUI, and are still installed when the user chooses to skip optional Extras:
+
+```json
+{
+  "name": "blog-daisyui",
+  "extras": {
+    "required": ["eTinyMCE", "sSeo"]
+  }
+}
+```
+
 Accepted preset sources:
 
 - `default` resolves to `https://github.com/evolution-cms-presets/default.git`

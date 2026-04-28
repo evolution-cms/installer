@@ -16,7 +16,7 @@ const (
 	extrasInstallValue = "install"
 )
 
-func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) bool, actions <-chan domain.Action, workDir string) {
+func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) bool, actions <-chan domain.Action, workDir string, requiredExtras []domain.ExtrasSelection) {
 	if actions == nil {
 		return
 	}
@@ -85,6 +85,21 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 	}
 
 	preselected := e.opt.Extras
+	if len(requiredExtras) > 0 {
+		labels := make([]string, 0, len(requiredExtras))
+		for _, sel := range requiredExtras {
+			labels = append(labels, formatExtrasSelectionLabel(sel))
+		}
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   extrasStepID,
+			Source:   "extras",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Preset requires extras: " + strings.Join(labels, ", "),
+			},
+		})
+	}
 	_ = emit(domain.Event{
 		Type:     domain.EventLog,
 		StepID:   extrasStepID,
@@ -97,6 +112,18 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 
 	token := strings.TrimSpace(e.opt.GithubPat)
 	pkgs, defaults, warnings, err := loadAllExtrasCatalogs(ctx, workDir, token)
+	normalizedRequired := requiredExtras
+	if len(pkgs) > 0 && len(requiredExtras) > 0 {
+		normalizedRequired = normalizeExtrasSelections(pkgs, requiredExtras)
+		if len(normalizedRequired) == 0 {
+			normalizedRequired = requiredExtras
+		}
+	}
+	pkgs = markRequiredExtrasPackages(pkgs, normalizedRequired)
+	defaults = mergeRequiredExtras(defaults, normalizedRequired)
+	if len(pkgs) > 0 {
+		defaults = normalizeExtrasSelections(pkgs, defaults)
+	}
 	for _, msg := range warnings {
 		_ = emit(domain.Event{
 			Type:     domain.EventWarning,
@@ -123,7 +150,7 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			},
 		})
 		stepOK = false
-		if len(preselected) == 0 {
+		if len(preselected) == 0 && len(requiredExtras) == 0 {
 			return
 		}
 	}
@@ -145,13 +172,41 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 
 	var selections []domain.ExtrasSelection
 	if len(preselected) > 0 {
-		selections = preselected
+		selections = mergeRequiredExtras(preselected, normalizedRequired)
 	} else {
 		action, chosen, ok := waitExtrasDecision(ctx, actions)
 		if !ok {
 			return
 		}
 		if action != extrasInstallValue || len(chosen) == 0 {
+			if len(normalizedRequired) > 0 {
+				selections = mergeRequiredExtras(nil, normalizedRequired)
+			} else {
+				_ = emit(domain.Event{
+					Type:     domain.EventExtras,
+					StepID:   extrasStepID,
+					Source:   "extras",
+					Severity: domain.SeverityInfo,
+					Payload: domain.ExtrasState{
+						Active: false,
+					},
+				})
+				_ = emit(domain.Event{
+					Type:     domain.EventLog,
+					StepID:   extrasStepID,
+					Source:   "extras",
+					Severity: domain.SeverityInfo,
+					Payload: domain.LogPayload{
+						Message: "Extras installation skipped.",
+					},
+				})
+				emitExtrasSkippedSummary(emit)
+				return
+			}
+		} else {
+			selections = mergeRequiredExtras(chosen, normalizedRequired)
+		}
+		if len(selections) == 0 {
 			_ = emit(domain.Event{
 				Type:     domain.EventExtras,
 				StepID:   extrasStepID,
@@ -173,7 +228,6 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			emitExtrasSkippedSummary(emit)
 			return
 		}
-		selections = chosen
 	}
 
 	if len(pkgs) > 0 {
@@ -516,13 +570,79 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		}
 		seen[id] = len(out)
 		out = append(out, domain.ExtrasSelection{
-			ID:      id,
-			Name:    pkg.Name,
-			Source:  pkg.Source,
-			Version: version,
+			ID:       id,
+			Name:     pkg.Name,
+			Source:   pkg.Source,
+			Version:  version,
+			Required: sel.Required || pkg.Required,
 		})
 	}
 	return out
+}
+
+func mergeRequiredExtras(selections []domain.ExtrasSelection, required []domain.ExtrasSelection) []domain.ExtrasSelection {
+	if len(selections) == 0 && len(required) == 0 {
+		return nil
+	}
+
+	out := make([]domain.ExtrasSelection, 0, len(selections)+len(required))
+	seen := map[string]int{}
+	add := func(sel domain.ExtrasSelection, forceRequired bool) {
+		key := extrasSelectionIdentity(sel)
+		if key == "" {
+			return
+		}
+		if forceRequired {
+			sel.Required = true
+		}
+		if idx, ok := seen[key]; ok {
+			if out[idx].Version == "" && strings.TrimSpace(sel.Version) != "" {
+				out[idx].Version = strings.TrimSpace(sel.Version)
+			}
+			out[idx].Required = out[idx].Required || sel.Required
+			return
+		}
+		seen[key] = len(out)
+		out = append(out, sel)
+	}
+
+	for _, sel := range selections {
+		add(sel, false)
+	}
+	for _, sel := range required {
+		add(sel, true)
+	}
+	return out
+}
+
+func markRequiredExtrasPackages(pkgs []domain.ExtrasPackage, required []domain.ExtrasSelection) []domain.ExtrasPackage {
+	if len(pkgs) == 0 || len(required) == 0 {
+		return pkgs
+	}
+	requiredKeys := map[string]struct{}{}
+	for _, sel := range required {
+		if key := strings.ToLower(strings.TrimSpace(sel.ID)); key != "" {
+			requiredKeys[key] = struct{}{}
+		}
+		if key := strings.ToLower(strings.TrimSpace(sel.Name)); key != "" {
+			requiredKeys[key] = struct{}{}
+		}
+	}
+	for i := range pkgs {
+		_, idRequired := requiredKeys[strings.ToLower(strings.TrimSpace(pkgs[i].ID))]
+		_, nameRequired := requiredKeys[strings.ToLower(strings.TrimSpace(pkgs[i].Name))]
+		if idRequired || nameRequired {
+			pkgs[i].Required = true
+		}
+	}
+	return pkgs
+}
+
+func extrasSelectionIdentity(sel domain.ExtrasSelection) string {
+	if id := strings.ToLower(strings.TrimSpace(sel.ID)); id != "" {
+		return id
+	}
+	return strings.ToLower(strings.TrimSpace(sel.Name))
 }
 
 func defaultExtrasInstallVersion(pkg domain.ExtrasPackage) string {

@@ -200,6 +200,17 @@ func applyCLIEvent(ev domain.Event, stepLabels map[string]string, actions chan<-
 		}
 	case domain.EventExtras:
 		if p, ok := ev.Payload.(domain.ExtrasState); ok && p.Stage == domain.ExtrasStageSelect {
+			required := requiredExtrasSelections(p.Selections)
+			if len(required) > 0 {
+				sendAction(actions, domain.Action{
+					Type:       domain.ActionExtrasDecision,
+					QuestionID: "extras_select",
+					OptionID:   "install",
+					Extras:     required,
+				})
+				fmt.Fprintln(os.Stdout, "Installing required preset Extras in --cli mode.")
+				return true
+			}
 			sendAction(actions, domain.Action{
 				Type:       domain.ActionExtrasDecision,
 				QuestionID: "extras_select",
@@ -210,6 +221,19 @@ func applyCLIEvent(ev domain.Event, stepLabels map[string]string, actions chan<-
 		}
 	}
 	return false
+}
+
+func requiredExtrasSelections(selections []domain.ExtrasSelection) []domain.ExtrasSelection {
+	if len(selections) == 0 {
+		return nil
+	}
+	out := make([]domain.ExtrasSelection, 0, len(selections))
+	for _, sel := range selections {
+		if sel.Required {
+			out = append(out, sel)
+		}
+	}
+	return out
 }
 
 func handleCLIQuestion(q domain.QuestionState, actions chan<- domain.Action, cancel func(), hadError *bool) bool {

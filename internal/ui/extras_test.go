@@ -50,6 +50,31 @@ func TestApplyExtrasStateDefaultsToInstallAction(t *testing.T) {
 	}
 }
 
+func TestRequiredExtrasCannotBeDeselected(t *testing.T) {
+	t.Parallel()
+
+	m := &Model{}
+	m.applyExtrasState(domain.ExtrasState{
+		Active: true,
+		Stage:  domain.ExtrasStageSelect,
+		Packages: []domain.ExtrasPackage{
+			{ID: "managed:sSeo", Name: "sSeo", Source: "managed", Required: true},
+		},
+		Selections: []domain.ExtrasSelection{
+			{ID: "managed:sSeo", Name: "sSeo", Source: "managed", Required: true},
+		},
+	})
+	m.extras.focus = extrasFocusList
+	m.extras.cursor = 0
+
+	m.handleExtrasSelectKey(" ", " ")
+
+	selected := m.extrasSelectedNames()
+	if len(selected) != 1 || !selected[0].Required || selected[0].Name != "sSeo" {
+		t.Fatalf("expected required sSeo to remain selected, got %#v", selected)
+	}
+}
+
 func TestVisibleExtrasPackagesHidesLegacyUntilToggled(t *testing.T) {
 	t.Parallel()
 

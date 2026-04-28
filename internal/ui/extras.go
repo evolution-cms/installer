@@ -292,7 +292,11 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 		if listLen == 0 || m.extras.cursor < 0 || m.extras.cursor >= listLen {
 			return
 		}
-		key := extrasPackageKey(visiblePackages[m.extras.cursor])
+		pkg := visiblePackages[m.extras.cursor]
+		if pkg.Required {
+			return
+		}
+		key := extrasPackageKey(pkg)
 		if key == "" {
 			return
 		}
@@ -411,21 +415,21 @@ func (m *Model) handleExtrasSummaryKey(lowerKey string) {
 }
 
 func (m *Model) extrasSelectedNames() []domain.ExtrasSelection {
-	if len(m.extras.packages) == 0 || len(m.extras.selected) == 0 {
+	if len(m.extras.packages) == 0 {
 		return nil
 	}
-	out := make([]domain.ExtrasSelection, 0, len(m.extras.selected))
+	out := make([]domain.ExtrasSelection, 0, len(m.extras.packages))
 	for _, pkg := range m.extras.packages {
 		key := extrasPackageKey(pkg)
 		if key == "" {
 			continue
 		}
-		if m.extras.selected[key] {
+		if pkg.Required || (m.extras.selected != nil && m.extras.selected[key]) {
 			version := ""
 			if m.extras.versions != nil {
 				version = strings.TrimSpace(m.extras.versions[key])
 			}
-			out = append(out, domain.ExtrasSelection{ID: key, Name: pkg.Name, Source: pkg.Source, Version: version})
+			out = append(out, domain.ExtrasSelection{ID: key, Name: pkg.Name, Source: pkg.Source, Version: version, Required: pkg.Required})
 		}
 	}
 	return out
@@ -1028,7 +1032,9 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 		}
 
 		checked := "[ ]"
-		if m.extras.selected != nil && m.extras.selected[key] {
+		if pkg.Required {
+			checked = "[!]"
+		} else if m.extras.selected != nil && m.extras.selected[key] {
 			checked = "[x]"
 		}
 
@@ -1051,6 +1057,9 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 		}
 		desc := strings.TrimSpace(pkg.Description)
 		label := fmt.Sprintf("%s %s %s%s @ %s", cursor, checked, extrasSourcePrefix(pkg), pkg.Name, version)
+		if pkg.Required {
+			label += " (required by preset)"
+		}
 		if desc != "" {
 			label += " - " + desc
 		}
@@ -1340,6 +1349,9 @@ func (m *Model) renderExtrasSelectActions(width int) string {
 	selected := m.extrasSelectedNames()
 	installLabel := fmt.Sprintf(" Install selected (%d) ", len(selected))
 	skipLabel := " Skip extras "
+	if m.hasRequiredExtras() {
+		skipLabel = " Install required only "
+	}
 	legacyLabel := " Show Legacy Store "
 	if m.extras.showLegacy {
 		legacyLabel = " Hide Legacy Store "
@@ -1375,6 +1387,15 @@ func (m *Model) renderExtrasSelectActions(width int) string {
 	legacy := legacyStyle.Render("[" + legacyLabel + "]")
 	line := install + "  " + skip + "  " + legacy
 	return padRight(truncateANSI(line, width), width)
+}
+
+func (m *Model) hasRequiredExtras() bool {
+	for _, pkg := range m.extras.packages {
+		if pkg.Required {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) renderExtrasSummaryActions(width int) string {

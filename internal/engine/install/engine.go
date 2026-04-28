@@ -1013,7 +1013,19 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			return
 		}
 
-		e.maybeRunExtras(ctx, emit, actions, workDir)
+		requiredExtras, warnings := loadPresetRequiredExtras(workDir)
+		for _, msg := range warnings {
+			_ = emit(domain.Event{
+				Type:     domain.EventWarning,
+				StepID:   extrasStepID,
+				Source:   "extras",
+				Severity: domain.SeverityWarn,
+				Payload: domain.LogPayload{
+					Message: msg,
+				},
+			})
+		}
+		e.maybeRunExtras(ctx, emit, actions, workDir, requiredExtras)
 		e.cleanupExtrasRuntimeArtifacts(emit, workDir)
 	}()
 }

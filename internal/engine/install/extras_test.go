@@ -236,6 +236,59 @@ func TestNormalizeExtrasSelectionsConvertsExplicitManagedDefaultBranch(t *testin
 	}
 }
 
+func TestParsePresetRequiredExtrasSupportsStringsAndObjects(t *testing.T) {
+	t.Parallel()
+
+	selections, err := parsePresetRequiredExtras([]byte(`{
+		"requiredExtras": ["eTinyMCE", {"name": "sSeo", "version": "*"}],
+		"extras": {"required": ["ePasskeys@main"]}
+	}`))
+	if err != nil {
+		t.Fatalf("parsePresetRequiredExtras returned error: %v", err)
+	}
+	if len(selections) != 3 {
+		t.Fatalf("expected 3 required extras, got %#v", selections)
+	}
+	if selections[0].Name != "eTinyMCE" || !selections[0].Required {
+		t.Fatalf("unexpected first selection: %#v", selections[0])
+	}
+	if selections[1].Name != "sSeo" || selections[1].Version != "*" || !selections[1].Required {
+		t.Fatalf("unexpected second selection: %#v", selections[1])
+	}
+	if selections[2].Name != "ePasskeys" || selections[2].Version != "main" || !selections[2].Required {
+		t.Fatalf("unexpected third selection: %#v", selections[2])
+	}
+}
+
+func TestRequiredExtrasStaySelectedWhenUserSkips(t *testing.T) {
+	t.Parallel()
+
+	required := []domain.ExtrasSelection{{Name: "sSeo", Required: true}}
+	selections := mergeRequiredExtras(nil, required)
+	if len(selections) != 1 {
+		t.Fatalf("expected required selection, got %#v", selections)
+	}
+	if selections[0].Name != "sSeo" || !selections[0].Required {
+		t.Fatalf("unexpected required selection: %#v", selections[0])
+	}
+}
+
+func TestMarkRequiredExtrasPackagesMatchesByNameAfterNormalize(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{ID: "managed:sSeo", Name: "sSeo", Source: "managed"},
+		{ID: "managed:sTask", Name: "sTask", Source: "managed"},
+	}
+	got := markRequiredExtrasPackages(pkgs, []domain.ExtrasSelection{{Name: "sSeo", Required: true}})
+	if !got[0].Required {
+		t.Fatalf("expected sSeo package to be marked required: %#v", got[0])
+	}
+	if got[1].Required {
+		t.Fatalf("did not expect sTask package to be required: %#v", got[1])
+	}
+}
+
 func TestDedupeExtrasPackagesPrefersManagedOverLegacyDuplicate(t *testing.T) {
 	t.Parallel()
 

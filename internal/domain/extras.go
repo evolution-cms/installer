@@ -45,13 +45,15 @@ type ExtrasPackage struct {
 	Dependencies       string   `json:"dependencies,omitempty"`
 	Deprecated         bool     `json:"deprecated,omitempty"`
 	Method             string   `json:"method,omitempty"`
+	Required           bool     `json:"required,omitempty"`
 }
 
 type ExtrasSelection struct {
-	ID      string
-	Name    string
-	Source  string
-	Version string
+	ID       string
+	Name     string
+	Source   string
+	Version  string
+	Required bool
 }
 
 type ExtrasItemResult struct {
