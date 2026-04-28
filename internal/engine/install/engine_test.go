@@ -80,6 +80,7 @@ func TestProjectPresetOptionsFromReposDefaultsToCoreThenCustom(t *testing.T) {
 		{Name: "default-daisyui", FullName: "evolution-cms-presets/default-daisyui"},
 		{Name: "default", FullName: "evolution-cms-presets/default", Description: "Default preset"},
 		{Name: "default-tailwind", FullName: "evolution-cms-presets/default-tailwind"},
+		{Name: "blog-daisyui", FullName: "evolution-cms-presets/blog-daisyui"},
 		{Name: "archived", FullName: "evolution-cms-presets/archived", Archived: true},
 	})
 
@@ -89,6 +90,7 @@ func TestProjectPresetOptionsFromReposDefaultsToCoreThenCustom(t *testing.T) {
 		"evolution-cms-presets/default",
 		"evolution-cms-presets/default-tailwind",
 		"evolution-cms-presets/default-daisyui",
+		"evolution-cms-presets/blog-daisyui",
 		"evolution-cms-presets/portfolio",
 	}
 	if len(options) != len(wantIDs) {

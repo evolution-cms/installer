@@ -2021,6 +2021,7 @@ func fallbackProjectPresetQuestionOptions() ([]domain.QuestionOption, int) {
 		{ID: projectPresetOrg + "/default", Label: "default", Enabled: true},
 		{ID: projectPresetOrg + "/default-tailwind", Label: "default-tailwind", Enabled: true},
 		{ID: projectPresetOrg + "/default-daisyui", Label: "default-daisyui", Enabled: true},
+		{ID: projectPresetOrg + "/blog-daisyui", Label: "blog-daisyui", Enabled: true},
 	})
 }
 
@@ -2099,6 +2100,8 @@ func projectPresetSortPriority(name string) int {
 		return 1
 	case "default-daisyui":
 		return 2
+	case "blog-daisyui":
+		return 3
 	default:
 		return 100
 	}

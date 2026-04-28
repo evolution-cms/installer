@@ -230,11 +230,14 @@ Presets can declare required Extras in `core/custom/preset.json`. Required Extra
 }
 ```
 
+For example, `evolution-cms-presets/blog-daisyui` uses this manifest to require `eTinyMCE` and `sSeo` during installation.
+
 Accepted preset sources:
 
 - `default` resolves to `https://github.com/evolution-cms-presets/default.git`
 - `evolution-cms-presets/default` resolves to `https://github.com/evolution-cms-presets/default.git`
 - `evolution-cms-presets/default@dev` resolves to the same preset repository with Git ref `dev`
+- `evolution-cms-presets/blog-daisyui` resolves to the official blog starter preset
 - `owner/private-preset` can be entered in TUI as a custom source when your Git environment can access it
 - full Git URLs are used as-is; add `#dev` when you need a URL ref
 - local paths are used as-is
