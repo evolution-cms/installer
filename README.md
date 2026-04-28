@@ -101,7 +101,8 @@ This command will:
 
 ```bash
 evo install my-project --preset=evolution
-evo install my-project --preset=evolution-cms-presets/default --preset-ref=main
+evo install my-project --preset=evolution-cms-presets/default
+evo install my-project --preset=evolution-cms-presets/default@dev
 evo install my-project --db-type=mysql
 evo install my-project --db-host=localhost --db-name=evo_db
 evo install my-project --admin-username=admin --admin-email=admin@example.com
@@ -119,8 +120,7 @@ evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (o
 
 ### Available Options
 
-- `--preset`: Project-layer preset source. Use `evolution` or omit it for core-only install; use `default`, `evolution-cms-presets/default`, a Git URL, or a local path to apply a project preset.
-- `--preset-ref`: Git branch/tag for the project-layer preset.
+- `--preset`: Project-layer preset spec. Use `evolution` or omit it for core-only install; use `default`, `evolution-cms-presets/default`, `evolution-cms-presets/default@dev`, a Git URL, or a local path to apply a project preset.
 - `--db-type`: Database type (`mysql`, `pgsql`, `sqlite`, or `sqlsrv`)
 - `--db-host`: Database host (default: `localhost`, not used for SQLite)
 - `--db-port`: Database port (defaults: 3306 for MySQL, 5432 for PostgreSQL, 1433 for SQL Server)
@@ -157,7 +157,6 @@ evo install demo \
   --admin-directory=manager \
   --language=uk \
   --preset=evolution-cms-presets/default \
-  --preset-ref=main \
   --composer-clear-cache \
   --github-pat=YOUR_GITHUB_PAT \
   --extras=sTask@main,sSeo
@@ -185,7 +184,6 @@ evo install /Users/dmi3yy/PhpstormProjects/Extras/dmi3yy.com \
   --admin-directory=manager \
   --language=uk \
   --preset=evolution-cms-presets/default \
-  --preset-ref=main \
   --composer-update \
   --composer-clear-cache
 ```
@@ -196,10 +194,15 @@ Accepted preset sources:
 
 - `default` resolves to `https://github.com/evolution-cms-presets/default.git`
 - `evolution-cms-presets/default` resolves to `https://github.com/evolution-cms-presets/default.git`
-- full Git URLs are used as-is
+- `evolution-cms-presets/default@dev` resolves to the same preset repository with Git ref `dev`
+- full Git URLs are used as-is; add `#dev` when you need a URL ref
 - local paths are used as-is
 
-Use `--preset-ref=<branch-or-tag>` to install a specific preset branch or tag.
+Use a branch or tag suffix only when you need to install a non-default preset ref. Local preset development can point directly at a checkout:
+
+```bash
+evo install /tmp/my-site --preset=/Users/dmi3yy/PhpstormProjects/Extras/Presets/default
+```
 
 ### Evolution Core Only
 

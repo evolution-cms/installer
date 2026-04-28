@@ -62,7 +62,6 @@ class InstallCommand extends Command
             ->addOption('github-pat', null, InputOption::VALUE_OPTIONAL, 'GitHub PAT token for API requests')
             ->addOption('github_pat', null, InputOption::VALUE_OPTIONAL, 'GitHub PAT token for API requests')
             ->addOption('branch', null, InputOption::VALUE_OPTIONAL, 'Install from specific Git branch (e.g., develop, nightly, main) instead of latest release')
-            ->addOption('preset-ref', null, InputOption::VALUE_OPTIONAL, 'Git branch/tag for the project-layer preset')
             ->addOption('language', null, InputOption::VALUE_OPTIONAL, 'The installation language')
             ->addOption('composer-clear-cache', null, InputOption::VALUE_NONE, 'Clear Composer cache before install')
             ->addOption('composer-update', null, InputOption::VALUE_NONE, 'Use composer update instead of install during setup')
@@ -124,7 +123,7 @@ class InstallCommand extends Command
         $this->installEvolutionCMS($name, $options);
 
         // Step 5: Install presets
-        $this->installPreset($input->getOption('preset'), $input->getOption('preset-ref'), $name, $options);
+        $this->installPreset($input->getOption('preset'), $name, $options);
 
         // Step 6: Install dependencies
         $this->installDependencies($name, $options);
@@ -3362,7 +3361,7 @@ class InstallCommand extends Command
     /**
      * Install preset.
      */
-    protected function installPreset(?string $preset, ?string $presetRef, string $name, array $options): void
+    protected function installPreset(?string $preset, string $name, array $options): void
     {
         if ($this->shouldSkipProjectPreset($preset)) {
             $this->steps['presets']['completed'] = true;
@@ -3380,7 +3379,7 @@ class InstallCommand extends Command
             throw new \RuntimeException("Unable to install preset: core/artisan not found in {$projectPath}.");
         }
 
-        $source = $this->resolveProjectPresetSource((string) $preset);
+        [$source, $ref] = $this->resolveProjectPresetSpec((string) $preset);
         $this->tui->addLog("Installing project preset: {$source}");
 
         $command = [
@@ -3391,9 +3390,8 @@ class InstallCommand extends Command
             '--force',
         ];
 
-        $presetRef = trim((string) $presetRef);
-        if ($presetRef !== '') {
-            $command[] = '--ref=' . $presetRef;
+        if ($ref !== '') {
+            $command[] = '--ref=' . $ref;
         }
 
         $process = new Process($command, $projectPath, $this->buildProcessEnv());
@@ -3446,9 +3444,38 @@ class InstallCommand extends Command
             throw new \RuntimeException('Failed to install project preset.' . ($output !== '' ? ' ' . $output : ''));
         }
 
+        $this->runProjectPresetMigrations($projectPath, $artisan);
+
         $this->steps['presets']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
         $this->tui->addLog('Project preset installed successfully.', 'success');
+    }
+
+    protected function runProjectPresetMigrations(string $projectPath, string $artisan): void
+    {
+        $this->tui->addLog('Running project preset migrations...');
+
+        $process = new Process([
+            PHP_BINARY ?: 'php',
+            $artisan,
+            'migrate',
+            '--force',
+        ], $projectPath, $this->buildProcessEnv());
+        $process->setTimeout(120);
+        $process->run(function ($type, $buffer) {
+            foreach (preg_split('/\\R/', $buffer) ?: [] as $line) {
+                $line = trim($line);
+                if ($line === '') {
+                    continue;
+                }
+                $this->tui->addLog($line, $type === Process::ERR ? 'warning' : 'info');
+            }
+        });
+
+        if (!$process->isSuccessful()) {
+            $output = trim($process->getOutput() . "\n" . $process->getErrorOutput());
+            throw new \RuntimeException('Project preset migrations failed.' . ($output !== '' ? ' ' . $output : ''));
+        }
     }
 
     protected function shouldSkipProjectPreset(?string $preset): bool
@@ -3480,6 +3507,46 @@ class InstallCommand extends Command
         }
 
         return 'https://github.com/evolution-cms-presets/' . $preset . '.git';
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    protected function resolveProjectPresetSpec(string $preset): array
+    {
+        [$source, $ref] = $this->splitProjectPresetSpec($preset);
+
+        return [$this->resolveProjectPresetSource($source), $ref];
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    protected function splitProjectPresetSpec(string $preset): array
+    {
+        $preset = trim($preset);
+        if ($preset === '' || is_dir($preset)) {
+            return [$preset, ''];
+        }
+
+        foreach (['#', '@'] as $separator) {
+            $pos = strrpos($preset, $separator);
+            if ($pos === false || $pos === 0 || $pos === strlen($preset) - 1) {
+                continue;
+            }
+
+            if ($separator === '@' && str_starts_with($preset, 'git@') && strpos($preset, '@') === $pos) {
+                continue;
+            }
+
+            $source = substr($preset, 0, $pos);
+            $ref = substr($preset, $pos + 1);
+            if ($source !== '' && $ref !== '') {
+                return [$source, $ref];
+            }
+        }
+
+        return [$preset, ''];
     }
 
     /**

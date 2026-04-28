@@ -202,6 +202,18 @@ final class InstallCommandAdminDirectoryTest extends TestCase
             'https://github.com/evolution-cms-presets/default.git',
             $cmd->resolveProjectPresetSourcePublic('https://github.com/evolution-cms-presets/default.git')
         );
+        $this->assertSame(
+            ['https://github.com/evolution-cms-presets/default.git', 'dev'],
+            $cmd->resolveProjectPresetSpecPublic('default@dev')
+        );
+        $this->assertSame(
+            ['https://github.com/evolution-cms-presets/default.git', 'dev'],
+            $cmd->resolveProjectPresetSpecPublic('evolution-cms-presets/default@dev')
+        );
+        $this->assertSame(
+            ['https://github.com/evolution-cms-presets/default.git', 'dev'],
+            $cmd->resolveProjectPresetSpecPublic('https://github.com/evolution-cms-presets/default.git#dev')
+        );
 
         $projectPath = $this->makeTempProjectDir();
         $this->assertSame(realpath($projectPath), $cmd->resolveProjectPresetSourcePublic($projectPath));
@@ -285,5 +297,10 @@ final class TestableInstallCommand extends InstallCommand
     public function shouldSkipProjectPresetPublic(?string $preset): bool
     {
         return $this->shouldSkipProjectPreset($preset);
+    }
+
+    public function resolveProjectPresetSpecPublic(string $preset): array
+    {
+        return $this->resolveProjectPresetSpec($preset);
     }
 }

@@ -5,9 +5,7 @@ import "testing"
 func TestSplitInstallArgsKeepsPresetFlags(t *testing.T) {
 	installDir, flags, err := splitInstallArgs([]string{
 		"/tmp/site",
-		"--preset=evolution-cms-presets/default",
-		"--preset-ref",
-		"main",
+		"--preset=evolution-cms-presets/default@dev",
 		"--cli",
 	})
 	if err != nil {
@@ -17,7 +15,7 @@ func TestSplitInstallArgsKeepsPresetFlags(t *testing.T) {
 		t.Fatalf("installDir = %q, want /tmp/site", installDir)
 	}
 
-	want := []string{"--preset=evolution-cms-presets/default", "--preset-ref", "main", "--cli"}
+	want := []string{"--preset=evolution-cms-presets/default@dev", "--cli"}
 	if len(flags) != len(want) {
 		t.Fatalf("flags = %#v, want %#v", flags, want)
 	}

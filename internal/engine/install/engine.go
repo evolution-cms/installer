@@ -31,7 +31,6 @@ type Options struct {
 
 	Branch             string
 	Preset             string
-	PresetRef          string
 	ComposerClearCache bool
 	ComposerUpdate     bool
 
@@ -974,7 +973,6 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Force:              e.opt.Force,
 			Branch:             strings.TrimSpace(e.opt.Branch),
 			Preset:             strings.TrimSpace(e.opt.Preset),
-			PresetRef:          strings.TrimSpace(e.opt.PresetRef),
 			WorkDir:            workDir,
 			ComposerClearCache: e.opt.ComposerClearCache,
 			ComposerUpdate:     e.opt.ComposerUpdate,
@@ -1049,11 +1047,10 @@ type phpNewOptions struct {
 	GithubPat string
 	Extras    []domain.ExtrasSelection
 
-	Force     bool
-	Branch    string
-	Preset    string
-	PresetRef string
-	WorkDir   string
+	Force   bool
+	Branch  string
+	Preset  string
+	WorkDir string
 
 	ComposerClearCache bool
 	ComposerUpdate     bool
@@ -1152,9 +1149,6 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 	}
 	if strings.TrimSpace(opt.Preset) != "" {
 		args = append(args, "--preset="+strings.TrimSpace(opt.Preset))
-	}
-	if strings.TrimSpace(opt.PresetRef) != "" {
-		args = append(args, "--preset-ref="+strings.TrimSpace(opt.PresetRef))
 	}
 	if strings.TrimSpace(opt.GithubPat) != "" {
 		args = append(args, "--github-pat="+strings.TrimSpace(opt.GithubPat))
