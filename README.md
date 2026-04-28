@@ -170,15 +170,15 @@ The installer separates the target project from the preset source.
 For TUI installs, pass only the branch and preset when you want the installer to ask for database, admin user, language, and optional Extras:
 
 ```bash
-evo install /Users/dmi3yy/PhpstormProjects/Extras/dmi3yy.com \
+evo install /path/to/my-site \
   --branch=3.5.x \
   --preset=evolution-cms-presets/default
 ```
 
-For CLI installs, provide all required answers up front. This installs a new project into `dmi3yy.com`, then copies the `evolution-cms-presets/default` project layer into that project:
+For CLI installs, provide all required answers up front. This installs a new project into the target directory, then copies the `evolution-cms-presets/default` project layer into that project:
 
 ```bash
-evo install /Users/dmi3yy/PhpstormProjects/Extras/dmi3yy.com \
+evo install /path/to/my-site \
   --cli \
   --branch=3.5.x \
   --db-type=sqlite \
@@ -191,7 +191,7 @@ evo install /Users/dmi3yy/PhpstormProjects/Extras/dmi3yy.com \
   --preset=evolution-cms-presets/default
 ```
 
-`--preset=evolution-cms-presets/default` means "copy this preset as the bootstrap project layer." It does not define the future GitHub identity of the created site. The target directory or its own Git remote can still be `dmi3yy/dmi3yy.com`.
+`--preset=evolution-cms-presets/default` means "copy this preset as the bootstrap project layer." It does not define the future GitHub identity of the created site. The target directory or its own Git remote can still be your own project repository.
 
 The default preset does not install Extras. Use `--extras=sTask,sSeo` only when you intentionally want those packages in the project.
 
@@ -206,7 +206,7 @@ Accepted preset sources:
 Use a branch or tag suffix only when you need to install a non-default preset ref. Local preset development can point directly at a checkout:
 
 ```bash
-evo install /tmp/my-site --preset=/Users/dmi3yy/PhpstormProjects/Extras/Presets/default
+evo install /path/to/my-site --preset=/path/to/default-preset
 ```
 
 ### Evolution Core Only
