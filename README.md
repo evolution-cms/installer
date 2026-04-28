@@ -146,7 +146,7 @@ evo install my-project --extras=legacy-store:84@1.12.2  # Install a Legacy Store
 - `--composer-clear-cache`: Clear Composer cache before install
 - `--composer-update`: Use `composer update` instead of `composer install` during setup
 - `--github-pat` / `--github_pat`: GitHub PAT token for API requests (avoids GitHub rate limits)
-- `--extras`: Comma-separated extras to install after setup. Managed extras can be passed by name (for example `sTask,sSeo`) and are installed with `*` unless you pin a version. Legacy Store packages can be passed by ID (for example `legacy-store:84@1.12.2`).
+- `--extras`: Comma-separated extras to install after setup. Managed extras can be passed by name (for example `sTask,sSeo`) and released packages are installed with `*` unless you pin a version. Dev-only managed packages use their default branch constraint, for example `dev-main`. Legacy Store packages can be passed by ID (for example `legacy-store:84@1.12.2`).
 
 ### CLI Example (Non-interactive)
 
@@ -167,7 +167,7 @@ evo install demo \
 Notes:
 - `--cli` is non-interactive; use `--extras` to auto-install Extras.
 - `--extras` works in both TUI and CLI; when provided, the Extras selection screen is skipped and installation starts immediately.
-- Extras without an explicit `@version` are installed with Composer constraint `*`, so later Composer updates can pick up newer package versions.
+- Released Extras without an explicit `@version` are installed with Composer constraint `*`, so later Composer updates can pick up newer package versions. Dev-only Extras without releases use their default branch constraint, for example `dev-main`.
 - Legacy Store packages are selected by their catalog ID in CLI mode, e.g. `--extras=legacy-store:84@1.12.2`.
 
 ## Project Presets
@@ -272,7 +272,7 @@ Project presets are applied through the installed Evolution CMS `core/artisan pr
 - **Post-install selection**: After the core installation, the installer opens the Extras selection screen directly with default Extras preselected.
 - **Selection UI**: Shows bundled defaults and managed Extras first, with checkboxes, versions, descriptions, and search.
 - **Legacy Store**: Legacy Store packages are hidden behind the `Show Legacy Store` action so the main list stays focused.
-- **Batch install**: Installs selected Extras one-by-one via `php artisan extras extras <Name> *` by default and shows progress/status.
+- **Batch install**: Installs selected Extras one-by-one via `php artisan extras extras <Name> <version>` and shows progress/status. Released managed packages default to `*`; dev-only packages default to their branch constraint such as `dev-main`.
 - **Post steps**: Runs `php artisan migrate` once after all Extras, then `php artisan cache:clear-full`.
 - **Flow**: Install -> Extras selection -> Progress -> Summary
 

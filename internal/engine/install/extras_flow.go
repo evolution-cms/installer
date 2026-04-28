@@ -10,11 +10,10 @@ import (
 )
 
 const (
-	extrasSelectID                  = "extras_select"
-	extrasStepID                    = "extras"
-	extrasSkipValue                 = "skip"
-	extrasInstallValue              = "install"
-	extrasFloatingVersionConstraint = "*"
+	extrasSelectID     = "extras_select"
+	extrasStepID       = "extras"
+	extrasSkipValue    = "skip"
+	extrasInstallValue = "install"
 )
 
 func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) bool, actions <-chan domain.Action, workDir string) {
@@ -506,6 +505,8 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		version := strings.TrimSpace(sel.Version)
 		if version == "" {
 			version = strings.TrimSpace(defaultExtrasInstallVersion(pkg))
+		} else {
+			version = strings.TrimSpace(domain.NormalizeExtrasInstallVersion(pkg, version))
 		}
 		if idx, ok := seen[id]; ok {
 			if out[idx].Version == "" && version != "" {
@@ -525,16 +526,11 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 }
 
 func defaultExtrasInstallVersion(pkg domain.ExtrasPackage) string {
-	if isManagedExtrasPackage(pkg) {
-		return extrasFloatingVersionConstraint
-	}
-	return defaultExtrasVersion(pkg)
+	return domain.DefaultExtrasInstallVersion(pkg)
 }
 
 func isManagedExtrasPackage(pkg domain.ExtrasPackage) bool {
-	source := strings.ToLower(strings.TrimSpace(pkg.Source))
-	mode := strings.ToLower(strings.TrimSpace(pkg.InstallMode))
-	return source == "managed" || mode == "managed-artisan"
+	return domain.IsManagedExtrasPackage(pkg)
 }
 
 func formatExtrasSelectionLabel(sel domain.ExtrasSelection) string {
@@ -597,28 +593,7 @@ func runExtrasSelection(ctx context.Context, coreDir string, token string, pkgBy
 }
 
 func defaultExtrasVersion(pkg domain.ExtrasPackage) string {
-	mode := strings.ToLower(strings.TrimSpace(pkg.DefaultInstallMode))
-	version := strings.TrimSpace(pkg.Version)
-	branch := strings.TrimSpace(pkg.DefaultBranch)
-	if mode == "latest-release" && version != "" {
-		return version
-	}
-	if mode == "default-branch" && branch != "" {
-		return branch
-	}
-	if version != "" {
-		return version
-	}
-	if branch != "" {
-		return branch
-	}
-	for _, v := range pkg.Versions {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			return v
-		}
-	}
-	return ""
+	return domain.DefaultExtrasVersion(pkg)
 }
 
 func extrasFailFast() bool {

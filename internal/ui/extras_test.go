@@ -103,3 +103,25 @@ func TestBuildExtrasVersionOptionsShowsManagedDefaultWildcard(t *testing.T) {
 		t.Fatalf("expected managed default value to stay blank for normalization, got %v", values)
 	}
 }
+
+func TestBuildExtrasVersionOptionsShowsManagedDevOnlyDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	labels, values := buildExtrasVersionOptions(domain.ExtrasPackage{
+		ID:            "managed:ePasskeys",
+		Name:          "ePasskeys",
+		Source:        "managed",
+		DefaultBranch: "main",
+	})
+	if len(labels) == 0 || labels[0] != "Default (dev-main)" {
+		t.Fatalf("expected managed dev-only default label to use dev-main, got %v", labels)
+	}
+	if len(values) == 0 || values[0] != "" {
+		t.Fatalf("expected managed default value to stay blank for normalization, got %v", values)
+	}
+	for _, label := range labels[1:] {
+		if label == "main" {
+			t.Fatalf("expected raw default branch to be normalized or skipped, got labels %v", labels)
+		}
+	}
+}

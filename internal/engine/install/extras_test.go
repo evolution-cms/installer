@@ -189,6 +189,53 @@ func TestDefaultExtrasSelectionsUseFloatingManagedConstraint(t *testing.T) {
 	}
 }
 
+func TestDefaultExtrasSelectionsUseDevBranchForDevOnlyManagedPackage(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:ePasskeys",
+			Name:               "ePasskeys",
+			Source:             "managed",
+			DefaultInstallMode: "default-branch",
+			DefaultBranch:      "main",
+			Preselected:        true,
+		},
+	}
+
+	selections := defaultExtrasSelections(pkgs)
+	if len(selections) != 1 {
+		t.Fatalf("expected 1 default selection, got %d", len(selections))
+	}
+	if selections[0].Version != "dev-main" {
+		t.Fatalf("expected dev-only managed selection to use dev-main, got %q", selections[0].Version)
+	}
+}
+
+func TestNormalizeExtrasSelectionsConvertsExplicitManagedDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:ePasskeys",
+			Name:               "ePasskeys",
+			Source:             "managed",
+			DefaultInstallMode: "default-branch",
+			DefaultBranch:      "main",
+		},
+	}
+
+	selections := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{Name: "ePasskeys", Version: "main"},
+	})
+	if len(selections) != 1 {
+		t.Fatalf("expected 1 selection, got %d", len(selections))
+	}
+	if selections[0].Version != "dev-main" {
+		t.Fatalf("expected explicit managed branch to normalize to dev-main, got %q", selections[0].Version)
+	}
+}
+
 func TestDedupeExtrasPackagesPrefersManagedOverLegacyDuplicate(t *testing.T) {
 	t.Parallel()
 
