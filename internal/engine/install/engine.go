@@ -30,6 +30,8 @@ type Options struct {
 	SelfVersion string
 
 	Branch             string
+	Preset             string
+	PresetRef          string
 	ComposerClearCache bool
 	ComposerUpdate     bool
 
@@ -971,6 +973,8 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Language:           lang,
 			Force:              e.opt.Force,
 			Branch:             strings.TrimSpace(e.opt.Branch),
+			Preset:             strings.TrimSpace(e.opt.Preset),
+			PresetRef:          strings.TrimSpace(e.opt.PresetRef),
 			WorkDir:            workDir,
 			ComposerClearCache: e.opt.ComposerClearCache,
 			ComposerUpdate:     e.opt.ComposerUpdate,
@@ -1045,9 +1049,11 @@ type phpNewOptions struct {
 	GithubPat string
 	Extras    []domain.ExtrasSelection
 
-	Force   bool
-	Branch  string
-	WorkDir string
+	Force     bool
+	Branch    string
+	Preset    string
+	PresetRef string
+	WorkDir   string
 
 	ComposerClearCache bool
 	ComposerUpdate     bool
@@ -1143,6 +1149,12 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 	}
 	if strings.TrimSpace(opt.Branch) != "" {
 		args = append(args, "--branch="+strings.TrimSpace(opt.Branch))
+	}
+	if strings.TrimSpace(opt.Preset) != "" {
+		args = append(args, "--preset="+strings.TrimSpace(opt.Preset))
+	}
+	if strings.TrimSpace(opt.PresetRef) != "" {
+		args = append(args, "--preset-ref="+strings.TrimSpace(opt.PresetRef))
 	}
 	if strings.TrimSpace(opt.GithubPat) != "" {
 		args = append(args, "--github-pat="+strings.TrimSpace(opt.GithubPat))
@@ -1431,11 +1443,18 @@ func (t *stepTracker) OnLine(line string) {
 	}
 	if strings.Contains(line, "All seeders completed successfully") {
 		t.doneStep("install", true)
-		t.doneStep("presets", true)
 	}
 	// Install command now reports migrations and composer install as part of Step 4.
 	if strings.Contains(line, "Running database migrations") || strings.Contains(line, "Running database seeders") {
 		t.start("install", "Step 4: Install Evolution CMS", 4)
+	}
+
+	// Step 5 markers.
+	if strings.Contains(line, "Installing project preset") {
+		t.start("presets", "Step 5: Install presets", 5)
+	}
+	if strings.Contains(line, "Project preset installed successfully") {
+		t.doneStep("presets", true)
 	}
 
 	// Finalize marker.
@@ -1458,6 +1477,9 @@ func (t *stepTracker) OnLine(line string) {
 	}
 	if strings.Contains(strings.ToLower(line), "failed to update dependencies") {
 		t.doneStep("dependencies", false)
+	}
+	if strings.Contains(strings.ToLower(line), "failed to install project preset") {
+		t.doneStep("presets", false)
 	}
 }
 

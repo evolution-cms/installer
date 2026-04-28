@@ -186,6 +186,40 @@ final class InstallCommandAdminDirectoryTest extends TestCase
         $this->removeTempDir($projectPath);
     }
 
+    public function testResolveProjectPresetSourceSupportsNamesReposUrlsAndLocalPaths(): void
+    {
+        $cmd = $this->makeCommand();
+
+        $this->assertSame(
+            'https://github.com/evolution-cms-presets/default.git',
+            $cmd->resolveProjectPresetSourcePublic('default')
+        );
+        $this->assertSame(
+            'https://github.com/evolution-cms-presets/default.git',
+            $cmd->resolveProjectPresetSourcePublic('evolution-cms-presets/default')
+        );
+        $this->assertSame(
+            'https://github.com/evolution-cms-presets/default.git',
+            $cmd->resolveProjectPresetSourcePublic('https://github.com/evolution-cms-presets/default.git')
+        );
+
+        $projectPath = $this->makeTempProjectDir();
+        $this->assertSame(realpath($projectPath), $cmd->resolveProjectPresetSourcePublic($projectPath));
+        $this->removeTempDir($projectPath);
+    }
+
+    public function testShouldSkipProjectPresetKeepsEvolutionAsCoreOnlyInstall(): void
+    {
+        $cmd = $this->makeCommand();
+
+        $this->assertTrue($cmd->shouldSkipProjectPresetPublic(null));
+        $this->assertTrue($cmd->shouldSkipProjectPresetPublic(''));
+        $this->assertTrue($cmd->shouldSkipProjectPresetPublic('evolution'));
+        $this->assertTrue($cmd->shouldSkipProjectPresetPublic('none'));
+        $this->assertFalse($cmd->shouldSkipProjectPresetPublic('default'));
+        $this->assertFalse($cmd->shouldSkipProjectPresetPublic('evolution-cms-presets/default'));
+    }
+
     private function makeTempProjectDir(): string
     {
         $base = rtrim(sys_get_temp_dir(), '/\\');
@@ -241,5 +275,15 @@ final class TestableInstallCommand extends InstallCommand
     public function finalizeInstallationPublic(string $projectPath, array $options): void
     {
         $this->finalizeInstallation($projectPath, $options);
+    }
+
+    public function resolveProjectPresetSourcePublic(string $preset): string
+    {
+        return $this->resolveProjectPresetSource($preset);
+    }
+
+    public function shouldSkipProjectPresetPublic(?string $preset): bool
+    {
+        return $this->shouldSkipProjectPreset($preset);
     }
 }

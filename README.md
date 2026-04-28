@@ -101,6 +101,7 @@ This command will:
 
 ```bash
 evo install my-project --preset=evolution
+evo install my-project --preset=evolution-cms-presets/default --preset-ref=main
 evo install my-project --db-type=mysql
 evo install my-project --db-host=localhost --db-name=evo_db
 evo install my-project --admin-username=admin --admin-email=admin@example.com
@@ -118,7 +119,8 @@ evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (o
 
 ### Available Options
 
-- `--preset`: The preset to use (default: `evolution`)
+- `--preset`: Project-layer preset source. Use `evolution` or omit it for core-only install; use `default`, `evolution-cms-presets/default`, a Git URL, or a local path to apply a project preset.
+- `--preset-ref`: Git branch/tag for the project-layer preset.
 - `--db-type`: Database type (`mysql`, `pgsql`, `sqlite`, or `sqlsrv`)
 - `--db-host`: Database host (default: `localhost`, not used for SQLite)
 - `--db-port`: Database port (defaults: 3306 for MySQL, 5432 for PostgreSQL, 1433 for SQL Server)
@@ -154,6 +156,8 @@ evo install demo \
   --admin-password=123456 \
   --admin-directory=manager \
   --language=uk \
+  --preset=evolution-cms-presets/default \
+  --preset-ref=main \
   --composer-clear-cache \
   --github-pat=YOUR_GITHUB_PAT \
   --extras=sTask@main,sSeo
@@ -163,9 +167,41 @@ Notes:
 - `--cli` skips the Extras wizard prompt; use `--extras` to auto-install.
 - `--extras` works in both TUI and CLI; when provided, the wizard is skipped and installation starts immediately.
 
-## Presets
+## Project Presets
 
-### Evolution Preset (Default)
+The installer separates the target project from the preset source.
+
+For example, this installs a new project into `dmi3yy.com`, then copies the `evolution-cms-presets/default` project layer into that project:
+
+```bash
+evo install /Users/dmi3yy/PhpstormProjects/Extras/dmi3yy.com \
+  --cli \
+  --branch=3.5.x \
+  --db-type=sqlite \
+  --db-name=database.sqlite \
+  --admin-username=admin \
+  --admin-email=admin@example.com \
+  --admin-password=change-me \
+  --admin-directory=manager \
+  --language=uk \
+  --preset=evolution-cms-presets/default \
+  --preset-ref=main \
+  --composer-update \
+  --composer-clear-cache
+```
+
+`--preset=evolution-cms-presets/default` means "copy this preset as the bootstrap project layer." It does not define the future GitHub identity of the created site. The target directory or its own Git remote can still be `dmi3yy/dmi3yy.com`.
+
+Accepted preset sources:
+
+- `default` resolves to `https://github.com/evolution-cms-presets/default.git`
+- `evolution-cms-presets/default` resolves to `https://github.com/evolution-cms-presets/default.git`
+- full Git URLs are used as-is
+- local paths are used as-is
+
+Use `--preset-ref=<branch-or-tag>` to install a specific preset branch or tag.
+
+### Evolution Core Only
 
 Standard Evolution CMS installation with all core features.
 
@@ -175,9 +211,9 @@ evo install my-project
 evo install my-project --preset=evolution
 ```
 
-### Custom Presets
+### Custom Project Presets
 
-You can create custom presets by extending the `Preset` class. See the `src/Presets/` directory for examples.
+Project presets are applied through the installed Evolution CMS `core/artisan preset:install` command after the core installation and database setup complete.
 
 ## Features
 

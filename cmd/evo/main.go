@@ -208,6 +208,8 @@ func runInstall(ctx context.Context, args []string) int {
 	fs.BoolVar(force, "f", false, "Force installation even if directory exists")
 
 	branch := fs.String("branch", "", "Install from specific Git branch instead of latest release")
+	preset := fs.String("preset", "", "Project-layer preset source (name, owner/repo, Git URL, or local path)")
+	presetRef := fs.String("preset-ref", "", "Git branch/tag for the project-layer preset")
 
 	dbType := fs.String("db-type", "", "Database type (mysql, pgsql, sqlite, sqlsrv)")
 	dbHost := fs.String("db-host", "", "Database host (default: localhost)")
@@ -243,6 +245,8 @@ func runInstall(ctx context.Context, args []string) int {
 		Dir:                installDir,
 		SelfVersion:        Version,
 		Branch:             strings.TrimSpace(*branch),
+		Preset:             strings.TrimSpace(*preset),
+		PresetRef:          strings.TrimSpace(*presetRef),
 		ComposerClearCache: *composerClearCache,
 		ComposerUpdate:     *composerUpdate,
 		DBType:             strings.ToLower(strings.TrimSpace(*dbType)),
@@ -307,7 +311,7 @@ func splitInstallArgs(args []string) (installDir string, flagArgs []string, err 
 
 	expectsValue := func(flag string) bool {
 		switch flag {
-		case "branch", "db-type", "db-host", "db-port", "db-name", "db-user", "db-password",
+		case "branch", "preset", "preset-ref", "db-type", "db-host", "db-port", "db-name", "db-user", "db-password",
 			"admin-username", "admin-email", "admin-password", "admin-directory", "language", "github-pat", "github_pat", "extras":
 			return true
 		default:
@@ -491,6 +495,8 @@ func printUsage() {
 	fmt.Println("Common flags:")
 	fmt.Println("  -f, --force                Force installation even if directory exists")
 	fmt.Println("  --branch=<name>            Install from Git branch (e.g., main or master)")
+	fmt.Println("  --preset=<source>          Apply project-layer preset (e.g., evolution-cms-presets/default)")
+	fmt.Println("  --preset-ref=<name>        Preset Git branch or tag")
 	fmt.Println("  --db-type=<driver>         mysql|pgsql|sqlite|sqlsrv")
 	fmt.Println("  --db-name=<name|path>      Database name (or SQLite file path)")
 	fmt.Println("  --admin-email=<email>      Admin email")
