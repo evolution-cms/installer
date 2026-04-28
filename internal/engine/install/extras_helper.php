@@ -100,13 +100,29 @@ function helper_parse_csv(string $value): array
     }));
 }
 
+function helper_description(array $item): string
+{
+    $description = trim((string) ($item['description'] ?? ''));
+    $version = trim((string) ($item['version'] ?? ''));
+
+    if ($version === '') {
+        return $description;
+    }
+
+    if (preg_match('/<strong>\s*' . preg_quote($version, '/') . '\s*<\/strong>/i', $description) === 1) {
+        return $description;
+    }
+
+    return '<strong>' . $version . '</strong>' . ($description !== '' ? ' ' . $description : '');
+}
+
 function helper_install_template(array $item, string $path): void
 {
     $name = trim((string) ($item['name'] ?? ''));
     if ($name === '') {
         return;
     }
-    $desc = trim((string) ($item['description'] ?? ''));
+    $desc = helper_description($item);
     $category = getCreateDbCategory(trim((string) ($item['category'] ?? '')));
     $locked = !empty($item['locked']) ? 1 : 0;
     $code = helper_chunk_code($path);
@@ -139,7 +155,7 @@ function helper_install_tv(array $item, string $path): void
     if ($name === '') {
         return;
     }
-    $desc = trim((string) ($item['description'] ?? ''));
+    $desc = helper_description($item);
     $caption = trim((string) ($item['caption'] ?? ''));
     $category = getCreateDbCategory(trim((string) ($item['category'] ?? '')));
     $locked = !empty($item['locked']) ? 1 : 0;
@@ -188,7 +204,7 @@ function helper_install_plugin(array $item, string $path): void
     if ($name === '') {
         return;
     }
-    $desc = trim((string) ($item['description'] ?? ''));
+    $desc = helper_description($item);
     $properties = trim((string) ($item['properties'] ?? ''));
     $guid = trim((string) ($item['guid'] ?? ''));
     $category = getCreateDbCategory(trim((string) ($item['category'] ?? '')));
@@ -302,7 +318,7 @@ function helper_install_module(array $item, string $path): void
     if ($name === '') {
         return;
     }
-    $desc = trim((string) ($item['description'] ?? ''));
+    $desc = helper_description($item);
     $properties = trim((string) ($item['properties'] ?? ''));
     $guid = trim((string) ($item['guid'] ?? ''));
     $shared = (int) ($item['shareParams'] ?? 0);
@@ -341,7 +357,7 @@ function helper_install_snippet(array $item, string $path): void
     if ($name === '') {
         return;
     }
-    $desc = trim((string) ($item['description'] ?? ''));
+    $desc = helper_description($item);
     $properties = trim((string) ($item['properties'] ?? ''));
     $category = getCreateDbCategory(trim((string) ($item['category'] ?? '')));
     $code = helper_snippet_code($path);
@@ -373,7 +389,7 @@ function helper_install_chunk(array $item, string $path): void
     if ($name === '') {
         return;
     }
-    $desc = trim((string) ($item['description'] ?? ''));
+    $desc = helper_description($item);
     $category = getCreateDbCategory(trim((string) ($item['category'] ?? '')));
     $overwrite = strtolower(trim((string) ($item['overwrite'] ?? 'true')));
     $code = helper_chunk_code($path);
