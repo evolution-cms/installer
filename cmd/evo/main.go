@@ -197,10 +197,6 @@ func runInstall(ctx context.Context, args []string) int {
 		printUsage()
 		return 2
 	}
-	if strings.TrimSpace(installDir) == "" {
-		installDir = "."
-	}
-
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
@@ -208,6 +204,7 @@ func runInstall(ctx context.Context, args []string) int {
 	fs.BoolVar(force, "f", false, "Force installation even if directory exists")
 
 	branch := fs.String("branch", "", "Install from specific Git branch instead of latest release")
+	preset := fs.String("preset", "", "Project-layer preset spec (name, owner/repo, Git URL, or local path; optional @ref)")
 
 	dbType := fs.String("db-type", "", "Database type (mysql, pgsql, sqlite, sqlsrv)")
 	dbHost := fs.String("db-host", "", "Database host (default: localhost)")
@@ -233,6 +230,9 @@ func runInstall(ctx context.Context, args []string) int {
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
 	}
+	if strings.TrimSpace(installDir) == "" && *cliMode {
+		installDir = "."
+	}
 	pat := strings.TrimSpace(*githubPat)
 	if pat == "" {
 		pat = strings.TrimSpace(*githubPatAlt)
@@ -243,6 +243,7 @@ func runInstall(ctx context.Context, args []string) int {
 		Dir:                installDir,
 		SelfVersion:        Version,
 		Branch:             strings.TrimSpace(*branch),
+		Preset:             strings.TrimSpace(*preset),
 		ComposerClearCache: *composerClearCache,
 		ComposerUpdate:     *composerUpdate,
 		DBType:             strings.ToLower(strings.TrimSpace(*dbType)),
@@ -297,7 +298,12 @@ func parseExtrasSelections(raw string) ([]domain.ExtrasSelection, error) {
 		if name == "" {
 			return nil, fmt.Errorf("invalid --extras value: %q", part)
 		}
-		out = append(out, domain.ExtrasSelection{Name: name, Version: version})
+		sel := domain.ExtrasSelection{Name: name, Version: version}
+		if strings.Contains(name, ":") {
+			sel.ID = name
+			sel.Name = ""
+		}
+		out = append(out, sel)
 	}
 	return out, nil
 }
@@ -307,7 +313,7 @@ func splitInstallArgs(args []string) (installDir string, flagArgs []string, err 
 
 	expectsValue := func(flag string) bool {
 		switch flag {
-		case "branch", "db-type", "db-host", "db-port", "db-name", "db-user", "db-password",
+		case "branch", "preset", "db-type", "db-host", "db-port", "db-name", "db-user", "db-password",
 			"admin-username", "admin-email", "admin-password", "admin-directory", "language", "github-pat", "github_pat", "extras":
 			return true
 		default:
@@ -485,12 +491,13 @@ func printUsage() {
 	fmt.Println("Evolution CMS Installer TUI")
 	fmt.Println("")
 	fmt.Println("Usage:")
-	fmt.Println("  evo install [dir] [flags]  Run TUI installer")
+	fmt.Println("  evo install [dir] [flags]  Run TUI installer; omit dir to choose it in TUI")
 	fmt.Println("  evo version   Print version")
 	fmt.Println("")
 	fmt.Println("Common flags:")
 	fmt.Println("  -f, --force                Force installation even if directory exists")
 	fmt.Println("  --branch=<name>            Install from Git branch (e.g., main or master)")
+	fmt.Println("  --preset=<spec>            Apply project preset; omit to choose it in TUI")
 	fmt.Println("  --db-type=<driver>         mysql|pgsql|sqlite|sqlsrv")
 	fmt.Println("  --db-name=<name|path>      Database name (or SQLite file path)")
 	fmt.Println("  --admin-email=<email>      Admin email")

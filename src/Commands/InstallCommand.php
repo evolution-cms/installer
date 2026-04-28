@@ -35,7 +35,7 @@ class InstallCommand extends Command
         'install' => ['label' => 'Step 4: Install Evolution CMS', 'completed' => false],
         'presets' => ['label' => 'Step 5: Install presets', 'completed' => false],
         'finalize' => ['label' => 'Step 6: Finalize installation', 'completed' => false],
-        'extras' => ['label' => 'Step 7: Install Extras (optional)', 'completed' => false],
+        'extras' => ['label' => 'Step 7: Install Extras', 'completed' => false],
     ];
 
     /**
@@ -123,7 +123,7 @@ class InstallCommand extends Command
         $this->installEvolutionCMS($name, $options);
 
         // Step 5: Install presets
-        $this->installPreset($input->getOption('preset'));
+        $this->installPreset($input->getOption('preset'), $name, $options);
 
         // Step 6: Install dependencies
         $this->installDependencies($name, $options);
@@ -3361,14 +3361,203 @@ class InstallCommand extends Command
     /**
      * Install preset.
      */
-    protected function installPreset(?string $preset): void
+    protected function installPreset(?string $preset, string $name, array $options): void
     {
-        $this->steps['presets']['completed'] = true;
-        $this->tui->setQuestTrack($this->steps);
-
-        if ($preset === null) {
+        if ($this->shouldSkipProjectPreset($preset)) {
+            $this->steps['presets']['completed'] = true;
+            $this->tui->setQuestTrack($this->steps);
             return;
         }
+
+        $isCurrentDir = !empty($options['install_in_current_dir']);
+        $projectPath = $isCurrentDir ? $name : (getcwd() . '/' . $name);
+        $artisan = rtrim($projectPath, '/\\') . '/core/artisan';
+
+        if (!is_file($artisan)) {
+            $this->steps['presets']['completed'] = false;
+            $this->tui->setQuestTrack($this->steps);
+            throw new \RuntimeException("Unable to install preset: core/artisan not found in {$projectPath}.");
+        }
+
+        [$source, $ref] = $this->resolveProjectPresetSpec((string) $preset);
+        $this->tui->addLog("Installing project preset: {$source}");
+
+        $command = $this->buildProjectPresetInstallCommand($artisan, $source, $ref);
+
+        $process = new Process($command, $projectPath, $this->buildProcessEnv());
+        $timeout = $this->composerTimeoutSeconds();
+        $idleTimeout = $this->composerIdleTimeoutSeconds();
+        if ($timeout > 0) {
+            $process->setTimeout($timeout);
+        }
+        if ($idleTimeout !== null) {
+            $process->setIdleTimeout($idleTimeout);
+        }
+
+        $buffers = [
+            Process::OUT => '',
+            Process::ERR => '',
+        ];
+
+        try {
+            $process->run(function ($type, $buffer) use (&$buffers) {
+                $buffers[$type] .= $buffer;
+
+                while (($pos = strpos($buffers[$type], "\n")) !== false) {
+                    $line = rtrim(substr($buffers[$type], 0, $pos), "\r");
+                    $buffers[$type] = substr($buffers[$type], $pos + 1);
+
+                    if ($line === '') {
+                        continue;
+                    }
+
+                    $this->tui->addLog($line, $type === Process::ERR ? 'warning' : 'info');
+                }
+            });
+        } catch (\Symfony\Component\Process\Exception\ProcessTimedOutException $e) {
+            $this->steps['presets']['completed'] = false;
+            $this->tui->setQuestTrack($this->steps);
+            throw new \RuntimeException('Preset install timed out: ' . $e->getMessage());
+        }
+
+        foreach ($buffers as $type => $buffer) {
+            $line = trim($buffer);
+            if ($line !== '') {
+                $this->tui->addLog($line, $type === Process::ERR ? 'warning' : 'info');
+            }
+        }
+
+        if (!$process->isSuccessful()) {
+            $this->steps['presets']['completed'] = false;
+            $this->tui->setQuestTrack($this->steps);
+            $output = trim($process->getOutput() . "\n" . $process->getErrorOutput());
+            throw new \RuntimeException('Failed to install project preset.' . ($output !== '' ? ' ' . $output : ''));
+        }
+
+        $this->runProjectPresetMigrations($projectPath, $artisan);
+
+        $this->steps['presets']['completed'] = true;
+        $this->tui->setQuestTrack($this->steps);
+        $this->tui->addLog('Project preset installed successfully.', 'success');
+    }
+
+    protected function buildProjectPresetInstallCommand(string $artisan, string $source, string $ref = ''): array
+    {
+        $command = [
+            PHP_BINARY ?: 'php',
+            $artisan,
+            'preset:install',
+            '--from=' . $source,
+            '--force',
+        ];
+
+        if ($ref !== '') {
+            $command[] = '--ref=' . $ref;
+        }
+
+        if (is_dir($source)) {
+            $command[] = '--keep';
+        }
+
+        return $command;
+    }
+
+    protected function runProjectPresetMigrations(string $projectPath, string $artisan): void
+    {
+        $this->tui->addLog('Running project preset migrations...');
+
+        $process = new Process([
+            PHP_BINARY ?: 'php',
+            $artisan,
+            'migrate',
+            '--force',
+        ], $projectPath, $this->buildProcessEnv());
+        $process->setTimeout(120);
+        $process->run(function ($type, $buffer) {
+            foreach (preg_split('/\\R/', $buffer) ?: [] as $line) {
+                $line = trim($line);
+                if ($line === '') {
+                    continue;
+                }
+                $this->tui->addLog($line, $type === Process::ERR ? 'warning' : 'info');
+            }
+        });
+
+        if (!$process->isSuccessful()) {
+            $output = trim($process->getOutput() . "\n" . $process->getErrorOutput());
+            throw new \RuntimeException('Project preset migrations failed.' . ($output !== '' ? ' ' . $output : ''));
+        }
+    }
+
+    protected function shouldSkipProjectPreset(?string $preset): bool
+    {
+        $preset = strtolower(trim((string) $preset));
+
+        return $preset === '' || in_array($preset, ['evolution', 'none', 'false', '0'], true);
+    }
+
+    protected function resolveProjectPresetSource(string $preset): string
+    {
+        $preset = trim($preset);
+
+        if ($preset === '') {
+            return $preset;
+        }
+
+        if (is_dir($preset)) {
+            return realpath($preset) ?: $preset;
+        }
+
+        if (preg_match('~^(?:https?://|ssh://|git@|file://)~i', $preset) === 1) {
+            return $preset;
+        }
+
+        if (str_contains($preset, '/')) {
+            $repo = trim($preset, '/');
+            return 'https://github.com/' . $repo . (str_ends_with($repo, '.git') ? '' : '.git');
+        }
+
+        return 'https://github.com/evolution-cms-presets/' . $preset . '.git';
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    protected function resolveProjectPresetSpec(string $preset): array
+    {
+        [$source, $ref] = $this->splitProjectPresetSpec($preset);
+
+        return [$this->resolveProjectPresetSource($source), $ref];
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    protected function splitProjectPresetSpec(string $preset): array
+    {
+        $preset = trim($preset);
+        if ($preset === '' || is_dir($preset)) {
+            return [$preset, ''];
+        }
+
+        foreach (['#', '@'] as $separator) {
+            $pos = strrpos($preset, $separator);
+            if ($pos === false || $pos === 0 || $pos === strlen($preset) - 1) {
+                continue;
+            }
+
+            if ($separator === '@' && str_starts_with($preset, 'git@') && strpos($preset, '@') === $pos) {
+                continue;
+            }
+
+            $source = substr($preset, 0, $pos);
+            $ref = substr($preset, $pos + 1);
+            if ($source !== '' && $ref !== '') {
+                return [$source, $ref];
+            }
+        }
+
+        return [$preset, ''];
     }
 
     /**

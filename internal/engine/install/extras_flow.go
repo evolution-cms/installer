@@ -10,14 +10,13 @@ import (
 )
 
 const (
-	extrasPromptID     = "extras_prompt"
 	extrasSelectID     = "extras_select"
 	extrasStepID       = "extras"
 	extrasSkipValue    = "skip"
 	extrasInstallValue = "install"
 )
 
-func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) bool, actions <-chan domain.Action, workDir string) {
+func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) bool, actions <-chan domain.Action, workDir string, requiredExtras []domain.ExtrasSelection) {
 	if actions == nil {
 		return
 	}
@@ -35,9 +34,9 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			Source:   "extras",
 			Severity: domain.SeverityInfo,
 			Payload: domain.StepStartPayload{
-				Label: "Step 7: Install Extras (optional)",
-				Index: 8,
-				Total: 8,
+				Label: "Step 7: Install Extras",
+				Index: 7,
+				Total: 7,
 			},
 		})
 	}
@@ -86,26 +85,21 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 	}
 
 	preselected := e.opt.Extras
-	if len(preselected) == 0 {
-		choice, ok := askSelect(ctx, emit, actions, extrasStepID, extrasPromptQuestion())
-		if !ok {
-			return
+	if len(requiredExtras) > 0 {
+		labels := make([]string, 0, len(requiredExtras))
+		for _, sel := range requiredExtras {
+			labels = append(labels, formatExtrasSelectionLabel(sel))
 		}
-		if strings.ToLower(strings.TrimSpace(choice)) != "yes" {
-			_ = emit(domain.Event{
-				Type:     domain.EventLog,
-				StepID:   extrasStepID,
-				Source:   "extras",
-				Severity: domain.SeverityInfo,
-				Payload: domain.LogPayload{
-					Message: "Skipping extras installation.",
-				},
-			})
-			emitExtrasSkippedSummary(emit)
-			return
-		}
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   extrasStepID,
+			Source:   "extras",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Preset requires extras: " + strings.Join(labels, ", "),
+			},
+		})
 	}
-
 	_ = emit(domain.Event{
 		Type:     domain.EventLog,
 		StepID:   extrasStepID,
@@ -118,6 +112,18 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 
 	token := strings.TrimSpace(e.opt.GithubPat)
 	pkgs, defaults, warnings, err := loadAllExtrasCatalogs(ctx, workDir, token)
+	normalizedRequired := requiredExtras
+	if len(pkgs) > 0 && len(requiredExtras) > 0 {
+		normalizedRequired = normalizeExtrasSelections(pkgs, requiredExtras)
+		if len(normalizedRequired) == 0 {
+			normalizedRequired = requiredExtras
+		}
+	}
+	pkgs = markRequiredExtrasPackages(pkgs, normalizedRequired)
+	defaults = mergeRequiredExtras(defaults, normalizedRequired)
+	if len(pkgs) > 0 {
+		defaults = normalizeExtrasSelections(pkgs, defaults)
+	}
 	for _, msg := range warnings {
 		_ = emit(domain.Event{
 			Type:     domain.EventWarning,
@@ -144,7 +150,7 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			},
 		})
 		stepOK = false
-		if len(preselected) == 0 {
+		if len(preselected) == 0 && len(requiredExtras) == 0 {
 			return
 		}
 	}
@@ -166,13 +172,41 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 
 	var selections []domain.ExtrasSelection
 	if len(preselected) > 0 {
-		selections = preselected
+		selections = mergeRequiredExtras(preselected, normalizedRequired)
 	} else {
 		action, chosen, ok := waitExtrasDecision(ctx, actions)
 		if !ok {
 			return
 		}
 		if action != extrasInstallValue || len(chosen) == 0 {
+			if len(normalizedRequired) > 0 {
+				selections = mergeRequiredExtras(nil, normalizedRequired)
+			} else {
+				_ = emit(domain.Event{
+					Type:     domain.EventExtras,
+					StepID:   extrasStepID,
+					Source:   "extras",
+					Severity: domain.SeverityInfo,
+					Payload: domain.ExtrasState{
+						Active: false,
+					},
+				})
+				_ = emit(domain.Event{
+					Type:     domain.EventLog,
+					StepID:   extrasStepID,
+					Source:   "extras",
+					Severity: domain.SeverityInfo,
+					Payload: domain.LogPayload{
+						Message: "Extras installation skipped.",
+					},
+				})
+				emitExtrasSkippedSummary(emit)
+				return
+			}
+		} else {
+			selections = mergeRequiredExtras(chosen, normalizedRequired)
+		}
+		if len(selections) == 0 {
 			_ = emit(domain.Event{
 				Type:     domain.EventExtras,
 				StepID:   extrasStepID,
@@ -194,7 +228,6 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			emitExtrasSkippedSummary(emit)
 			return
 		}
-		selections = chosen
 	}
 
 	if len(pkgs) > 0 {
@@ -436,20 +469,6 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 	}
 }
 
-func extrasPromptQuestion() domain.QuestionState {
-	return domain.QuestionState{
-		Active: true,
-		ID:     extrasPromptID,
-		Kind:   domain.QuestionSelect,
-		Prompt: "Do you want to install additional packages (Extras) now?",
-		Options: []domain.QuestionOption{
-			{ID: "yes", Label: "Yes", Enabled: true},
-			{ID: "no", Label: "No", Enabled: true},
-		},
-		Selected: 0,
-	}
-}
-
 func waitExtrasDecision(ctx context.Context, actions <-chan domain.Action) (string, []domain.ExtrasSelection, bool) {
 	if actions == nil {
 		return extrasSkipValue, nil, false
@@ -505,6 +524,7 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 	allowed := map[string]struct{}{}
 	pkgByID := map[string]domain.ExtrasPackage{}
 	pkgByName := map[string]domain.ExtrasPackage{}
+	pkgByComposerName := map[string]domain.ExtrasPackage{}
 	for _, p := range pkgs {
 		if p.ID != "" {
 			allowed[p.ID] = struct{}{}
@@ -512,6 +532,9 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		}
 		if p.Name != "" {
 			pkgByName[strings.ToLower(p.Name)] = p
+		}
+		if composerName := normalizeComposerPackageName(p.ComposerName); composerName != "" {
+			pkgByComposerName[composerName] = p
 		}
 	}
 	out := make([]domain.ExtrasSelection, 0, len(selections))
@@ -526,9 +549,18 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		if !ok {
 			name := strings.ToLower(strings.TrimSpace(sel.Name))
 			if name == "" {
-				continue
+				name = normalizeComposerPackageName(sel.ComposerName)
 			}
 			pkg, ok = pkgByName[name]
+		}
+		if !ok {
+			composerName := normalizeComposerPackageName(sel.ComposerName)
+			if composerName == "" {
+				composerName = normalizeComposerPackageName(sel.Name)
+			}
+			if composerName != "" {
+				pkg, ok = pkgByComposerName[composerName]
+			}
 		}
 		if !ok {
 			continue
@@ -539,7 +571,9 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		}
 		version := strings.TrimSpace(sel.Version)
 		if version == "" {
-			version = strings.TrimSpace(defaultExtrasVersion(pkg))
+			version = strings.TrimSpace(defaultExtrasInstallVersion(pkg))
+		} else {
+			version = strings.TrimSpace(domain.NormalizeExtrasInstallVersion(pkg, version))
 		}
 		if idx, ok := seen[id]; ok {
 			if out[idx].Version == "" && version != "" {
@@ -549,17 +583,103 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		}
 		seen[id] = len(out)
 		out = append(out, domain.ExtrasSelection{
-			ID:      id,
-			Name:    pkg.Name,
-			Source:  pkg.Source,
-			Version: version,
+			ID:           id,
+			Name:         pkg.Name,
+			Source:       pkg.Source,
+			Version:      version,
+			ComposerName: normalizeComposerPackageName(pkg.ComposerName),
+			Required:     sel.Required || pkg.Required,
 		})
 	}
 	return out
 }
 
+func mergeRequiredExtras(selections []domain.ExtrasSelection, required []domain.ExtrasSelection) []domain.ExtrasSelection {
+	if len(selections) == 0 && len(required) == 0 {
+		return nil
+	}
+
+	out := make([]domain.ExtrasSelection, 0, len(selections)+len(required))
+	seen := map[string]int{}
+	add := func(sel domain.ExtrasSelection, forceRequired bool) {
+		key := extrasSelectionIdentity(sel)
+		if key == "" {
+			return
+		}
+		if forceRequired {
+			sel.Required = true
+		}
+		sel.ComposerName = normalizeComposerPackageName(sel.ComposerName)
+		if idx, ok := seen[key]; ok {
+			if out[idx].Version == "" && strings.TrimSpace(sel.Version) != "" {
+				out[idx].Version = strings.TrimSpace(sel.Version)
+			}
+			out[idx].Required = out[idx].Required || sel.Required
+			return
+		}
+		seen[key] = len(out)
+		out = append(out, sel)
+	}
+
+	for _, sel := range selections {
+		add(sel, false)
+	}
+	for _, sel := range required {
+		add(sel, true)
+	}
+	return out
+}
+
+func markRequiredExtrasPackages(pkgs []domain.ExtrasPackage, required []domain.ExtrasSelection) []domain.ExtrasPackage {
+	if len(pkgs) == 0 || len(required) == 0 {
+		return pkgs
+	}
+	requiredKeys := map[string]struct{}{}
+	for _, sel := range required {
+		if key := strings.ToLower(strings.TrimSpace(sel.ID)); key != "" {
+			requiredKeys[key] = struct{}{}
+		}
+		if key := strings.ToLower(strings.TrimSpace(sel.Name)); key != "" {
+			requiredKeys[key] = struct{}{}
+		}
+		if key := normalizeComposerPackageName(sel.ComposerName); key != "" {
+			requiredKeys[key] = struct{}{}
+		}
+	}
+	for i := range pkgs {
+		_, idRequired := requiredKeys[strings.ToLower(strings.TrimSpace(pkgs[i].ID))]
+		_, nameRequired := requiredKeys[strings.ToLower(strings.TrimSpace(pkgs[i].Name))]
+		_, composerRequired := requiredKeys[normalizeComposerPackageName(pkgs[i].ComposerName)]
+		if idRequired || nameRequired || composerRequired {
+			pkgs[i].Required = true
+		}
+	}
+	return pkgs
+}
+
+func extrasSelectionIdentity(sel domain.ExtrasSelection) string {
+	if id := strings.ToLower(strings.TrimSpace(sel.ID)); id != "" {
+		return id
+	}
+	if composerName := normalizeComposerPackageName(sel.ComposerName); composerName != "" {
+		return "composer:" + composerName
+	}
+	return strings.ToLower(strings.TrimSpace(sel.Name))
+}
+
+func defaultExtrasInstallVersion(pkg domain.ExtrasPackage) string {
+	return domain.DefaultExtrasInstallVersion(pkg)
+}
+
+func isManagedExtrasPackage(pkg domain.ExtrasPackage) bool {
+	return domain.IsManagedExtrasPackage(pkg)
+}
+
 func formatExtrasSelectionLabel(sel domain.ExtrasSelection) string {
 	name := strings.TrimSpace(sel.Name)
+	if name == "" {
+		name = strings.TrimSpace(sel.ComposerName)
+	}
 	if name == "" {
 		name = strings.TrimSpace(sel.ID)
 	}
@@ -618,28 +738,7 @@ func runExtrasSelection(ctx context.Context, coreDir string, token string, pkgBy
 }
 
 func defaultExtrasVersion(pkg domain.ExtrasPackage) string {
-	mode := strings.ToLower(strings.TrimSpace(pkg.DefaultInstallMode))
-	version := strings.TrimSpace(pkg.Version)
-	branch := strings.TrimSpace(pkg.DefaultBranch)
-	if mode == "latest-release" && version != "" {
-		return version
-	}
-	if mode == "default-branch" && branch != "" {
-		return branch
-	}
-	if version != "" {
-		return version
-	}
-	if branch != "" {
-		return branch
-	}
-	for _, v := range pkg.Versions {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			return v
-		}
-	}
-	return ""
+	return domain.DefaultExtrasVersion(pkg)
 }
 
 func extrasFailFast() bool {

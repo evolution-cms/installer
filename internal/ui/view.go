@@ -97,7 +97,10 @@ func (m *Model) footerHintText() string {
 		if m.extras.versionPickerActive {
 			return "↑/↓ Move  Enter Select  Esc Close  ctrl+q Quit"
 		}
-		return "↑/↓ Move  Space Toggle  Enter Version  Down Actions  Enter Select  ctrl+c Cancel  ctrl+q Quit"
+		if m.extras.searchActive {
+			return "Type Search  Enter Apply  Esc Close  Ctrl+U Clear  ctrl+c Cancel  ctrl+q Quit"
+		}
+		return "↑/↓ Move  Space Toggle  / Search  L Legacy  Tab Actions  Enter Select  ctrl+c Cancel  ctrl+q Quit"
 	case domain.ExtrasStageProgress:
 		return "Installing extras...  ctrl+c Cancel  ctrl+q Quit"
 	case domain.ExtrasStageSummary:
@@ -329,14 +332,14 @@ func (m *Model) renderLogoHeader(width int) string {
 		outLines = outLines[:innerH]
 	}
 
-	return panel("Evolution CMS Installer", strings.Join(outLines, "\n"), width, logoHeaderHeight)
+	return panel(m.headerTitle(), strings.Join(outLines, "\n"), width, logoHeaderHeight)
 }
 
 func (m *Model) renderCompactHeader(width int) string {
 	contentW := panelContentWidth(width)
 	versionText, versionLineStyle := m.releaseVersionLine()
 	version := versionLineStyle.Render(cutPlain(versionText, contentW))
-	return panel("Evolution CMS Installer", version, width, compactHeaderHeight)
+	return panel(m.headerTitle(), version, width, compactHeaderHeight)
 }
 
 func (m *Model) releaseVersionLine() (string, lipgloss.Style) {
@@ -350,6 +353,10 @@ func (m *Model) releaseVersionLine() (string, lipgloss.Style) {
 		return m.appendBranch("v" + m.state.Release.Highest.HighestVersion), versionStyle
 	}
 	return m.appendBranch("v—"), mutedStyle
+}
+
+func (m *Model) headerTitle() string {
+	return "Evolution CMS Installer " + formatVersion(m.meta.Version)
 }
 
 func (m *Model) appendBranch(versionLine string) string {

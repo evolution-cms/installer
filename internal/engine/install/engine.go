@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/mail"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +32,7 @@ type Options struct {
 	SelfVersion string
 
 	Branch             string
+	Preset             string
 	ComposerClearCache bool
 	ComposerUpdate     bool
 
@@ -83,11 +86,11 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 				Steps: []domain.StepState{
 					{ID: "php", Label: "Step 1: Validate PHP version", Status: domain.StepPending},
 					{ID: "database", Label: "Step 2: Check database connection", Status: domain.StepPending},
-					{ID: "download", Label: "Step 3: Download Evolution CMS", Status: domain.StepPending},
-					{ID: "install", Label: "Step 4: Install Evolution CMS", Status: domain.StepPending},
-					{ID: "presets", Label: "Step 5: Install presets", Status: domain.StepPending},
+					{ID: "project_preset", Label: "Step 3: Choose project preset", Status: domain.StepPending},
+					{ID: "download", Label: "Step 4: Download Evolution CMS", Status: domain.StepPending},
+					{ID: "install", Label: "Step 5: Install Evolution CMS", Status: domain.StepPending},
 					{ID: "finalize", Label: "Step 6: Finalize installation", Status: domain.StepPending},
-					{ID: "extras", Label: "Step 7: Install Extras (optional)", Status: domain.StepPending},
+					{ID: "extras", Label: "Step 7: Install Extras", Status: domain.StepPending},
 				},
 			},
 		})
@@ -275,6 +278,19 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 
 		workDir := strings.TrimSpace(e.opt.Dir)
 		if workDir == "" {
+			var ok bool
+			workDir, ok = askInput(ctx, emit, actions, "preflight", domain.QuestionState{
+				Active:  true,
+				ID:      "install_dir",
+				Kind:    domain.QuestionInput,
+				Prompt:  "Where should Evolution CMS be installed?",
+				Default: ".",
+			})
+			if !ok {
+				return
+			}
+		}
+		if workDir == "" {
 			workDir = "."
 		}
 		workDir = filepath.Clean(workDir)
@@ -319,7 +335,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload: domain.StepStartPayload{
 				Label: "Step 1: Validate PHP version",
 				Index: 1,
-				Total: 8,
+				Total: 7,
 			},
 		})
 
@@ -391,7 +407,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload: domain.StepStartPayload{
 				Label: "Step 2: Check database connection",
 				Index: 2,
-				Total: 8,
+				Total: 7,
 			},
 		})
 
@@ -944,6 +960,11 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload:  domain.StepDonePayload{OK: true},
 		})
 
+		selectedPreset, ok := e.chooseProjectPreset(ctx, emit, actions)
+		if !ok {
+			return
+		}
+
 		// Step 3+: follow InstallCommand pipeline (next).
 		_ = emit(domain.Event{
 			Type:     domain.EventStepStart,
@@ -951,9 +972,9 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Source:   "install",
 			Severity: domain.SeverityInfo,
 			Payload: domain.StepStartPayload{
-				Label: "Step 3: Download Evolution CMS",
-				Index: 3,
-				Total: 8,
+				Label: "Step 4: Download Evolution CMS",
+				Index: 4,
+				Total: 7,
 			},
 		})
 
@@ -971,6 +992,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Language:           lang,
 			Force:              e.opt.Force,
 			Branch:             strings.TrimSpace(e.opt.Branch),
+			Preset:             selectedPreset,
 			WorkDir:            workDir,
 			ComposerClearCache: e.opt.ComposerClearCache,
 			ComposerUpdate:     e.opt.ComposerUpdate,
@@ -990,9 +1012,167 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			return
 		}
 
-		e.maybeRunExtras(ctx, emit, actions, workDir)
+		requiredExtras, warnings := loadPresetRequiredExtras(workDir)
+		for _, msg := range warnings {
+			_ = emit(domain.Event{
+				Type:     domain.EventWarning,
+				StepID:   extrasStepID,
+				Source:   "extras",
+				Severity: domain.SeverityWarn,
+				Payload: domain.LogPayload{
+					Message: msg,
+				},
+			})
+		}
+		e.maybeRunExtras(ctx, emit, actions, workDir, requiredExtras)
 		e.cleanupExtrasRuntimeArtifacts(emit, workDir)
 	}()
+}
+
+func (e *Engine) chooseProjectPreset(ctx context.Context, emit func(domain.Event) bool, actions <-chan domain.Action) (string, bool) {
+	const stepID = "project_preset"
+	_ = emit(domain.Event{
+		Type:     domain.EventStepStart,
+		StepID:   stepID,
+		Source:   "install",
+		Severity: domain.SeverityInfo,
+		Payload: domain.StepStartPayload{
+			Label: "Step 3: Choose project preset",
+			Index: 3,
+			Total: 7,
+		},
+	})
+
+	done := func(ok bool) {
+		sev := domain.SeverityInfo
+		if !ok {
+			sev = domain.SeverityWarn
+		}
+		_ = emit(domain.Event{
+			Type:     domain.EventStepDone,
+			StepID:   stepID,
+			Source:   "install",
+			Severity: sev,
+			Payload:  domain.StepDonePayload{OK: ok},
+		})
+	}
+
+	preset := strings.TrimSpace(e.opt.Preset)
+	if preset != "" {
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   stepID,
+			Source:   "install",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Using project preset: " + preset + ".",
+			},
+		})
+		done(true)
+		return preset, true
+	}
+
+	_ = emit(domain.Event{
+		Type:     domain.EventLog,
+		StepID:   stepID,
+		Source:   "install",
+		Severity: domain.SeverityInfo,
+		Payload: domain.LogPayload{
+			Message: "Fetching project preset catalog...",
+		},
+	})
+
+	options, selected, err := projectPresetQuestionOptions(ctx)
+	if err != nil {
+		_ = emit(domain.Event{
+			Type:     domain.EventWarning,
+			StepID:   stepID,
+			Source:   "install",
+			Severity: domain.SeverityWarn,
+			Payload: domain.LogPayload{
+				Message: "Project preset catalog unavailable; using bundled choices.",
+				Fields:  map[string]string{"error": err.Error()},
+			},
+		})
+	}
+
+	choice, ok := askSelect(ctx, emit, actions, stepID, domain.QuestionState{
+		Active:   true,
+		ID:       "project_preset",
+		Kind:     domain.QuestionSelect,
+		Prompt:   "Which project preset do you want to use?",
+		Options:  options,
+		Selected: selected,
+	})
+	if !ok {
+		done(false)
+		return "", false
+	}
+
+	switch choice {
+	case projectPresetCustomID:
+		for {
+			custom, ok := askInput(ctx, emit, actions, stepID, domain.QuestionState{
+				Active:  true,
+				ID:      "project_preset_custom",
+				Kind:    domain.QuestionInput,
+				Prompt:  "Enter preset repository, Git URL, or local path (optional @branch):",
+				Default: "owner/repo",
+			})
+			if !ok {
+				done(false)
+				return "", false
+			}
+			custom = strings.TrimSpace(custom)
+			if custom == "" || custom == "owner/repo" {
+				_ = emit(domain.Event{
+					Type:     domain.EventWarning,
+					StepID:   stepID,
+					Source:   "install",
+					Severity: domain.SeverityWarn,
+					Payload: domain.LogPayload{
+						Message: "Custom preset source cannot be empty.",
+					},
+				})
+				continue
+			}
+			_ = emit(domain.Event{
+				Type:     domain.EventLog,
+				StepID:   stepID,
+				Source:   "install",
+				Severity: domain.SeverityInfo,
+				Payload: domain.LogPayload{
+					Message: "Selected custom project preset: " + custom + ".",
+				},
+			})
+			done(true)
+			return custom, true
+		}
+	case projectPresetCoreOnlyID:
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   stepID,
+			Source:   "install",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Selected project preset: Evolution core only.",
+			},
+		})
+		done(true)
+		return "evolution", true
+	default:
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   stepID,
+			Source:   "install",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Selected project preset: " + choice + ".",
+			},
+		})
+		done(true)
+		return choice, true
+	}
 }
 
 func (e *Engine) cleanupExtrasRuntimeArtifacts(emit func(domain.Event) bool, workDir string) {
@@ -1047,6 +1227,7 @@ type phpNewOptions struct {
 
 	Force   bool
 	Branch  string
+	Preset  string
 	WorkDir string
 
 	ComposerClearCache bool
@@ -1143,6 +1324,9 @@ func runPHPNewCommand(ctx context.Context, emit func(domain.Event) bool, opt php
 	}
 	if strings.TrimSpace(opt.Branch) != "" {
 		args = append(args, "--branch="+strings.TrimSpace(opt.Branch))
+	}
+	if strings.TrimSpace(opt.Preset) != "" {
+		args = append(args, "--preset="+strings.TrimSpace(opt.Preset))
 	}
 	if strings.TrimSpace(opt.GithubPat) != "" {
 		args = append(args, "--github-pat="+strings.TrimSpace(opt.GithubPat))
@@ -1389,7 +1573,7 @@ func (t *stepTracker) start(stepID, label string, index int) {
 		Payload: domain.StepStartPayload{
 			Label: label,
 			Index: index,
-			Total: 8,
+			Total: 7,
 		},
 	})
 }
@@ -1416,26 +1600,25 @@ func (t *stepTracker) doneStep(stepID string, ok bool) {
 }
 
 func (t *stepTracker) OnLine(line string) {
-	// Step 3 markers.
+	// Step 4 markers.
 	if strings.Contains(line, "Downloading Evolution CMS") || strings.Contains(line, "Finding compatible Evolution CMS version") {
-		t.start("download", "Step 3: Download Evolution CMS", 3)
+		t.start("download", "Step 4: Download Evolution CMS", 4)
 	}
 	if strings.Contains(line, "downloaded and extracted successfully") {
 		t.doneStep("download", true)
-		t.start("install", "Step 4: Install Evolution CMS", 4)
+		t.start("install", "Step 5: Install Evolution CMS", 5)
 	}
 
-	// Step 4 markers.
+	// Step 5 markers.
 	if strings.Contains(line, "Setting up database") {
-		t.start("install", "Step 4: Install Evolution CMS", 4)
+		t.start("install", "Step 5: Install Evolution CMS", 5)
 	}
 	if strings.Contains(line, "All seeders completed successfully") {
 		t.doneStep("install", true)
-		t.doneStep("presets", true)
 	}
-	// Install command now reports migrations and composer install as part of Step 4.
+	// Install command now reports migrations and composer install as part of Step 5.
 	if strings.Contains(line, "Running database migrations") || strings.Contains(line, "Running database seeders") {
-		t.start("install", "Step 4: Install Evolution CMS", 4)
+		t.start("install", "Step 5: Install Evolution CMS", 5)
 	}
 
 	// Finalize marker.
@@ -1459,13 +1642,12 @@ func (t *stepTracker) OnLine(line string) {
 	if strings.Contains(strings.ToLower(line), "failed to update dependencies") {
 		t.doneStep("dependencies", false)
 	}
+	if strings.Contains(strings.ToLower(line), "failed to install project preset") {
+		t.doneStep("install", false)
+	}
 }
 
 func (t *stepTracker) FinishRemaining() {
-	// Presets might not produce logs (it's a no-op by default), but should be considered done if install completed.
-	if t.done["install"] {
-		t.doneStep("presets", true)
-	}
 	// If PHP ran to completion, mark any started but not-done steps as OK (best-effort),
 	// but never override an explicit failure.
 	if t.failed {
@@ -1480,7 +1662,7 @@ func (t *stepTracker) FinishRemaining() {
 
 func (t *stepTracker) FailRemaining() {
 	// Best-effort: mark any not-done steps as failed, so Quest track reflects the abort.
-	for _, id := range []string{"download", "install", "presets", "dependencies", "finalize"} {
+	for _, id := range []string{"download", "install", "dependencies", "finalize"} {
 		if !t.done[id] {
 			t.doneStep(id, false)
 		}
@@ -1799,6 +1981,117 @@ func defaultPort(dbType string) int {
 
 func defaultSQLiteDatabaseName() string {
 	return "database.sqlite"
+}
+
+const (
+	projectPresetOrg        = "evolution-cms-presets"
+	projectPresetCustomID   = "__custom_project_preset"
+	projectPresetCoreOnlyID = "__evolution_core_only"
+)
+
+func projectPresetQuestionOptions(ctx context.Context) ([]domain.QuestionOption, int, error) {
+	repos, err := github.FetchOrgRepositories(ctx, projectPresetOrg)
+	if err != nil {
+		options, selected := fallbackProjectPresetQuestionOptions()
+		return options, selected, err
+	}
+
+	options, selected := projectPresetOptionsFromRepos(repos)
+	if !hasProjectPresetCatalogOption(options) {
+		return fallbackProjectPresetQuestionOptionsWithError("no preset repositories found")
+	}
+	return options, selected, nil
+}
+
+func fallbackProjectPresetQuestionOptions() ([]domain.QuestionOption, int) {
+	return appendProjectPresetSpecialOptions([]domain.QuestionOption{
+		{ID: projectPresetOrg + "/default", Label: "default", Enabled: true},
+		{ID: projectPresetOrg + "/default-tailwind", Label: "default-tailwind", Enabled: true},
+		{ID: projectPresetOrg + "/default-daisyui", Label: "default-daisyui", Enabled: true},
+		{ID: projectPresetOrg + "/blog-daisyui", Label: "blog-daisyui", Enabled: true},
+	})
+}
+
+func fallbackProjectPresetQuestionOptionsWithError(reason string) ([]domain.QuestionOption, int, error) {
+	options, selected := fallbackProjectPresetQuestionOptions()
+	return options, selected, errors.New(reason)
+}
+
+func projectPresetOptionsFromRepos(repos []github.GitHubRepository) ([]domain.QuestionOption, int) {
+	filtered := make([]github.GitHubRepository, 0, len(repos))
+	for _, repo := range repos {
+		if repo.Archived || strings.TrimSpace(repo.Name) == "" {
+			continue
+		}
+		filtered = append(filtered, repo)
+	}
+
+	sort.SliceStable(filtered, func(i, j int) bool {
+		pi := projectPresetSortPriority(filtered[i].Name)
+		pj := projectPresetSortPriority(filtered[j].Name)
+		if pi != pj {
+			return pi < pj
+		}
+		return strings.ToLower(filtered[i].Name) < strings.ToLower(filtered[j].Name)
+	})
+
+	options := make([]domain.QuestionOption, 0, len(filtered)+2)
+	seen := map[string]struct{}{}
+	for _, repo := range filtered {
+		name := strings.TrimSpace(repo.Name)
+		id := projectPresetOrg + "/" + name
+		if strings.TrimSpace(repo.FullName) != "" {
+			id = strings.TrimSpace(repo.FullName)
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		label := name
+		if desc := strings.TrimSpace(repo.Description); desc != "" {
+			label += " - " + desc
+		}
+		options = append(options, domain.QuestionOption{ID: id, Label: label, Enabled: true})
+	}
+
+	return appendProjectPresetSpecialOptions(options)
+}
+
+func hasProjectPresetCatalogOption(options []domain.QuestionOption) bool {
+	prefix := projectPresetOrg + "/"
+	for _, opt := range options {
+		if strings.HasPrefix(strings.TrimSpace(opt.ID), prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func appendProjectPresetSpecialOptions(options []domain.QuestionOption) ([]domain.QuestionOption, int) {
+	head := []domain.QuestionOption{
+		{ID: projectPresetCoreOnlyID, Label: "No project preset (Evolution core only)", Enabled: true},
+		{ID: projectPresetCustomID, Label: "Custom repository, Git URL, or local path", Enabled: true},
+	}
+	options = append(head, options...)
+
+	selected := 0
+	return options, selected
+}
+
+func projectPresetSortPriority(name string) int {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "default":
+		return 0
+	case "default-tailwind":
+		return 1
+	case "default-daisyui":
+		return 2
+	case "blog-daisyui":
+		return 3
+	default:
+		return 100
+	}
 }
 
 func dbDriverLabel(dbType string) string {

@@ -62,11 +62,11 @@ func TestParseLegacyStoreCatalogJSON(t *testing.T) {
 	t.Parallel()
 
 	raw := []byte(`{
-		"category":[{"id":"2","title":"Catalog"}],
+		"category":[{"id":2,"title":"Catalog"}],
 		"allcategory":{
 			"2":[
 				{
-					"id":"84",
+					"id":84,
 					"url":{"fieldValue":[
 						{"file":"https://github.com/extras-evolution/ajaxSearch/archive/1.12.2.zip","version":"1.12.2","date":"25-01-2021"},
 						{"file":"https://github.com/extras-evolution/ajaxSearch/archive/master.zip","version":"master","date":"04-11-2017"}
@@ -137,8 +137,341 @@ func TestNormalizeExtrasSelectionsUsesIDsAndDefaults(t *testing.T) {
 	if selections[0].Source != "bundled-inline" {
 		t.Fatalf("unexpected source for bundled selection: %q", selections[0].Source)
 	}
-	if selections[1].Version != "1.2.3" {
-		t.Fatalf("expected managed default version, got %q", selections[1].Version)
+	if selections[1].Version != "*" {
+		t.Fatalf("expected managed default version constraint, got %q", selections[1].Version)
+	}
+}
+
+func TestNormalizeExtrasSelectionsKeepsExplicitManagedVersion(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:sSeo",
+			Name:               "sSeo",
+			Source:             "managed",
+			Version:            "1.2.3",
+			DefaultInstallMode: "latest-release",
+		},
+	}
+
+	selections := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{Name: "sSeo", Version: "v1.2.2"},
+	})
+	if len(selections) != 1 {
+		t.Fatalf("expected 1 selection, got %d", len(selections))
+	}
+	if selections[0].Version != "v1.2.2" {
+		t.Fatalf("expected explicit managed version to be kept, got %q", selections[0].Version)
+	}
+}
+
+func TestDefaultExtrasSelectionsUseFloatingManagedConstraint(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:sSeo",
+			Name:               "sSeo",
+			Source:             "managed",
+			Version:            "1.2.3",
+			DefaultInstallMode: "latest-release",
+			Preselected:        true,
+		},
+	}
+
+	selections := defaultExtrasSelections(pkgs)
+	if len(selections) != 1 {
+		t.Fatalf("expected 1 default selection, got %d", len(selections))
+	}
+	if selections[0].Version != "*" {
+		t.Fatalf("expected default managed selection to use wildcard, got %q", selections[0].Version)
+	}
+}
+
+func TestDefaultExtrasSelectionsUseDevBranchForDevOnlyManagedPackage(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:ePasskeys",
+			Name:               "ePasskeys",
+			Source:             "managed",
+			DefaultInstallMode: "default-branch",
+			DefaultBranch:      "main",
+			Preselected:        true,
+		},
+	}
+
+	selections := defaultExtrasSelections(pkgs)
+	if len(selections) != 1 {
+		t.Fatalf("expected 1 default selection, got %d", len(selections))
+	}
+	if selections[0].Version != "dev-main" {
+		t.Fatalf("expected dev-only managed selection to use dev-main, got %q", selections[0].Version)
+	}
+}
+
+func TestNormalizeExtrasSelectionsConvertsExplicitManagedDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:ePasskeys",
+			Name:               "ePasskeys",
+			Source:             "managed",
+			DefaultInstallMode: "default-branch",
+			DefaultBranch:      "main",
+		},
+	}
+
+	selections := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{Name: "ePasskeys", Version: "main"},
+	})
+	if len(selections) != 1 {
+		t.Fatalf("expected 1 selection, got %d", len(selections))
+	}
+	if selections[0].Version != "dev-main" {
+		t.Fatalf("expected explicit managed branch to normalize to dev-main, got %q", selections[0].Version)
+	}
+}
+
+func TestNormalizeExtrasSelectionsMatchesComposerPackageName(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:eTinyMCE",
+			Name:               "eTinyMCE",
+			Source:             "managed",
+			InstallMode:        "managed-artisan",
+			DefaultInstallMode: "latest-release",
+			Version:            "8.3.2",
+			ComposerName:       "evolution-cms/etinymce",
+		},
+	}
+
+	selections := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{
+			Name:         "evolution-cms/etinymce",
+			Source:       "composer-require",
+			Version:      "*",
+			ComposerName: "evolution-cms/etinymce",
+			Required:     true,
+		},
+	})
+	if len(selections) != 1 {
+		t.Fatalf("expected composer selection to resolve, got %#v", selections)
+	}
+	if selections[0].ID != "managed:eTinyMCE" || selections[0].Name != "eTinyMCE" || selections[0].Version != "*" || !selections[0].Required {
+		t.Fatalf("unexpected composer selection: %#v", selections[0])
+	}
+}
+
+func TestPresetRequiredExtrasMergeWithUserSelectedExtras(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:eTinyMCE",
+			Name:               "eTinyMCE",
+			Source:             "managed",
+			InstallMode:        "managed-artisan",
+			DefaultInstallMode: "latest-release",
+			Version:            "8.3.2",
+			ComposerName:       "evolution-cms/etinymce",
+		},
+		{
+			ID:                 "managed:ePasskeys",
+			Name:               "ePasskeys",
+			Source:             "managed",
+			InstallMode:        "managed-artisan",
+			DefaultInstallMode: "default-branch",
+			DefaultBranch:      "main",
+			ComposerName:       "evolution-cms/epasskeys",
+		},
+	}
+
+	required := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{
+			Name:         "evolution-cms/etinymce",
+			Source:       "composer-require",
+			Version:      "*",
+			ComposerName: "evolution-cms/etinymce",
+			Required:     true,
+		},
+	})
+	selected := mergeRequiredExtras([]domain.ExtrasSelection{{Name: "ePasskeys"}}, required)
+	selected = normalizeExtrasSelections(pkgs, selected)
+
+	if len(selected) != 2 {
+		t.Fatalf("expected required and user-selected extras, got %#v", selected)
+	}
+	if selected[0].Name != "ePasskeys" || selected[0].Required {
+		t.Fatalf("expected user-selected extra to stay optional, got %#v", selected[0])
+	}
+	if selected[1].Name != "eTinyMCE" || !selected[1].Required {
+		t.Fatalf("expected composer-required extra to stay required, got %#v", selected[1])
+	}
+	if selected[1].Version != "*" {
+		t.Fatalf("expected required composer version to be kept, got %q", selected[1].Version)
+	}
+}
+
+func TestPresetRequiredExtrasDedupeWhenUserAlsoSelectsRequiredExtra(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:eTinyMCE",
+			Name:               "eTinyMCE",
+			Source:             "managed",
+			InstallMode:        "managed-artisan",
+			DefaultInstallMode: "latest-release",
+			Version:            "8.3.2",
+			ComposerName:       "evolution-cms/etinymce",
+		},
+	}
+
+	required := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{
+			Name:         "evolution-cms/etinymce",
+			Source:       "composer-require",
+			Version:      "*",
+			ComposerName: "evolution-cms/etinymce",
+			Required:     true,
+		},
+	})
+	selected := mergeRequiredExtras([]domain.ExtrasSelection{{ID: "managed:eTinyMCE"}}, required)
+	selected = normalizeExtrasSelections(pkgs, selected)
+
+	if len(selected) != 1 {
+		t.Fatalf("expected duplicate required extra to collapse to one install item, got %#v", selected)
+	}
+	if selected[0].Name != "eTinyMCE" || !selected[0].Required {
+		t.Fatalf("expected deduped extra to stay required, got %#v", selected[0])
+	}
+}
+
+func TestParsePresetRequiredExtrasSupportsStringsAndObjects(t *testing.T) {
+	t.Parallel()
+
+	selections, err := parsePresetRequiredExtras([]byte(`{
+		"requiredExtras": ["eTinyMCE", {"name": "sSeo", "version": "*"}],
+		"extras": {"required": ["ePasskeys@main"]}
+	}`))
+	if err != nil {
+		t.Fatalf("parsePresetRequiredExtras returned error: %v", err)
+	}
+	if len(selections) != 3 {
+		t.Fatalf("expected 3 required extras, got %#v", selections)
+	}
+	if selections[0].Name != "eTinyMCE" || !selections[0].Required {
+		t.Fatalf("unexpected first selection: %#v", selections[0])
+	}
+	if selections[1].Name != "sSeo" || selections[1].Version != "*" || !selections[1].Required {
+		t.Fatalf("unexpected second selection: %#v", selections[1])
+	}
+	if selections[2].Name != "ePasskeys" || selections[2].Version != "main" || !selections[2].Required {
+		t.Fatalf("unexpected third selection: %#v", selections[2])
+	}
+}
+
+func TestParseComposerRequiredExtrasUsesComposerRequire(t *testing.T) {
+	t.Parallel()
+
+	selections, err := parseComposerRequiredExtras([]byte(`{
+		"require": {
+			"php": "^8.3",
+			"evolution-cms/etinymce": "*"
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("parseComposerRequiredExtras returned error: %v", err)
+	}
+	if len(selections) != 1 {
+		t.Fatalf("expected one composer-backed selection, got %#v", selections)
+	}
+	if selections[0].ComposerName != "evolution-cms/etinymce" || selections[0].Version != "*" || !selections[0].Required {
+		t.Fatalf("unexpected composer selection: %#v", selections[0])
+	}
+}
+
+func TestEnrichManagedExtrasComposerNamesFromCatalogCache(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	cacheDir := filepath.Join(root, "core", "custom", "cache")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{
+		"packages": [
+			{"name": "eTinyMCE", "composer_name": "evolution-cms/etinymce"}
+		]
+	}`)
+	if err := os.WriteFile(filepath.Join(cacheDir, "extras.catalog.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	pkgs := enrichManagedExtrasComposerNames(root, []domain.ExtrasPackage{{Name: "eTinyMCE", Source: "managed"}})
+	if len(pkgs) != 1 || pkgs[0].ComposerName != "evolution-cms/etinymce" {
+		t.Fatalf("expected composer name from cache, got %#v", pkgs)
+	}
+}
+
+func TestRequiredExtrasStaySelectedWhenUserSkips(t *testing.T) {
+	t.Parallel()
+
+	required := []domain.ExtrasSelection{{Name: "sSeo", Required: true}}
+	selections := mergeRequiredExtras(nil, required)
+	if len(selections) != 1 {
+		t.Fatalf("expected required selection, got %#v", selections)
+	}
+	if selections[0].Name != "sSeo" || !selections[0].Required {
+		t.Fatalf("unexpected required selection: %#v", selections[0])
+	}
+}
+
+func TestMarkRequiredExtrasPackagesMatchesByNameAfterNormalize(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{ID: "managed:sSeo", Name: "sSeo", Source: "managed"},
+		{ID: "managed:sTask", Name: "sTask", Source: "managed"},
+	}
+	got := markRequiredExtrasPackages(pkgs, []domain.ExtrasSelection{{Name: "sSeo", Required: true}})
+	if !got[0].Required {
+		t.Fatalf("expected sSeo package to be marked required: %#v", got[0])
+	}
+	if got[1].Required {
+		t.Fatalf("did not expect sTask package to be required: %#v", got[1])
+	}
+}
+
+func TestDedupeExtrasPackagesPrefersManagedOverLegacyDuplicate(t *testing.T) {
+	t.Parallel()
+
+	pkgs := dedupeExtrasPackages([]domain.ExtrasPackage{
+		{ID: "legacy-store:1", Name: "TinyMCE4", Source: "legacy-store"},
+		{ID: "managed:TinyMCE4", Name: "TinyMCE4", Source: "managed"},
+		{ID: "legacy-store:2", Name: "AjaxSearch", Source: "legacy-store"},
+	})
+
+	if len(pkgs) != 2 {
+		t.Fatalf("expected 2 unique packages, got %#v", pkgs)
+	}
+	foundTiny := false
+	for _, pkg := range pkgs {
+		if pkg.Name == "TinyMCE4" {
+			foundTiny = true
+			if pkg.Source != "managed" {
+				t.Fatalf("expected managed TinyMCE4 to win, got %#v", pkg)
+			}
+		}
+	}
+	if !foundTiny {
+		t.Fatalf("expected TinyMCE4 in deduped packages: %#v", pkgs)
 	}
 }
 

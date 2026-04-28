@@ -84,41 +84,49 @@ composer global update evolution-cms/installer
 ### Create a new Evolution CMS project
 
 ```bash
-evo install my-project
+evo install
 ```
 
 This command will:
 - Validate PHP version compatibility
+- Prompt you for the target installation directory when it was not passed as an argument
 - Prompt you for database configuration (with connection testing)
 - Prompt you for admin user credentials and directory
 - Prompt you for installation language
+- Prompt you to choose a project preset from `evolution-cms-presets` or enter a custom preset source
 - Download and install Evolution CMS (latest compatible version or from specific branch)
 - Configure the database connection
 - Run migrations and seeders
 - Create the admin user
+- Apply the selected project-layer preset
 
 ### Command Options
 
 ```bash
+evo install
+evo install my-project
 evo install my-project --preset=evolution
+evo install my-project --preset=evolution-cms-presets/default
+evo install my-project --preset=evolution-cms-presets/default@dev
+evo install my-project --preset=evolution-cms-presets/default-daisyui
 evo install my-project --db-type=mysql
 evo install my-project --db-host=localhost --db-name=evo_db
 evo install my-project --admin-username=admin --admin-email=admin@example.com
 evo install my-project --admin-directory=manager
 evo install my-project --language=en
 evo install my-project --branch=develop  # Install from specific Git branch
-evo install my-project --git  # Initialize a Git repository
 evo install my-project --force  # Force install even if directory exists
 evo install my-project --cli --log  # Non-interactive mode + write log.md
 evo install my-project --composer-update  # Use composer update during setup
 evo install my-project --composer-clear-cache  # Clear Composer cache before install
 evo install my-project --github-pat=TOKEN  # GitHub PAT for API requests
-evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (optional)
+evo install my-project --extras=sTask,sSeo  # Install extras after setup (optional)
+evo install my-project --extras=legacy-store:84@1.12.2  # Install a Legacy Store package by ID
 ```
 
 ### Available Options
 
-- `--preset`: The preset to use (default: `evolution`)
+- `--preset`: Project-layer preset spec. In TUI mode, omit it to choose from the `evolution-cms-presets` catalog or enter a custom source. In CLI mode, omit it for core-only install. Use `evolution`, `default`, `evolution-cms-presets/default`, `evolution-cms-presets/default@dev`, a Git URL, or a local path.
 - `--db-type`: Database type (`mysql`, `pgsql`, `sqlite`, or `sqlsrv`)
 - `--db-host`: Database host (default: `localhost`, not used for SQLite)
 - `--db-port`: Database port (defaults: 3306 for MySQL, 5432 for PostgreSQL, 1433 for SQL Server)
@@ -131,7 +139,6 @@ evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (o
 - `--admin-directory`: Admin directory name (default: `manager`)
 - `--language`: Installation language (default: `en`)
 - `--branch`: Install from specific Git branch (e.g., `3.5.x`, `develop`, `nightly`, `main`) instead of latest release
-- `--git`: Initialize a Git repository and create initial commit
 - `--force`: Force install even if directory exists
 - `--log`: Always write installer log to `log.md`
 - `--cli`: Run in non-interactive CLI mode (no TUI)
@@ -139,7 +146,7 @@ evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (o
 - `--composer-clear-cache`: Clear Composer cache before install
 - `--composer-update`: Use `composer update` instead of `composer install` during setup
 - `--github-pat` / `--github_pat`: GitHub PAT token for API requests (avoids GitHub rate limits)
-- `--extras`: Comma-separated extras to install after setup (e.g., `sTask@main,sSeo`)
+- `--extras`: Comma-separated extras to install after setup. Managed extras can be passed by name (for example `sTask,sSeo`) and released packages are installed with `*` unless you pin a version. Dev-only managed packages use their default branch constraint, for example `dev-main`. Legacy Store packages can be passed by ID (for example `legacy-store:84@1.12.2`).
 
 ### CLI Example (Non-interactive)
 
@@ -154,30 +161,105 @@ evo install demo \
   --admin-password=123456 \
   --admin-directory=manager \
   --language=uk \
-  --composer-clear-cache \
-  --github-pat=YOUR_GITHUB_PAT \
-  --extras=sTask@main,sSeo
+  --preset=evolution-cms-presets/default
 ```
 
 Notes:
-- `--cli` skips the Extras wizard prompt; use `--extras` to auto-install.
-- `--extras` works in both TUI and CLI; when provided, the wizard is skipped and installation starts immediately.
+- `--cli` is non-interactive; use `--extras` to auto-install Extras.
+- `--extras` works in both TUI and CLI; when provided, the Extras selection screen is skipped and installation starts immediately.
+- Released Extras without an explicit `@version` are installed with Composer constraint `*`, so later Composer updates can pick up newer package versions. Dev-only Extras without releases use their default branch constraint, for example `dev-main`.
+- Legacy Store packages are selected by their catalog ID in CLI mode, e.g. `--extras=legacy-store:84@1.12.2`.
 
-## Presets
+## Project Presets
 
-### Evolution Preset (Default)
+The installer separates the target project from the preset source.
+
+For TUI installs, you can run the installer with no arguments and choose the target directory, database, admin user, language, project preset, and optional Extras inside the wizard:
+
+```bash
+evo install
+```
+
+If you already know the target directory or branch, pass only those values and let TUI ask the rest:
+
+```bash
+evo install /path/to/my-site --branch=3.5.x
+```
+
+When `--preset` is omitted in TUI mode, the installer fetches public repositories from `https://github.com/evolution-cms-presets/` and shows them as preset choices. The same screen also includes:
+
+- `Custom repository, Git URL, or local path` for private presets or local development checkouts
+- `Evolution core only (no project preset)` for a plain core install
+
+You can still pass a preset directly when you want to skip the preset picker:
+
+```bash
+evo install /path/to/my-site \
+  --branch=3.5.x \
+  --preset=evolution-cms-presets/default-daisyui
+```
+
+For CLI installs, provide all required answers up front. This installs a new project into the target directory, then copies the `evolution-cms-presets/default` project layer into that project:
+
+```bash
+evo install /path/to/my-site \
+  --cli \
+  --branch=3.5.x \
+  --db-type=sqlite \
+  --db-name=database.sqlite \
+  --admin-username=admin \
+  --admin-email=admin@example.com \
+  --admin-password=change-me \
+  --admin-directory=manager \
+  --language=uk \
+  --preset=evolution-cms-presets/default
+```
+
+`--preset=evolution-cms-presets/default` means "copy this preset as the bootstrap project layer." It does not define the future GitHub identity of the created site. The target directory or its own Git remote can still be your own project repository.
+
+The default preset does not install Extras. Use `--extras=sTask,sSeo` only when you intentionally want those packages in the project.
+
+Presets can declare required managed Composer Extras in `core/custom/composer.json`. The installer reads those Composer requirements after the preset is applied, matches them against the managed Extras catalog, then runs the Extras installer so provider discovery, asset publishing, migrations, and cache clearing still happen. Required Extras are automatically selected after the preset is applied, stay locked in the TUI, and are still installed when the user chooses to skip optional Extras:
+
+```json
+{
+  "require": {
+    "evolution-cms/etinymce": "*"
+  }
+}
+```
+
+Legacy or non-Composer required Extras can still be described in `core/custom/preset.json` when needed, but Composer package dependencies should live in `core/custom/composer.json`.
+
+Accepted preset sources:
+
+- `default` resolves to `https://github.com/evolution-cms-presets/default.git`
+- `evolution-cms-presets/default` resolves to `https://github.com/evolution-cms-presets/default.git`
+- `evolution-cms-presets/default@dev` resolves to the same preset repository with Git ref `dev`
+- `evolution-cms-presets/blog-daisyui` resolves to the official blog starter preset
+- `owner/private-preset` can be entered in TUI as a custom source when your Git environment can access it
+- full Git URLs are used as-is; add `#dev` when you need a URL ref
+- local paths are used as-is
+
+Use a branch or tag suffix only when you need to install a non-default preset ref. Local preset development can point directly at a checkout:
+
+```bash
+evo install /path/to/my-site --preset=/path/to/default-preset
+```
+
+### Evolution Core Only
 
 Standard Evolution CMS installation with all core features.
 
 ```bash
-evo install my-project
-# or
 evo install my-project --preset=evolution
 ```
 
-### Custom Presets
+In TUI mode, omit `--preset` and keep the default `No project preset (Evolution core only)` choice.
 
-You can create custom presets by extending the `Preset` class. See the `src/Presets/` directory for examples.
+### Custom Project Presets
+
+Project presets are applied through the installed Evolution CMS `core/artisan preset:install` command after the core installation and database setup complete.
 
 ## Features
 
@@ -200,11 +282,12 @@ You can create custom presets by extending the `Preset` class. See the `src/Pres
 
 ### Managed Extras Wizard (TUI)
 
-- **Post-install prompt**: After the success screen, the installer asks whether to install additional Extras.
-- **Selection UI**: Shows the full managed Extras list (type 0, install via Composer) with checkboxes, versions, and descriptions.
-- **Batch install**: Installs selected Extras one-by-one via `php artisan extras extras <Name>` and shows progress/status.
+- **Post-install selection**: After the core installation, the installer opens the Extras selection screen directly with default Extras preselected.
+- **Selection UI**: Shows bundled defaults and managed Extras first, with checkboxes, versions, descriptions, and search.
+- **Legacy Store**: Legacy Store packages are hidden behind the `Show Legacy Store` action so the main list stays focused.
+- **Batch install**: Installs selected Extras one-by-one via `php artisan extras extras <Name> <version>` and shows progress/status. Released managed packages default to `*`; dev-only packages default to their branch constraint such as `dev-main`.
 - **Post steps**: Runs `php artisan migrate` once after all Extras, then `php artisan cache:clear-full`.
-- **Flow**: Install -> Success screen -> Prompt -> Extras selection -> Progress -> Summary
+- **Flow**: Install -> Extras selection -> Progress -> Summary
 
 ### Inspired by Docker Implementation
 
@@ -237,6 +320,8 @@ From `installer/`:
 
 ```bash
 go run ./cmd/evo install
+# or prefill the Evolution branch and let TUI ask for directory, preset, DB, admin, language, and Extras:
+go run ./cmd/evo install --branch=3.5.x
 # or
 make install
 ```

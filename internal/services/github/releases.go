@@ -19,6 +19,15 @@ type GitHubRelease struct {
 	Prerelease bool   `json:"prerelease"`
 }
 
+type GitHubRepository struct {
+	Name        string `json:"name"`
+	FullName    string `json:"full_name"`
+	Description string `json:"description"`
+	HTMLURL     string `json:"html_url"`
+	Private     bool   `json:"private"`
+	Archived    bool   `json:"archived"`
+}
+
 func FetchLatestRelease(ctx context.Context, owner string, repo string) (GitHubRelease, error) {
 	u := url.URL{
 		Scheme: "https",
@@ -110,4 +119,64 @@ func FetchReleasesPage(ctx context.Context, owner string, repo string, page int)
 		return nil, err
 	}
 	return releases, nil
+}
+
+func FetchOrgRepositories(ctx context.Context, org string) ([]GitHubRepository, error) {
+	const maxPages = 3
+	var out []GitHubRepository
+	for page := 1; page <= maxPages; page++ {
+		items, err := FetchOrgRepositoriesPage(ctx, org, page)
+		if err != nil {
+			return nil, err
+		}
+		if len(items) == 0 {
+			break
+		}
+		out = append(out, items...)
+	}
+	return out, nil
+}
+
+func FetchOrgRepositoriesPage(ctx context.Context, org string, page int) ([]GitHubRepository, error) {
+	if page < 1 {
+		page = 1
+	}
+	u := url.URL{
+		Scheme: "https",
+		Host:   "api.github.com",
+		Path:   fmt.Sprintf("/orgs/%s/repos", org),
+	}
+	q := u.Query()
+	q.Set("per_page", "100")
+	q.Set("page", strconv.Itoa(page))
+	q.Set("type", "public")
+	q.Set("sort", "full_name")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "evo-installer")
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{Timeout: 12 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("github org repositories: %s", resp.Status)
+	}
+
+	var repos []GitHubRepository
+	if err := json.NewDecoder(resp.Body).Decode(&repos); err != nil {
+		return nil, err
+	}
+	return repos, nil
 }

@@ -35,6 +35,10 @@ type extrasUIState struct {
 	focus    extrasFocus
 	action   int
 
+	showLegacy   bool
+	searchActive bool
+	searchQuery  string
+
 	versionPickerActive  bool
 	versionPickerPkg     string
 	versionPickerCursor  int
@@ -87,15 +91,23 @@ func (m *Model) applyExtrasState(state domain.ExtrasState) {
 				}
 			}
 			m.extras.cursor = 0
-			m.extras.focus = extrasFocusList
-			m.extras.action = 0
+			m.extras.focus = extrasFocusActions
+			if len(state.Selections) > 0 {
+				m.extras.action = 0
+			} else {
+				m.extras.action = 1
+			}
 			m.extras.versionPickerActive = false
+			m.extras.showLegacy = false
+			m.extras.searchActive = false
+			m.extras.searchQuery = ""
 		}
-		if len(m.extras.packages) == 0 {
+		visibleCount := len(m.visibleExtrasPackages())
+		if visibleCount == 0 {
 			m.extras.cursor = 0
 			m.extras.focus = extrasFocusActions
-		} else if m.extras.cursor >= len(m.extras.packages) {
-			m.extras.cursor = len(m.extras.packages) - 1
+		} else if m.extras.cursor >= visibleCount {
+			m.extras.cursor = visibleCount - 1
 		}
 		return
 	}
@@ -123,7 +135,7 @@ func extrasPackagesEqual(a []domain.ExtrasPackage, b []domain.ExtrasPackage) boo
 		return false
 	}
 	for i := range a {
-		if a[i].ID != b[i].ID || a[i].Name != b[i].Name || a[i].Version != b[i].Version || a[i].Source != b[i].Source || a[i].Section != b[i].Section || a[i].Preselected != b[i].Preselected {
+		if a[i].ID != b[i].ID || a[i].Name != b[i].Name || a[i].Version != b[i].Version || a[i].Source != b[i].Source || a[i].Section != b[i].Section || a[i].Preselected != b[i].Preselected || a[i].ComposerName != b[i].ComposerName {
 			return false
 		}
 		if len(a[i].Versions) != len(b[i].Versions) {
@@ -170,7 +182,12 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 		m.handleExtrasVersionPickerKey(lowerKey)
 		return
 	}
-	listLen := len(m.extras.packages)
+	if m.extras.searchActive {
+		m.handleExtrasSearchKey(key, lowerKey)
+		return
+	}
+	visiblePackages := m.visibleExtrasPackages()
+	listLen := len(visiblePackages)
 	listHeight := m.extrasListHeight()
 
 	toggleFocus := func() {
@@ -188,6 +205,15 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 	case "shift+tab":
 		toggleFocus()
 		return
+	case "/":
+		m.extras.searchActive = true
+		if len(m.extras.searchQuery) > 0 {
+			m.extras.focus = extrasFocusList
+		}
+		return
+	case "l":
+		m.toggleExtrasLegacy()
+		return
 	}
 
 	if m.extras.focus == extrasFocusActions {
@@ -200,15 +226,14 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 				}
 			}
 			return
-		case "left", "right", "tab", "shift+tab":
-			if m.extras.action == 0 {
-				m.extras.action = 1
-			} else {
-				m.extras.action = 0
-			}
+		case "left":
+			m.extras.action--
+		case "right", "tab", "shift+tab":
+			m.extras.action++
 		case "enter":
 			selected := m.extrasSelectedNames()
-			if m.extras.action == 0 {
+			switch m.extras.action {
+			case 0:
 				if len(selected) == 0 {
 					return
 				}
@@ -220,6 +245,9 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 					Extras:     selected,
 				})
 				return
+			case 2:
+				m.toggleExtrasLegacy()
+				return
 			}
 			m.sendAction(domain.Action{
 				Type:       domain.ActionExtrasDecision,
@@ -227,6 +255,7 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 				OptionID:   uiExtrasSkip,
 			})
 		}
+		m.clampExtrasAction()
 		return
 	}
 
@@ -256,14 +285,18 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 		if listLen == 0 || m.extras.cursor < 0 || m.extras.cursor >= listLen {
 			return
 		}
-		pkg := m.extras.packages[m.extras.cursor]
+		pkg := visiblePackages[m.extras.cursor]
 		m.openExtrasVersionPicker(pkg)
 		return
 	case " ":
 		if listLen == 0 || m.extras.cursor < 0 || m.extras.cursor >= listLen {
 			return
 		}
-		key := extrasPackageKey(m.extras.packages[m.extras.cursor])
+		pkg := visiblePackages[m.extras.cursor]
+		if pkg.Required {
+			return
+		}
+		key := extrasPackageKey(pkg)
 		if key == "" {
 			return
 		}
@@ -290,6 +323,65 @@ func (m *Model) handleExtrasSelectKey(key string, lowerKey string) {
 	if m.extras.cursor >= listLen {
 		m.extras.cursor = listLen - 1
 	}
+}
+
+func (m *Model) handleExtrasSearchKey(key string, lowerKey string) {
+	switch lowerKey {
+	case "esc":
+		m.extras.searchActive = false
+		return
+	case "enter":
+		m.extras.searchActive = false
+		if len(m.visibleExtrasPackages()) > 0 {
+			m.extras.focus = extrasFocusList
+		}
+		return
+	case "ctrl+u":
+		m.extras.searchQuery = ""
+	case "backspace", "ctrl+h":
+		rs := []rune(m.extras.searchQuery)
+		if len(rs) > 0 {
+			m.extras.searchQuery = string(rs[:len(rs)-1])
+		}
+	default:
+		if len(key) == 1 && key != "/" {
+			m.extras.searchQuery += key
+		}
+	}
+	m.extras.cursor = 0
+	if len(m.visibleExtrasPackages()) == 0 {
+		m.extras.focus = extrasFocusActions
+	} else {
+		m.extras.focus = extrasFocusList
+	}
+}
+
+func (m *Model) toggleExtrasLegacy() {
+	m.extras.showLegacy = !m.extras.showLegacy
+	m.extras.cursor = 0
+	if len(m.visibleExtrasPackages()) > 0 {
+		m.extras.focus = extrasFocusList
+	} else {
+		m.extras.focus = extrasFocusActions
+	}
+}
+
+func (m *Model) clampExtrasAction() {
+	count := extrasActionCount()
+	if count <= 0 {
+		m.extras.action = 0
+		return
+	}
+	for m.extras.action < 0 {
+		m.extras.action += count
+	}
+	if m.extras.action >= count {
+		m.extras.action = m.extras.action % count
+	}
+}
+
+func extrasActionCount() int {
+	return 3
 }
 
 func (m *Model) handleExtrasSummaryKey(lowerKey string) {
@@ -323,21 +415,21 @@ func (m *Model) handleExtrasSummaryKey(lowerKey string) {
 }
 
 func (m *Model) extrasSelectedNames() []domain.ExtrasSelection {
-	if len(m.extras.packages) == 0 || len(m.extras.selected) == 0 {
+	if len(m.extras.packages) == 0 {
 		return nil
 	}
-	out := make([]domain.ExtrasSelection, 0, len(m.extras.selected))
+	out := make([]domain.ExtrasSelection, 0, len(m.extras.packages))
 	for _, pkg := range m.extras.packages {
 		key := extrasPackageKey(pkg)
 		if key == "" {
 			continue
 		}
-		if m.extras.selected[key] {
+		if pkg.Required || (m.extras.selected != nil && m.extras.selected[key]) {
 			version := ""
 			if m.extras.versions != nil {
 				version = strings.TrimSpace(m.extras.versions[key])
 			}
-			out = append(out, domain.ExtrasSelection{ID: key, Name: pkg.Name, Source: pkg.Source, Version: version})
+			out = append(out, domain.ExtrasSelection{ID: key, Name: pkg.Name, Source: pkg.Source, Version: version, Required: pkg.Required})
 		}
 	}
 	return out
@@ -364,6 +456,9 @@ func selectionsToValues(selections []domain.ExtrasSelection) []string {
 }
 
 func (m *Model) openExtrasVersionPicker(pkg domain.ExtrasPackage) {
+	if pkg.Required {
+		return
+	}
 	key := extrasPackageKey(pkg)
 	if key == "" {
 		return
@@ -457,19 +552,31 @@ func buildExtrasVersionOptions(pkg domain.ExtrasPackage) ([]string, []string) {
 	values := []string{}
 
 	defaultLabel := "Default (auto)"
-	if v := strings.TrimSpace(pkg.Version); v != "" {
-		defaultLabel += " - " + v
-	} else if b := strings.TrimSpace(pkg.DefaultBranch); b != "" {
-		defaultLabel += " - " + b
+	if isManagedExtrasPackage(pkg) {
+		defaultLabel = "Default (" + domain.DefaultExtrasInstallVersion(pkg) + ")"
+	} else {
+		if v := strings.TrimSpace(pkg.Version); v != "" {
+			defaultLabel += " - " + v
+		} else if b := strings.TrimSpace(pkg.DefaultBranch); b != "" {
+			defaultLabel += " - " + b
+		}
 	}
 	labels = append(labels, defaultLabel)
 	values = append(values, "")
 
 	seen := map[string]struct{}{}
+	if isManagedExtrasPackage(pkg) {
+		if v := strings.TrimSpace(domain.DefaultExtrasInstallVersion(pkg)); v != "" {
+			seen[v] = struct{}{}
+		}
+	}
 	add := func(v string) {
 		v = strings.TrimSpace(v)
 		if v == "" {
 			return
+		}
+		if isManagedExtrasPackage(pkg) {
+			v = strings.TrimSpace(domain.NormalizeExtrasInstallVersion(pkg, v))
 		}
 		if _, ok := seen[v]; ok {
 			return
@@ -486,6 +593,10 @@ func buildExtrasVersionOptions(pkg domain.ExtrasPackage) ([]string, []string) {
 	add(pkg.DefaultBranch)
 
 	return labels, values
+}
+
+func isManagedExtrasPackage(pkg domain.ExtrasPackage) bool {
+	return domain.IsManagedExtrasPackage(pkg)
 }
 
 func (m *Model) extrasListHeight() int {
@@ -525,6 +636,7 @@ func (m *Model) renderExtrasSelect(width int, height int) string {
 
 	lines := []string{
 		truncatePlain("Select extras to install.", contentW),
+		truncatePlain(m.extrasFilterLine(), contentW),
 		"",
 	}
 
@@ -878,21 +990,22 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 	if height <= 0 || width <= 0 {
 		return nil
 	}
-	if len(m.extras.packages) == 0 {
+	packages := m.visibleExtrasPackages()
+	if len(packages) == 0 {
 		return fitLines("(no extras found)", width, height)
 	}
 
 	visible := height
-	if visible > len(m.extras.packages) {
-		visible = len(m.extras.packages)
+	if visible > len(packages) {
+		visible = len(packages)
 	}
 	start := 0
-	if len(m.extras.packages) > visible {
+	if len(packages) > visible {
 		start = m.extras.cursor - visible/2
 		if start < 0 {
 			start = 0
 		}
-		maxStart := len(m.extras.packages) - visible
+		maxStart := len(packages) - visible
 		if start > maxStart {
 			start = maxStart
 		}
@@ -902,7 +1015,7 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 	currentSection := ""
 	for i := 0; i < visible; i++ {
 		idx := start + i
-		pkg := m.extras.packages[idx]
+		pkg := packages[idx]
 		key := extrasPackageKey(pkg)
 		section := strings.TrimSpace(pkg.Section)
 		if section != "" && section != currentSection && len(out) < height {
@@ -922,7 +1035,9 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 		}
 
 		checked := "[ ]"
-		if m.extras.selected != nil && m.extras.selected[key] {
+		if pkg.Required {
+			checked = "[!]"
+		} else if m.extras.selected != nil && m.extras.selected[key] {
 			checked = "[x]"
 		}
 
@@ -931,16 +1046,23 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 			version = strings.TrimSpace(m.extras.versions[key])
 		}
 		if version == "" {
-			version = strings.TrimSpace(pkg.Version)
-		}
-		if version == "" {
-			version = strings.TrimSpace(pkg.DefaultBranch)
-		}
-		if version == "" {
-			version = "default"
+			if isManagedExtrasPackage(pkg) {
+				version = domain.DefaultExtrasInstallVersion(pkg)
+			} else {
+				version = strings.TrimSpace(pkg.Version)
+				if version == "" {
+					version = strings.TrimSpace(pkg.DefaultBranch)
+				}
+				if version == "" {
+					version = "default"
+				}
+			}
 		}
 		desc := strings.TrimSpace(pkg.Description)
 		label := fmt.Sprintf("%s %s %s%s @ %s", cursor, checked, extrasSourcePrefix(pkg), pkg.Name, version)
+		if pkg.Required {
+			label += " (required by preset)"
+		}
 		if desc != "" {
 			label += " - " + desc
 		}
@@ -953,6 +1075,52 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 		out = append(out, "")
 	}
 	return out[:height]
+}
+
+func (m *Model) extrasFilterLine() string {
+	source := "Bundled + Managed"
+	if m.extras.showLegacy {
+		source = "Bundled + Managed + Legacy Store"
+	}
+	query := strings.TrimSpace(m.extras.searchQuery)
+	if query == "" {
+		if m.extras.searchActive {
+			query = "typing..."
+		} else {
+			query = "none"
+		}
+	}
+	return fmt.Sprintf("Source: %s   Search: %s", source, query)
+}
+
+func (m *Model) visibleExtrasPackages() []domain.ExtrasPackage {
+	if len(m.extras.packages) == 0 {
+		return nil
+	}
+	query := strings.ToLower(strings.TrimSpace(m.extras.searchQuery))
+	out := make([]domain.ExtrasPackage, 0, len(m.extras.packages))
+	for _, pkg := range m.extras.packages {
+		if !m.extras.showLegacy && strings.TrimSpace(pkg.Source) == "legacy-store" {
+			continue
+		}
+		if query != "" && !extrasPackageMatchesQuery(pkg, query) {
+			continue
+		}
+		out = append(out, pkg)
+	}
+	return out
+}
+
+func extrasPackageMatchesQuery(pkg domain.ExtrasPackage, query string) bool {
+	haystack := strings.ToLower(strings.Join([]string{
+		pkg.Name,
+		pkg.Description,
+		pkg.Section,
+		pkg.Source,
+		pkg.Kind,
+		pkg.LegacyNames,
+	}, " "))
+	return strings.Contains(haystack, query)
 }
 
 func extrasPackageKey(pkg domain.ExtrasPackage) string {
@@ -1182,19 +1350,34 @@ func extrasStatusMarker(status domain.ExtrasItemStatus) (string, lipgloss.Style)
 
 func (m *Model) renderExtrasSelectActions(width int) string {
 	selected := m.extrasSelectedNames()
-	installLabel := " Install selected "
-	skipLabel := " Back/Skip "
+	installLabel := fmt.Sprintf(" Install selected (%d) ", len(selected))
+	skipLabel := " Skip extras "
+	if m.hasRequiredExtras() {
+		skipLabel = " Install required only "
+	}
+	legacyLabel := " Show Legacy Store "
+	if m.extras.showLegacy {
+		legacyLabel = " Hide Legacy Store "
+	}
 
 	installStyle := mutedStyle
 	skipStyle := mutedStyle
+	legacyStyle := mutedStyle
 
 	if m.extras.focus == extrasFocusActions {
-		if m.extras.action == 0 {
+		switch m.extras.action {
+		case 0:
 			installStyle = okStyle.Copy().Bold(true)
 			skipStyle = mutedStyle
-		} else {
+			legacyStyle = mutedStyle
+		case 1:
 			skipStyle = warnStyle.Copy().Bold(true)
 			installStyle = mutedStyle
+			legacyStyle = mutedStyle
+		case 2:
+			legacyStyle = inputStyle.Copy().Bold(true)
+			installStyle = mutedStyle
+			skipStyle = mutedStyle
 		}
 	}
 
@@ -1204,8 +1387,18 @@ func (m *Model) renderExtrasSelectActions(width int) string {
 
 	install := installStyle.Render("[" + installLabel + "]")
 	skip := skipStyle.Render("[" + skipLabel + "]")
-	line := install + "  " + skip
+	legacy := legacyStyle.Render("[" + legacyLabel + "]")
+	line := install + "  " + skip + "  " + legacy
 	return padRight(truncateANSI(line, width), width)
+}
+
+func (m *Model) hasRequiredExtras() bool {
+	for _, pkg := range m.extras.packages {
+		if pkg.Required {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) renderExtrasSummaryActions(width int) string {

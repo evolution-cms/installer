@@ -186,6 +186,67 @@ final class InstallCommandAdminDirectoryTest extends TestCase
         $this->removeTempDir($projectPath);
     }
 
+    public function testResolveProjectPresetSourceSupportsNamesReposUrlsAndLocalPaths(): void
+    {
+        $cmd = $this->makeCommand();
+
+        $this->assertSame(
+            'https://github.com/evolution-cms-presets/default.git',
+            $cmd->resolveProjectPresetSourcePublic('default')
+        );
+        $this->assertSame(
+            'https://github.com/evolution-cms-presets/default.git',
+            $cmd->resolveProjectPresetSourcePublic('evolution-cms-presets/default')
+        );
+        $this->assertSame(
+            'https://github.com/evolution-cms-presets/default.git',
+            $cmd->resolveProjectPresetSourcePublic('https://github.com/evolution-cms-presets/default.git')
+        );
+        $this->assertSame(
+            ['https://github.com/evolution-cms-presets/default.git', 'dev'],
+            $cmd->resolveProjectPresetSpecPublic('default@dev')
+        );
+        $this->assertSame(
+            ['https://github.com/evolution-cms-presets/default.git', 'dev'],
+            $cmd->resolveProjectPresetSpecPublic('evolution-cms-presets/default@dev')
+        );
+        $this->assertSame(
+            ['https://github.com/evolution-cms-presets/default.git', 'dev'],
+            $cmd->resolveProjectPresetSpecPublic('https://github.com/evolution-cms-presets/default.git#dev')
+        );
+
+        $projectPath = $this->makeTempProjectDir();
+        $this->assertSame(realpath($projectPath), $cmd->resolveProjectPresetSourcePublic($projectPath));
+        $this->removeTempDir($projectPath);
+    }
+
+    public function testShouldSkipProjectPresetKeepsEvolutionAsCoreOnlyInstall(): void
+    {
+        $cmd = $this->makeCommand();
+
+        $this->assertTrue($cmd->shouldSkipProjectPresetPublic(null));
+        $this->assertTrue($cmd->shouldSkipProjectPresetPublic(''));
+        $this->assertTrue($cmd->shouldSkipProjectPresetPublic('evolution'));
+        $this->assertTrue($cmd->shouldSkipProjectPresetPublic('none'));
+        $this->assertFalse($cmd->shouldSkipProjectPresetPublic('default'));
+        $this->assertFalse($cmd->shouldSkipProjectPresetPublic('evolution-cms-presets/default'));
+    }
+
+    public function testProjectPresetInstallCommandKeepsLocalPresetSource(): void
+    {
+        $cmd = $this->makeCommand();
+        $presetPath = $this->makeTempProjectDir();
+
+        $local = $cmd->buildProjectPresetInstallCommandPublic('/tmp/core/artisan', $presetPath);
+        $this->assertContains('--keep', $local);
+
+        $remote = $cmd->buildProjectPresetInstallCommandPublic('/tmp/core/artisan', 'https://github.com/evolution-cms-presets/default.git', 'dev');
+        $this->assertNotContains('--keep', $remote);
+        $this->assertContains('--ref=dev', $remote);
+
+        $this->removeTempDir($presetPath);
+    }
+
     private function makeTempProjectDir(): string
     {
         $base = rtrim(sys_get_temp_dir(), '/\\');
@@ -241,5 +302,25 @@ final class TestableInstallCommand extends InstallCommand
     public function finalizeInstallationPublic(string $projectPath, array $options): void
     {
         $this->finalizeInstallation($projectPath, $options);
+    }
+
+    public function resolveProjectPresetSourcePublic(string $preset): string
+    {
+        return $this->resolveProjectPresetSource($preset);
+    }
+
+    public function shouldSkipProjectPresetPublic(?string $preset): bool
+    {
+        return $this->shouldSkipProjectPreset($preset);
+    }
+
+    public function resolveProjectPresetSpecPublic(string $preset): array
+    {
+        return $this->resolveProjectPresetSpec($preset);
+    }
+
+    public function buildProjectPresetInstallCommandPublic(string $artisan, string $source, string $ref = ''): array
+    {
+        return $this->buildProjectPresetInstallCommand($artisan, $source, $ref);
     }
 }

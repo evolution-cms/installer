@@ -33,13 +33,15 @@ type legacyStoreStartResponse struct {
 	AllCategory map[string][]legacyStoreCatalogRaw `json:"allcategory"`
 }
 
+type legacyStoreScalar string
+
 type legacyStoreCategory struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+	ID    legacyStoreScalar `json:"id"`
+	Title string            `json:"title"`
 }
 
 type legacyStoreCatalogRaw struct {
-	ID           string              `json:"id"`
+	ID           legacyStoreScalar   `json:"id"`
 	URL          legacyStoreURLField `json:"url"`
 	Method       string              `json:"method"`
 	Type         string              `json:"type"`
@@ -64,6 +66,27 @@ type legacyStoreVersion struct {
 	Date    string `json:"date"`
 }
 
+func (s *legacyStoreScalar) UnmarshalJSON(raw []byte) error {
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return err
+	}
+
+	switch v := value.(type) {
+	case string:
+		*s = legacyStoreScalar(v)
+	case json.Number:
+		*s = legacyStoreScalar(v.String())
+	case nil:
+		*s = ""
+	default:
+		*s = legacyStoreScalar(fmt.Sprint(v))
+	}
+	return nil
+}
+
 func loadAllExtrasCatalogs(ctx context.Context, workDir, token string) ([]domain.ExtrasPackage, []domain.ExtrasSelection, []string, error) {
 	coreDir, warn, err := checkExtrasPrereqs(ctx, workDir)
 	if err != nil {
@@ -80,6 +103,7 @@ func loadAllExtrasCatalogs(ctx context.Context, workDir, token string) ([]domain
 	if err != nil {
 		warnings = append(warnings, "Managed extras unavailable: "+err.Error())
 	} else {
+		managed = enrichManagedExtrasComposerNames(workDir, managed)
 		pkgs = append(pkgs, managed...)
 	}
 
@@ -97,9 +121,133 @@ func loadAllExtrasCatalogs(ctx context.Context, workDir, token string) ([]domain
 		pkgs = append(pkgs, legacy...)
 	}
 
+	pkgs = dedupeExtrasPackages(pkgs)
 	sortExtrasPackages(pkgs)
 	defaults := defaultExtrasSelections(pkgs)
 	return pkgs, defaults, warnings, nil
+}
+
+func dedupeExtrasPackages(pkgs []domain.ExtrasPackage) []domain.ExtrasPackage {
+	if len(pkgs) == 0 {
+		return nil
+	}
+	out := make([]domain.ExtrasPackage, 0, len(pkgs))
+	seen := map[string]int{}
+	for _, pkg := range pkgs {
+		key := strings.ToLower(strings.TrimSpace(pkg.Name))
+		if key == "" {
+			continue
+		}
+		if idx, ok := seen[key]; ok {
+			if extrasSourcePriority(pkg.Source) < extrasSourcePriority(out[idx].Source) {
+				out[idx] = pkg
+			}
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, pkg)
+	}
+	return out
+}
+
+func extrasSourcePriority(source string) int {
+	switch strings.TrimSpace(source) {
+	case "bundled-inline":
+		return 0
+	case "managed":
+		return 1
+	case "legacy-store":
+		return 2
+	default:
+		return 10
+	}
+}
+
+type extrasCatalogComposerPackage struct {
+	Name         string `json:"name"`
+	FullName     string `json:"full_name"`
+	ComposerName string `json:"composer_name"`
+}
+
+type extrasCatalogComposerCache struct {
+	Packages []extrasCatalogComposerPackage `json:"packages"`
+}
+
+func enrichManagedExtrasComposerNames(workDir string, pkgs []domain.ExtrasPackage) []domain.ExtrasPackage {
+	if len(pkgs) == 0 {
+		return pkgs
+	}
+
+	composerNames := loadExtrasComposerNameMap(workDir)
+	for i := range pkgs {
+		if strings.TrimSpace(pkgs[i].ComposerName) != "" {
+			pkgs[i].ComposerName = normalizeComposerPackageName(pkgs[i].ComposerName)
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(pkgs[i].Name))
+		if composerName := composerNames[key]; composerName != "" {
+			pkgs[i].ComposerName = composerName
+			continue
+		}
+		pkgs[i].ComposerName = inferManagedExtrasComposerName(pkgs[i].Name)
+	}
+	return pkgs
+}
+
+func loadExtrasComposerNameMap(workDir string) map[string]string {
+	path := filepath.Join(absDir(workDir), "core", "custom", "cache", "extras.catalog.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	var catalog extrasCatalogComposerCache
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		return nil
+	}
+
+	out := map[string]string{}
+	for _, pkg := range catalog.Packages {
+		name := strings.ToLower(strings.TrimSpace(pkg.Name))
+		if name == "" {
+			continue
+		}
+		composerName := normalizeComposerPackageName(pkg.ComposerName)
+		if composerName == "" {
+			composerName = normalizeComposerPackageName(pkg.FullName)
+		}
+		if composerName == "" {
+			continue
+		}
+		out[name] = composerName
+	}
+	return out
+}
+
+func inferManagedExtrasComposerName(name string) string {
+	name = strings.TrimSpace(name)
+	if len(name) < 2 {
+		return ""
+	}
+	packageName := strings.ToLower(name)
+	switch name[0] {
+	case 'e', 'E':
+		return "evolution-cms/" + packageName
+	case 's', 'S':
+		return "seiger/" + packageName
+	case 'd', 'D':
+		return "dmi3yy/" + packageName
+	default:
+		return ""
+	}
+}
+
+func normalizeComposerPackageName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if !strings.Contains(name, "/") {
+		return ""
+	}
+	return name
 }
 
 func defaultExtrasSelections(pkgs []domain.ExtrasPackage) []domain.ExtrasSelection {
@@ -112,7 +260,7 @@ func defaultExtrasSelections(pkgs []domain.ExtrasPackage) []domain.ExtrasSelecti
 			ID:      pkg.ID,
 			Name:    pkg.Name,
 			Source:  pkg.Source,
-			Version: strings.TrimSpace(defaultExtrasVersion(pkg)),
+			Version: strings.TrimSpace(defaultExtrasInstallVersion(pkg)),
 		})
 	}
 	return out
@@ -315,8 +463,9 @@ func parseLegacyStoreCatalogJSON(raw []byte) ([]domain.ExtrasPackage, error) {
 
 	categories := map[string]string{}
 	for _, cat := range payload.Category {
-		if cat.ID != "" {
-			categories[cat.ID] = strings.TrimSpace(cat.Title)
+		id := strings.TrimSpace(string(cat.ID))
+		if id != "" {
+			categories[id] = strings.TrimSpace(cat.Title)
 		}
 	}
 
@@ -353,7 +502,7 @@ func parseLegacyStoreCatalogJSON(raw []byte) ([]domain.ExtrasPackage, error) {
 			}
 
 			out = append(out, domain.ExtrasPackage{
-				ID:                 "legacy-store:" + strings.TrimSpace(item.ID),
+				ID:                 "legacy-store:" + strings.TrimSpace(string(item.ID)),
 				Name:               name,
 				Version:            version,
 				Versions:           versions,
