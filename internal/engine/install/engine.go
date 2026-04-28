@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/mail"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -275,6 +277,19 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 		}
 
 		workDir := strings.TrimSpace(e.opt.Dir)
+		if workDir == "" {
+			var ok bool
+			workDir, ok = askInput(ctx, emit, actions, "preflight", domain.QuestionState{
+				Active:  true,
+				ID:      "install_dir",
+				Kind:    domain.QuestionInput,
+				Prompt:  "Where should Evolution CMS be installed?",
+				Default: ".",
+			})
+			if !ok {
+				return
+			}
+		}
 		if workDir == "" {
 			workDir = "."
 		}
@@ -945,6 +960,11 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload:  domain.StepDonePayload{OK: true},
 		})
 
+		selectedPreset, ok := e.chooseProjectPreset(ctx, emit, actions)
+		if !ok {
+			return
+		}
+
 		// Step 3+: follow InstallCommand pipeline (next).
 		_ = emit(domain.Event{
 			Type:     domain.EventStepStart,
@@ -972,7 +992,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Language:           lang,
 			Force:              e.opt.Force,
 			Branch:             strings.TrimSpace(e.opt.Branch),
-			Preset:             strings.TrimSpace(e.opt.Preset),
+			Preset:             selectedPreset,
 			WorkDir:            workDir,
 			ComposerClearCache: e.opt.ComposerClearCache,
 			ComposerUpdate:     e.opt.ComposerUpdate,
@@ -995,6 +1015,111 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 		e.maybeRunExtras(ctx, emit, actions, workDir)
 		e.cleanupExtrasRuntimeArtifacts(emit, workDir)
 	}()
+}
+
+func (e *Engine) chooseProjectPreset(ctx context.Context, emit func(domain.Event) bool, actions <-chan domain.Action) (string, bool) {
+	preset := strings.TrimSpace(e.opt.Preset)
+	if preset != "" {
+		return preset, true
+	}
+
+	const stepID = "presets"
+	_ = emit(domain.Event{
+		Type:     domain.EventLog,
+		StepID:   stepID,
+		Source:   "install",
+		Severity: domain.SeverityInfo,
+		Payload: domain.LogPayload{
+			Message: "Fetching project preset catalog...",
+		},
+	})
+
+	options, selected, err := projectPresetQuestionOptions(ctx)
+	if err != nil {
+		_ = emit(domain.Event{
+			Type:     domain.EventWarning,
+			StepID:   stepID,
+			Source:   "install",
+			Severity: domain.SeverityWarn,
+			Payload: domain.LogPayload{
+				Message: "Project preset catalog unavailable; using bundled choices.",
+				Fields:  map[string]string{"error": err.Error()},
+			},
+		})
+	}
+
+	choice, ok := askSelect(ctx, emit, actions, stepID, domain.QuestionState{
+		Active:   true,
+		ID:       "project_preset",
+		Kind:     domain.QuestionSelect,
+		Prompt:   "Which project preset do you want to use?",
+		Options:  options,
+		Selected: selected,
+	})
+	if !ok {
+		return "", false
+	}
+
+	switch choice {
+	case projectPresetCustomID:
+		for {
+			custom, ok := askInput(ctx, emit, actions, stepID, domain.QuestionState{
+				Active:  true,
+				ID:      "project_preset_custom",
+				Kind:    domain.QuestionInput,
+				Prompt:  "Enter preset repository, Git URL, or local path (optional @branch):",
+				Default: "owner/repo",
+			})
+			if !ok {
+				return "", false
+			}
+			custom = strings.TrimSpace(custom)
+			if custom == "" || custom == "owner/repo" {
+				_ = emit(domain.Event{
+					Type:     domain.EventWarning,
+					StepID:   stepID,
+					Source:   "install",
+					Severity: domain.SeverityWarn,
+					Payload: domain.LogPayload{
+						Message: "Custom preset source cannot be empty.",
+					},
+				})
+				continue
+			}
+			_ = emit(domain.Event{
+				Type:     domain.EventLog,
+				StepID:   stepID,
+				Source:   "install",
+				Severity: domain.SeverityInfo,
+				Payload: domain.LogPayload{
+					Message: "Selected custom project preset: " + custom + ".",
+				},
+			})
+			return custom, true
+		}
+	case projectPresetCoreOnlyID:
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   stepID,
+			Source:   "install",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Selected project preset: Evolution core only.",
+			},
+		})
+		return "evolution", true
+	default:
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   stepID,
+			Source:   "install",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: "Selected project preset: " + choice + ".",
+			},
+		})
+		return choice, true
+	}
 }
 
 func (e *Engine) cleanupExtrasRuntimeArtifacts(emit func(domain.Event) bool, workDir string) {
@@ -1815,6 +1940,119 @@ func defaultPort(dbType string) int {
 
 func defaultSQLiteDatabaseName() string {
 	return "database.sqlite"
+}
+
+const (
+	projectPresetOrg        = "evolution-cms-presets"
+	projectPresetCustomID   = "__custom_project_preset"
+	projectPresetCoreOnlyID = "__evolution_core_only"
+)
+
+func projectPresetQuestionOptions(ctx context.Context) ([]domain.QuestionOption, int, error) {
+	repos, err := github.FetchOrgRepositories(ctx, projectPresetOrg)
+	if err != nil {
+		options, selected := fallbackProjectPresetQuestionOptions()
+		return options, selected, err
+	}
+
+	options, selected := projectPresetOptionsFromRepos(repos)
+	if !hasProjectPresetCatalogOption(options) {
+		return fallbackProjectPresetQuestionOptionsWithError("no preset repositories found")
+	}
+	return options, selected, nil
+}
+
+func fallbackProjectPresetQuestionOptions() ([]domain.QuestionOption, int) {
+	return appendProjectPresetSpecialOptions([]domain.QuestionOption{
+		{ID: projectPresetOrg + "/default", Label: "default", Enabled: true},
+		{ID: projectPresetOrg + "/default-tailwind", Label: "default-tailwind", Enabled: true},
+		{ID: projectPresetOrg + "/default-daisyui", Label: "default-daisyui", Enabled: true},
+	})
+}
+
+func fallbackProjectPresetQuestionOptionsWithError(reason string) ([]domain.QuestionOption, int, error) {
+	options, selected := fallbackProjectPresetQuestionOptions()
+	return options, selected, errors.New(reason)
+}
+
+func projectPresetOptionsFromRepos(repos []github.GitHubRepository) ([]domain.QuestionOption, int) {
+	filtered := make([]github.GitHubRepository, 0, len(repos))
+	for _, repo := range repos {
+		if repo.Archived || strings.TrimSpace(repo.Name) == "" {
+			continue
+		}
+		filtered = append(filtered, repo)
+	}
+
+	sort.SliceStable(filtered, func(i, j int) bool {
+		pi := projectPresetSortPriority(filtered[i].Name)
+		pj := projectPresetSortPriority(filtered[j].Name)
+		if pi != pj {
+			return pi < pj
+		}
+		return strings.ToLower(filtered[i].Name) < strings.ToLower(filtered[j].Name)
+	})
+
+	options := make([]domain.QuestionOption, 0, len(filtered)+2)
+	seen := map[string]struct{}{}
+	for _, repo := range filtered {
+		name := strings.TrimSpace(repo.Name)
+		id := projectPresetOrg + "/" + name
+		if strings.TrimSpace(repo.FullName) != "" {
+			id = strings.TrimSpace(repo.FullName)
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		label := name
+		if desc := strings.TrimSpace(repo.Description); desc != "" {
+			label += " - " + desc
+		}
+		options = append(options, domain.QuestionOption{ID: id, Label: label, Enabled: true})
+	}
+
+	return appendProjectPresetSpecialOptions(options)
+}
+
+func hasProjectPresetCatalogOption(options []domain.QuestionOption) bool {
+	prefix := projectPresetOrg + "/"
+	for _, opt := range options {
+		if strings.HasPrefix(strings.TrimSpace(opt.ID), prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func appendProjectPresetSpecialOptions(options []domain.QuestionOption) ([]domain.QuestionOption, int) {
+	options = append(options,
+		domain.QuestionOption{ID: projectPresetCustomID, Label: "Custom repository, Git URL, or local path", Enabled: true},
+		domain.QuestionOption{ID: projectPresetCoreOnlyID, Label: "Evolution core only (no project preset)", Enabled: true},
+	)
+
+	selected := 0
+	for i, opt := range options {
+		if opt.ID == projectPresetOrg+"/default" {
+			selected = i
+			break
+		}
+	}
+	return options, selected
+}
+
+func projectPresetSortPriority(name string) int {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "default":
+		return 0
+	case "default-tailwind":
+		return 1
+	case "default-daisyui":
+		return 2
+	default:
+		return 100
+	}
 }
 
 func dbDriverLabel(dbType string) string {

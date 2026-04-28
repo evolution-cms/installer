@@ -49,6 +49,9 @@ func applyCLIDefaults(opt *installengine.Options) error {
 	if strings.TrimSpace(opt.Language) == "" {
 		opt.Language = "en"
 	}
+	if strings.TrimSpace(opt.Preset) == "" {
+		opt.Preset = "evolution"
+	}
 
 	adminEmail := strings.TrimSpace(opt.AdminEmail)
 	if adminEmail == "" {

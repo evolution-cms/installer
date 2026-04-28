@@ -197,10 +197,6 @@ func runInstall(ctx context.Context, args []string) int {
 		printUsage()
 		return 2
 	}
-	if strings.TrimSpace(installDir) == "" {
-		installDir = "."
-	}
-
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
@@ -233,6 +229,9 @@ func runInstall(ctx context.Context, args []string) int {
 
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
+	}
+	if strings.TrimSpace(installDir) == "" && *cliMode {
+		installDir = "."
 	}
 	pat := strings.TrimSpace(*githubPat)
 	if pat == "" {
@@ -487,13 +486,13 @@ func printUsage() {
 	fmt.Println("Evolution CMS Installer TUI")
 	fmt.Println("")
 	fmt.Println("Usage:")
-	fmt.Println("  evo install [dir] [flags]  Run TUI installer")
+	fmt.Println("  evo install [dir] [flags]  Run TUI installer; omit dir to choose it in TUI")
 	fmt.Println("  evo version   Print version")
 	fmt.Println("")
 	fmt.Println("Common flags:")
 	fmt.Println("  -f, --force                Force installation even if directory exists")
 	fmt.Println("  --branch=<name>            Install from Git branch (e.g., main or master)")
-	fmt.Println("  --preset=<spec>            Apply project preset (e.g., evolution-cms-presets/default@dev)")
+	fmt.Println("  --preset=<spec>            Apply project preset; omit to choose it in TUI")
 	fmt.Println("  --db-type=<driver>         mysql|pgsql|sqlite|sqlsrv")
 	fmt.Println("  --db-name=<name|path>      Database name (or SQLite file path)")
 	fmt.Println("  --admin-email=<email>      Admin email")

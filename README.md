@@ -84,26 +84,31 @@ composer global update evolution-cms/installer
 ### Create a new Evolution CMS project
 
 ```bash
-evo install my-project --branch=3.5.x --preset=evolution-cms-presets/default
+evo install
 ```
 
 This command will:
 - Validate PHP version compatibility
+- Prompt you for the target installation directory when it was not passed as an argument
 - Prompt you for database configuration (with connection testing)
 - Prompt you for admin user credentials and directory
 - Prompt you for installation language
+- Prompt you to choose a project preset from `evolution-cms-presets` or enter a custom preset source
 - Download and install Evolution CMS (latest compatible version or from specific branch)
 - Configure the database connection
 - Run migrations and seeders
 - Create the admin user
-- Apply the default project-layer preset
+- Apply the selected project-layer preset
 
 ### Command Options
 
 ```bash
+evo install
+evo install my-project
 evo install my-project --preset=evolution
 evo install my-project --preset=evolution-cms-presets/default
 evo install my-project --preset=evolution-cms-presets/default@dev
+evo install my-project --preset=evolution-cms-presets/default-daisyui
 evo install my-project --db-type=mysql
 evo install my-project --db-host=localhost --db-name=evo_db
 evo install my-project --admin-username=admin --admin-email=admin@example.com
@@ -120,7 +125,7 @@ evo install my-project --extras=sTask,sSeo  # Install extras after setup (option
 
 ### Available Options
 
-- `--preset`: Project-layer preset spec. Use `evolution` or omit it for core-only install; use `default`, `evolution-cms-presets/default`, `evolution-cms-presets/default@dev`, a Git URL, or a local path to apply a project preset.
+- `--preset`: Project-layer preset spec. In TUI mode, omit it to choose from the `evolution-cms-presets` catalog or enter a custom source. In CLI mode, omit it for core-only install. Use `evolution`, `default`, `evolution-cms-presets/default`, `evolution-cms-presets/default@dev`, a Git URL, or a local path.
 - `--db-type`: Database type (`mysql`, `pgsql`, `sqlite`, or `sqlsrv`)
 - `--db-host`: Database host (default: `localhost`, not used for SQLite)
 - `--db-port`: Database port (defaults: 3306 for MySQL, 5432 for PostgreSQL, 1433 for SQL Server)
@@ -167,12 +172,29 @@ Notes:
 
 The installer separates the target project from the preset source.
 
-For TUI installs, pass only the branch and preset when you want the installer to ask for database, admin user, language, and optional Extras:
+For TUI installs, you can run the installer with no arguments and choose the target directory, database, admin user, language, project preset, and optional Extras inside the wizard:
+
+```bash
+evo install
+```
+
+If you already know the target directory or branch, pass only those values and let TUI ask the rest:
+
+```bash
+evo install /path/to/my-site --branch=3.5.x
+```
+
+When `--preset` is omitted in TUI mode, the installer fetches public repositories from `https://github.com/evolution-cms-presets/` and shows them as preset choices. The same screen also includes:
+
+- `Custom repository, Git URL, or local path` for private presets or local development checkouts
+- `Evolution core only (no project preset)` for a plain core install
+
+You can still pass a preset directly when you want to skip the preset picker:
 
 ```bash
 evo install /path/to/my-site \
   --branch=3.5.x \
-  --preset=evolution-cms-presets/default
+  --preset=evolution-cms-presets/default-daisyui
 ```
 
 For CLI installs, provide all required answers up front. This installs a new project into the target directory, then copies the `evolution-cms-presets/default` project layer into that project:
@@ -200,6 +222,7 @@ Accepted preset sources:
 - `default` resolves to `https://github.com/evolution-cms-presets/default.git`
 - `evolution-cms-presets/default` resolves to `https://github.com/evolution-cms-presets/default.git`
 - `evolution-cms-presets/default@dev` resolves to the same preset repository with Git ref `dev`
+- `owner/private-preset` can be entered in TUI as a custom source when your Git environment can access it
 - full Git URLs are used as-is; add `#dev` when you need a URL ref
 - local paths are used as-is
 
@@ -280,9 +303,9 @@ Requirements: Go (see `go` version in `go.mod`).
 From `installer/`:
 
 ```bash
-go run ./cmd/evo install /tmp/evo-default-check \
-  --branch=3.5.x \
-  --preset=evolution-cms-presets/default
+go run ./cmd/evo install
+# or prefill the Evolution branch and let TUI ask for directory, preset, DB, admin, language, and Extras:
+go run ./cmd/evo install --branch=3.5.x
 # or
 make install
 ```
