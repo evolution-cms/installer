@@ -137,8 +137,55 @@ func TestNormalizeExtrasSelectionsUsesIDsAndDefaults(t *testing.T) {
 	if selections[0].Source != "bundled-inline" {
 		t.Fatalf("unexpected source for bundled selection: %q", selections[0].Source)
 	}
-	if selections[1].Version != "1.2.3" {
-		t.Fatalf("expected managed default version, got %q", selections[1].Version)
+	if selections[1].Version != "*" {
+		t.Fatalf("expected managed default version constraint, got %q", selections[1].Version)
+	}
+}
+
+func TestNormalizeExtrasSelectionsKeepsExplicitManagedVersion(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:sSeo",
+			Name:               "sSeo",
+			Source:             "managed",
+			Version:            "1.2.3",
+			DefaultInstallMode: "latest-release",
+		},
+	}
+
+	selections := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{Name: "sSeo", Version: "v1.2.2"},
+	})
+	if len(selections) != 1 {
+		t.Fatalf("expected 1 selection, got %d", len(selections))
+	}
+	if selections[0].Version != "v1.2.2" {
+		t.Fatalf("expected explicit managed version to be kept, got %q", selections[0].Version)
+	}
+}
+
+func TestDefaultExtrasSelectionsUseFloatingManagedConstraint(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:sSeo",
+			Name:               "sSeo",
+			Source:             "managed",
+			Version:            "1.2.3",
+			DefaultInstallMode: "latest-release",
+			Preselected:        true,
+		},
+	}
+
+	selections := defaultExtrasSelections(pkgs)
+	if len(selections) != 1 {
+		t.Fatalf("expected 1 default selection, got %d", len(selections))
+	}
+	if selections[0].Version != "*" {
+		t.Fatalf("expected default managed selection to use wildcard, got %q", selections[0].Version)
 	}
 }
 

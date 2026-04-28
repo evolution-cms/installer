@@ -112,7 +112,7 @@ func defaultExtrasSelections(pkgs []domain.ExtrasPackage) []domain.ExtrasSelecti
 			ID:      pkg.ID,
 			Name:    pkg.Name,
 			Source:  pkg.Source,
-			Version: strings.TrimSpace(defaultExtrasVersion(pkg)),
+			Version: strings.TrimSpace(defaultExtrasInstallVersion(pkg)),
 		})
 	}
 	return out

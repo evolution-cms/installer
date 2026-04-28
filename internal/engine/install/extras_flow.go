@@ -10,11 +10,12 @@ import (
 )
 
 const (
-	extrasPromptID     = "extras_prompt"
-	extrasSelectID     = "extras_select"
-	extrasStepID       = "extras"
-	extrasSkipValue    = "skip"
-	extrasInstallValue = "install"
+	extrasPromptID                  = "extras_prompt"
+	extrasSelectID                  = "extras_select"
+	extrasStepID                    = "extras"
+	extrasSkipValue                 = "skip"
+	extrasInstallValue              = "install"
+	extrasFloatingVersionConstraint = "*"
 )
 
 func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) bool, actions <-chan domain.Action, workDir string) {
@@ -539,7 +540,7 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		}
 		version := strings.TrimSpace(sel.Version)
 		if version == "" {
-			version = strings.TrimSpace(defaultExtrasVersion(pkg))
+			version = strings.TrimSpace(defaultExtrasInstallVersion(pkg))
 		}
 		if idx, ok := seen[id]; ok {
 			if out[idx].Version == "" && version != "" {
@@ -556,6 +557,19 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		})
 	}
 	return out
+}
+
+func defaultExtrasInstallVersion(pkg domain.ExtrasPackage) string {
+	if isManagedExtrasPackage(pkg) {
+		return extrasFloatingVersionConstraint
+	}
+	return defaultExtrasVersion(pkg)
+}
+
+func isManagedExtrasPackage(pkg domain.ExtrasPackage) bool {
+	source := strings.ToLower(strings.TrimSpace(pkg.Source))
+	mode := strings.ToLower(strings.TrimSpace(pkg.InstallMode))
+	return source == "managed" || mode == "managed-artisan"
 }
 
 func formatExtrasSelectionLabel(sel domain.ExtrasSelection) string {

@@ -115,7 +115,7 @@ evo install my-project --cli --log  # Non-interactive mode + write log.md
 evo install my-project --composer-update  # Use composer update during setup
 evo install my-project --composer-clear-cache  # Clear Composer cache before install
 evo install my-project --github-pat=TOKEN  # GitHub PAT for API requests
-evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (optional)
+evo install my-project --extras=sTask,sSeo  # Install extras after setup (optional)
 ```
 
 ### Available Options
@@ -141,7 +141,7 @@ evo install my-project --extras=sTask@main,sSeo  # Install extras after setup (o
 - `--composer-clear-cache`: Clear Composer cache before install
 - `--composer-update`: Use `composer update` instead of `composer install` during setup
 - `--github-pat` / `--github_pat`: GitHub PAT token for API requests (avoids GitHub rate limits)
-- `--extras`: Comma-separated extras to install after setup (e.g., `sTask@main,sSeo`)
+- `--extras`: Comma-separated extras to install after setup (e.g., `sTask,sSeo`; use `sTask@main` only when you want to pin a version/branch)
 
 ### CLI Example (Non-interactive)
 
@@ -159,12 +159,13 @@ evo install demo \
   --preset=evolution-cms-presets/default \
   --composer-clear-cache \
   --github-pat=YOUR_GITHUB_PAT \
-  --extras=sTask@main,sSeo
+  --extras=sTask,sSeo
 ```
 
 Notes:
 - `--cli` skips the Extras wizard prompt; use `--extras` to auto-install.
 - `--extras` works in both TUI and CLI; when provided, the wizard is skipped and installation starts immediately.
+- Extras without an explicit `@version` are installed with Composer constraint `*`, so later Composer updates can pick up newer package versions.
 
 ## Project Presets
 
@@ -241,7 +242,7 @@ Project presets are applied through the installed Evolution CMS `core/artisan pr
 
 - **Post-install prompt**: After the success screen, the installer asks whether to install additional Extras.
 - **Selection UI**: Shows the full managed Extras list (type 0, install via Composer) with checkboxes, versions, and descriptions.
-- **Batch install**: Installs selected Extras one-by-one via `php artisan extras extras <Name>` and shows progress/status.
+- **Batch install**: Installs selected Extras one-by-one via `php artisan extras extras <Name> *` by default and shows progress/status.
 - **Post steps**: Runs `php artisan migrate` once after all Extras, then `php artisan cache:clear-full`.
 - **Flow**: Install -> Success screen -> Prompt -> Extras selection -> Progress -> Summary
 

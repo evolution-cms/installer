@@ -457,10 +457,14 @@ func buildExtrasVersionOptions(pkg domain.ExtrasPackage) ([]string, []string) {
 	values := []string{}
 
 	defaultLabel := "Default (auto)"
-	if v := strings.TrimSpace(pkg.Version); v != "" {
-		defaultLabel += " - " + v
-	} else if b := strings.TrimSpace(pkg.DefaultBranch); b != "" {
-		defaultLabel += " - " + b
+	if isManagedExtrasPackage(pkg) {
+		defaultLabel = "Default (*)"
+	} else {
+		if v := strings.TrimSpace(pkg.Version); v != "" {
+			defaultLabel += " - " + v
+		} else if b := strings.TrimSpace(pkg.DefaultBranch); b != "" {
+			defaultLabel += " - " + b
+		}
 	}
 	labels = append(labels, defaultLabel)
 	values = append(values, "")
@@ -486,6 +490,12 @@ func buildExtrasVersionOptions(pkg domain.ExtrasPackage) ([]string, []string) {
 	add(pkg.DefaultBranch)
 
 	return labels, values
+}
+
+func isManagedExtrasPackage(pkg domain.ExtrasPackage) bool {
+	source := strings.ToLower(strings.TrimSpace(pkg.Source))
+	mode := strings.ToLower(strings.TrimSpace(pkg.InstallMode))
+	return source == "managed" || mode == "managed-artisan"
 }
 
 func (m *Model) extrasListHeight() int {
@@ -931,13 +941,17 @@ func (m *Model) renderExtrasList(width int, height int) []string {
 			version = strings.TrimSpace(m.extras.versions[key])
 		}
 		if version == "" {
-			version = strings.TrimSpace(pkg.Version)
-		}
-		if version == "" {
-			version = strings.TrimSpace(pkg.DefaultBranch)
-		}
-		if version == "" {
-			version = "default"
+			if isManagedExtrasPackage(pkg) {
+				version = "*"
+			} else {
+				version = strings.TrimSpace(pkg.Version)
+				if version == "" {
+					version = strings.TrimSpace(pkg.DefaultBranch)
+				}
+				if version == "" {
+					version = "default"
+				}
+			}
 		}
 		desc := strings.TrimSpace(pkg.Description)
 		label := fmt.Sprintf("%s %s %s%s @ %s", cursor, checked, extrasSourcePrefix(pkg), pkg.Name, version)
