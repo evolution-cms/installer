@@ -35,7 +35,7 @@ class InstallCommand extends Command
         'install' => ['label' => 'Step 4: Install Evolution CMS', 'completed' => false],
         'presets' => ['label' => 'Step 5: Install presets', 'completed' => false],
         'finalize' => ['label' => 'Step 6: Finalize installation', 'completed' => false],
-        'extras' => ['label' => 'Step 7: Install Extras (optional)', 'completed' => false],
+        'extras' => ['label' => 'Step 7: Install Extras', 'completed' => false],
     ];
 
     /**

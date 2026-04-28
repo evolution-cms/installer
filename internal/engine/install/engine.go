@@ -89,9 +89,8 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 					{ID: "project_preset", Label: "Step 3: Choose project preset", Status: domain.StepPending},
 					{ID: "download", Label: "Step 4: Download Evolution CMS", Status: domain.StepPending},
 					{ID: "install", Label: "Step 5: Install Evolution CMS", Status: domain.StepPending},
-					{ID: "presets", Label: "Step 6: Apply project preset", Status: domain.StepPending},
-					{ID: "finalize", Label: "Step 7: Finalize installation", Status: domain.StepPending},
-					{ID: "extras", Label: "Step 8: Install Extras (optional)", Status: domain.StepPending},
+					{ID: "finalize", Label: "Step 6: Finalize installation", Status: domain.StepPending},
+					{ID: "extras", Label: "Step 7: Install Extras", Status: domain.StepPending},
 				},
 			},
 		})
@@ -336,7 +335,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload: domain.StepStartPayload{
 				Label: "Step 1: Validate PHP version",
 				Index: 1,
-				Total: 8,
+				Total: 7,
 			},
 		})
 
@@ -408,7 +407,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload: domain.StepStartPayload{
 				Label: "Step 2: Check database connection",
 				Index: 2,
-				Total: 8,
+				Total: 7,
 			},
 		})
 
@@ -975,7 +974,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			Payload: domain.StepStartPayload{
 				Label: "Step 4: Download Evolution CMS",
 				Index: 4,
-				Total: 8,
+				Total: 7,
 			},
 		})
 
@@ -1040,7 +1039,7 @@ func (e *Engine) chooseProjectPreset(ctx context.Context, emit func(domain.Event
 		Payload: domain.StepStartPayload{
 			Label: "Step 3: Choose project preset",
 			Index: 3,
-			Total: 8,
+			Total: 7,
 		},
 	})
 
@@ -1574,7 +1573,7 @@ func (t *stepTracker) start(stepID, label string, index int) {
 		Payload: domain.StepStartPayload{
 			Label: label,
 			Index: index,
-			Total: 8,
+			Total: 7,
 		},
 	})
 }
@@ -1622,17 +1621,9 @@ func (t *stepTracker) OnLine(line string) {
 		t.start("install", "Step 5: Install Evolution CMS", 5)
 	}
 
-	// Step 6 markers.
-	if strings.Contains(line, "Installing project preset") {
-		t.start("presets", "Step 6: Apply project preset", 6)
-	}
-	if strings.Contains(line, "Project preset installed successfully") {
-		t.doneStep("presets", true)
-	}
-
 	// Finalize marker.
 	if strings.Contains(line, "Finalizing installation") {
-		t.start("finalize", "Step 7: Finalize installation", 7)
+		t.start("finalize", "Step 6: Finalize installation", 6)
 	}
 	if strings.Contains(line, "Installation finalized successfully") {
 		t.doneStep("finalize", true)
@@ -1652,15 +1643,11 @@ func (t *stepTracker) OnLine(line string) {
 		t.doneStep("dependencies", false)
 	}
 	if strings.Contains(strings.ToLower(line), "failed to install project preset") {
-		t.doneStep("presets", false)
+		t.doneStep("install", false)
 	}
 }
 
 func (t *stepTracker) FinishRemaining() {
-	// Presets might not produce logs (it's a no-op by default), but should be considered done if install completed.
-	if t.done["install"] {
-		t.doneStep("presets", true)
-	}
 	// If PHP ran to completion, mark any started but not-done steps as OK (best-effort),
 	// but never override an explicit failure.
 	if t.failed {
@@ -1675,7 +1662,7 @@ func (t *stepTracker) FinishRemaining() {
 
 func (t *stepTracker) FailRemaining() {
 	// Best-effort: mark any not-done steps as failed, so Quest track reflects the abort.
-	for _, id := range []string{"download", "install", "presets", "dependencies", "finalize"} {
+	for _, id := range []string{"download", "install", "dependencies", "finalize"} {
 		if !t.done[id] {
 			t.doneStep(id, false)
 		}

@@ -74,9 +74,8 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, _ <-chan domai
 					{ID: "project_preset", Label: "Step 3: Choose project preset", Status: domain.StepPending},
 					{ID: "download", Label: "Step 4: Download Evolution CMS", Status: domain.StepPending},
 					{ID: "install", Label: "Step 5: Install Evolution CMS", Status: domain.StepPending},
-					{ID: "presets", Label: "Step 6: Apply project preset", Status: domain.StepPending},
-					{ID: "finalize", Label: "Step 7: Finalize installation", Status: domain.StepPending},
-					{ID: "extras", Label: "Step 8: Install Extras (optional)", Status: domain.StepPending},
+					{ID: "finalize", Label: "Step 6: Finalize installation", Status: domain.StepPending},
+					{ID: "extras", Label: "Step 7: Install Extras", Status: domain.StepPending},
 				},
 			},
 		})
@@ -289,9 +288,8 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, _ <-chan domai
 			{"project_preset", "Step 3: Choose project preset"},
 			{"download", "Step 4: Download Evolution CMS"},
 			{"install", "Step 5: Install Evolution CMS"},
-			{"presets", "Step 6: Apply project preset"},
-			{"finalize", "Step 7: Finalize installation"},
-			{"extras", "Step 8: Install Extras (optional)"},
+			{"finalize", "Step 6: Finalize installation"},
+			{"extras", "Step 7: Install Extras"},
 		}
 
 		for i, s := range steps {
