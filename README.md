@@ -84,7 +84,7 @@ composer global update evolution-cms/installer
 ### Create a new Evolution CMS project
 
 ```bash
-evo install my-project
+evo install my-project --branch=3.5.x --preset=evolution-cms-presets/default
 ```
 
 This command will:
@@ -96,6 +96,7 @@ This command will:
 - Configure the database connection
 - Run migrations and seeders
 - Create the admin user
+- Apply the default project-layer preset
 
 ### Command Options
 
@@ -109,7 +110,6 @@ evo install my-project --admin-username=admin --admin-email=admin@example.com
 evo install my-project --admin-directory=manager
 evo install my-project --language=en
 evo install my-project --branch=develop  # Install from specific Git branch
-evo install my-project --git  # Initialize a Git repository
 evo install my-project --force  # Force install even if directory exists
 evo install my-project --cli --log  # Non-interactive mode + write log.md
 evo install my-project --composer-update  # Use composer update during setup
@@ -133,7 +133,6 @@ evo install my-project --extras=sTask,sSeo  # Install extras after setup (option
 - `--admin-directory`: Admin directory name (default: `manager`)
 - `--language`: Installation language (default: `en`)
 - `--branch`: Install from specific Git branch (e.g., `3.5.x`, `develop`, `nightly`, `main`) instead of latest release
-- `--git`: Initialize a Git repository and create initial commit
 - `--force`: Force install even if directory exists
 - `--log`: Always write installer log to `log.md`
 - `--cli`: Run in non-interactive CLI mode (no TUI)
@@ -156,10 +155,7 @@ evo install demo \
   --admin-password=123456 \
   --admin-directory=manager \
   --language=uk \
-  --preset=evolution-cms-presets/default \
-  --composer-clear-cache \
-  --github-pat=YOUR_GITHUB_PAT \
-  --extras=sTask,sSeo
+  --preset=evolution-cms-presets/default
 ```
 
 Notes:
@@ -171,7 +167,15 @@ Notes:
 
 The installer separates the target project from the preset source.
 
-For example, this installs a new project into `dmi3yy.com`, then copies the `evolution-cms-presets/default` project layer into that project:
+For TUI installs, pass only the branch and preset when you want the installer to ask for database, admin user, language, and optional Extras:
+
+```bash
+evo install /Users/dmi3yy/PhpstormProjects/Extras/dmi3yy.com \
+  --branch=3.5.x \
+  --preset=evolution-cms-presets/default
+```
+
+For CLI installs, provide all required answers up front. This installs a new project into `dmi3yy.com`, then copies the `evolution-cms-presets/default` project layer into that project:
 
 ```bash
 evo install /Users/dmi3yy/PhpstormProjects/Extras/dmi3yy.com \
@@ -184,12 +188,12 @@ evo install /Users/dmi3yy/PhpstormProjects/Extras/dmi3yy.com \
   --admin-password=change-me \
   --admin-directory=manager \
   --language=uk \
-  --preset=evolution-cms-presets/default \
-  --composer-update \
-  --composer-clear-cache
+  --preset=evolution-cms-presets/default
 ```
 
 `--preset=evolution-cms-presets/default` means "copy this preset as the bootstrap project layer." It does not define the future GitHub identity of the created site. The target directory or its own Git remote can still be `dmi3yy/dmi3yy.com`.
+
+The default preset does not install Extras. Use `--extras=sTask,sSeo` only when you intentionally want those packages in the project.
 
 Accepted preset sources:
 
@@ -276,7 +280,9 @@ Requirements: Go (see `go` version in `go.mod`).
 From `installer/`:
 
 ```bash
-go run ./cmd/evo install
+go run ./cmd/evo install /tmp/evo-default-check \
+  --branch=3.5.x \
+  --preset=evolution-cms-presets/default
 # or
 make install
 ```
