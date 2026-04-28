@@ -120,9 +120,46 @@ func loadAllExtrasCatalogs(ctx context.Context, workDir, token string) ([]domain
 		pkgs = append(pkgs, legacy...)
 	}
 
+	pkgs = dedupeExtrasPackages(pkgs)
 	sortExtrasPackages(pkgs)
 	defaults := defaultExtrasSelections(pkgs)
 	return pkgs, defaults, warnings, nil
+}
+
+func dedupeExtrasPackages(pkgs []domain.ExtrasPackage) []domain.ExtrasPackage {
+	if len(pkgs) == 0 {
+		return nil
+	}
+	out := make([]domain.ExtrasPackage, 0, len(pkgs))
+	seen := map[string]int{}
+	for _, pkg := range pkgs {
+		key := strings.ToLower(strings.TrimSpace(pkg.Name))
+		if key == "" {
+			continue
+		}
+		if idx, ok := seen[key]; ok {
+			if extrasSourcePriority(pkg.Source) < extrasSourcePriority(out[idx].Source) {
+				out[idx] = pkg
+			}
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, pkg)
+	}
+	return out
+}
+
+func extrasSourcePriority(source string) int {
+	switch strings.TrimSpace(source) {
+	case "bundled-inline":
+		return 0
+	case "managed":
+		return 1
+	case "legacy-store":
+		return 2
+	default:
+		return 10
+	}
 }
 
 func defaultExtrasSelections(pkgs []domain.ExtrasPackage) []domain.ExtrasSelection {

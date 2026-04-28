@@ -97,7 +97,10 @@ func (m *Model) footerHintText() string {
 		if m.extras.versionPickerActive {
 			return "↑/↓ Move  Enter Select  Esc Close  ctrl+q Quit"
 		}
-		return "↑/↓ Move  Space Toggle  Enter Version  Down Actions  Enter Select  ctrl+c Cancel  ctrl+q Quit"
+		if m.extras.searchActive {
+			return "Type Search  Enter Apply  Esc Close  Ctrl+U Clear  ctrl+c Cancel  ctrl+q Quit"
+		}
+		return "↑/↓ Move  Space Toggle  / Search  L Legacy  Tab Actions  Enter Select  ctrl+c Cancel  ctrl+q Quit"
 	case domain.ExtrasStageProgress:
 		return "Installing extras...  ctrl+c Cancel  ctrl+q Quit"
 	case domain.ExtrasStageSummary:
@@ -259,14 +262,16 @@ func (m *Model) renderLogoHeader(width int) string {
 	}
 
 	versionText, versionLineStyle := m.releaseVersionLine()
+	installerText := m.installerVersionLine()
 	tagline := m.meta.Tagline
 	if tagline == "" {
 		tagline = "The world’s fastest CMS!"
 	}
 	version := versionLineStyle.Render(cutPlain(versionText, availableMetaW))
+	installer := mutedStyle.Render(cutPlain(installerText, availableMetaW))
 	tagline = taglineStyle.Render(cutPlain(tagline, availableMetaW))
 
-	metaBase := []string{version, tagline}
+	metaBase := []string{version, installer, tagline}
 	metaH := len(metaBase)
 	metaTopPad := max(0, (logoH-metaH)/2)
 	metaBottomPad := max(0, logoH-metaH-metaTopPad)
@@ -335,7 +340,8 @@ func (m *Model) renderLogoHeader(width int) string {
 func (m *Model) renderCompactHeader(width int) string {
 	contentW := panelContentWidth(width)
 	versionText, versionLineStyle := m.releaseVersionLine()
-	version := versionLineStyle.Render(cutPlain(versionText, contentW))
+	compact := versionText + " | " + m.installerVersionLine()
+	version := versionLineStyle.Render(cutPlain(compact, contentW))
 	return panel("Evolution CMS Installer", version, width, compactHeaderHeight)
 }
 
@@ -350,6 +356,10 @@ func (m *Model) releaseVersionLine() (string, lipgloss.Style) {
 		return m.appendBranch("v" + m.state.Release.Highest.HighestVersion), versionStyle
 	}
 	return m.appendBranch("v—"), mutedStyle
+}
+
+func (m *Model) installerVersionLine() string {
+	return "Installer " + formatVersion(m.meta.Version)
 }
 
 func (m *Model) appendBranch(versionLine string) string {

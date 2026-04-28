@@ -231,14 +231,6 @@ func handleCLIQuestion(q domain.QuestionState, actions chan<- domain.Action, can
 		*hadError = true
 		fmt.Fprintln(os.Stderr, "Database connection failed; exiting (no retry in --cli mode).")
 		return true
-	case "extras_prompt":
-		sendAction(actions, domain.Action{
-			Type:       domain.ActionAnswerSelect,
-			QuestionID: q.ID,
-			OptionID:   "no",
-		})
-		fmt.Fprintln(os.Stdout, "Extras installation skipped in --cli mode.")
-		return true
 	default:
 		*hadError = true
 		fmt.Fprintln(os.Stderr, cliMissingInputMessage(q))

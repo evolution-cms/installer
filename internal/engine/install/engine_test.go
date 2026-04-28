@@ -72,7 +72,7 @@ func TestDbConnectionTestScriptUsesPostgresMaintenanceDb(t *testing.T) {
 	}
 }
 
-func TestProjectPresetOptionsFromReposPrioritizesDefaultPresets(t *testing.T) {
+func TestProjectPresetOptionsFromReposDefaultsToCoreThenCustom(t *testing.T) {
 	t.Parallel()
 
 	options, selected := projectPresetOptionsFromRepos([]github.GitHubRepository{
@@ -84,12 +84,12 @@ func TestProjectPresetOptionsFromReposPrioritizesDefaultPresets(t *testing.T) {
 	})
 
 	wantIDs := []string{
+		projectPresetCoreOnlyID,
+		projectPresetCustomID,
 		"evolution-cms-presets/default",
 		"evolution-cms-presets/default-tailwind",
 		"evolution-cms-presets/default-daisyui",
 		"evolution-cms-presets/portfolio",
-		projectPresetCustomID,
-		projectPresetCoreOnlyID,
 	}
 	if len(options) != len(wantIDs) {
 		t.Fatalf("got %d options, want %d: %#v", len(options), len(wantIDs), options)
@@ -105,8 +105,11 @@ func TestProjectPresetOptionsFromReposPrioritizesDefaultPresets(t *testing.T) {
 	if selected != 0 {
 		t.Fatalf("selected=%d, want 0", selected)
 	}
-	if !strings.Contains(options[0].Label, "Default preset") {
-		t.Fatalf("default label does not include description: %q", options[0].Label)
+	if options[0].ID != projectPresetCoreOnlyID {
+		t.Fatalf("default option should be core-only, got %q", options[0].ID)
+	}
+	if !strings.Contains(options[2].Label, "Default preset") {
+		t.Fatalf("default label does not include description: %q", options[2].Label)
 	}
 }
 
@@ -120,10 +123,10 @@ func TestFallbackProjectPresetOptionsIncludesCustomAndCoreOnly(t *testing.T) {
 	if len(options) < 5 {
 		t.Fatalf("expected fallback presets plus special options, got %#v", options)
 	}
-	if options[len(options)-2].ID != projectPresetCustomID {
-		t.Fatalf("expected custom option before core-only, got %#v", options)
+	if options[0].ID != projectPresetCoreOnlyID {
+		t.Fatalf("expected core-only option first, got %#v", options)
 	}
-	if options[len(options)-1].ID != projectPresetCoreOnlyID {
-		t.Fatalf("expected core-only option last, got %#v", options)
+	if options[1].ID != projectPresetCustomID {
+		t.Fatalf("expected custom option second, got %#v", options)
 	}
 }

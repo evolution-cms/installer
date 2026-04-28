@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	extrasPromptID                  = "extras_prompt"
 	extrasSelectID                  = "extras_select"
 	extrasStepID                    = "extras"
 	extrasSkipValue                 = "skip"
@@ -36,7 +35,7 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			Source:   "extras",
 			Severity: domain.SeverityInfo,
 			Payload: domain.StepStartPayload{
-				Label: "Step 7: Install Extras (optional)",
+				Label: "Step 8: Install Extras (optional)",
 				Index: 8,
 				Total: 8,
 			},
@@ -87,26 +86,6 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 	}
 
 	preselected := e.opt.Extras
-	if len(preselected) == 0 {
-		choice, ok := askSelect(ctx, emit, actions, extrasStepID, extrasPromptQuestion())
-		if !ok {
-			return
-		}
-		if strings.ToLower(strings.TrimSpace(choice)) != "yes" {
-			_ = emit(domain.Event{
-				Type:     domain.EventLog,
-				StepID:   extrasStepID,
-				Source:   "extras",
-				Severity: domain.SeverityInfo,
-				Payload: domain.LogPayload{
-					Message: "Skipping extras installation.",
-				},
-			})
-			emitExtrasSkippedSummary(emit)
-			return
-		}
-	}
-
 	_ = emit(domain.Event{
 		Type:     domain.EventLog,
 		StepID:   extrasStepID,
@@ -434,20 +413,6 @@ func (e *Engine) maybeRunExtras(ctx context.Context, emit func(domain.Event) boo
 			stepOK = false
 			break
 		}
-	}
-}
-
-func extrasPromptQuestion() domain.QuestionState {
-	return domain.QuestionState{
-		Active: true,
-		ID:     extrasPromptID,
-		Kind:   domain.QuestionSelect,
-		Prompt: "Do you want to install additional packages (Extras) now?",
-		Options: []domain.QuestionOption{
-			{ID: "yes", Label: "Yes", Enabled: true},
-			{ID: "no", Label: "No", Enabled: true},
-		},
-		Selected: 0,
 	}
 }
 

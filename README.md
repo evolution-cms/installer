@@ -121,6 +121,7 @@ evo install my-project --composer-update  # Use composer update during setup
 evo install my-project --composer-clear-cache  # Clear Composer cache before install
 evo install my-project --github-pat=TOKEN  # GitHub PAT for API requests
 evo install my-project --extras=sTask,sSeo  # Install extras after setup (optional)
+evo install my-project --extras=legacy-store:84@1.12.2  # Install a Legacy Store package by ID
 ```
 
 ### Available Options
@@ -145,7 +146,7 @@ evo install my-project --extras=sTask,sSeo  # Install extras after setup (option
 - `--composer-clear-cache`: Clear Composer cache before install
 - `--composer-update`: Use `composer update` instead of `composer install` during setup
 - `--github-pat` / `--github_pat`: GitHub PAT token for API requests (avoids GitHub rate limits)
-- `--extras`: Comma-separated extras to install after setup (e.g., `sTask,sSeo`; use `sTask@main` only when you want to pin a version/branch)
+- `--extras`: Comma-separated extras to install after setup. Managed extras can be passed by name (for example `sTask,sSeo`) and are installed with `*` unless you pin a version. Legacy Store packages can be passed by ID (for example `legacy-store:84@1.12.2`).
 
 ### CLI Example (Non-interactive)
 
@@ -164,9 +165,10 @@ evo install demo \
 ```
 
 Notes:
-- `--cli` skips the Extras wizard prompt; use `--extras` to auto-install.
-- `--extras` works in both TUI and CLI; when provided, the wizard is skipped and installation starts immediately.
+- `--cli` is non-interactive; use `--extras` to auto-install Extras.
+- `--extras` works in both TUI and CLI; when provided, the Extras selection screen is skipped and installation starts immediately.
 - Extras without an explicit `@version` are installed with Composer constraint `*`, so later Composer updates can pick up newer package versions.
+- Legacy Store packages are selected by their catalog ID in CLI mode, e.g. `--extras=legacy-store:84@1.12.2`.
 
 ## Project Presets
 
@@ -237,10 +239,10 @@ evo install /path/to/my-site --preset=/path/to/default-preset
 Standard Evolution CMS installation with all core features.
 
 ```bash
-evo install my-project
-# or
 evo install my-project --preset=evolution
 ```
+
+In TUI mode, omit `--preset` and keep the default `No project preset (Evolution core only)` choice.
 
 ### Custom Project Presets
 
@@ -267,11 +269,12 @@ Project presets are applied through the installed Evolution CMS `core/artisan pr
 
 ### Managed Extras Wizard (TUI)
 
-- **Post-install prompt**: After the success screen, the installer asks whether to install additional Extras.
-- **Selection UI**: Shows the full managed Extras list (type 0, install via Composer) with checkboxes, versions, and descriptions.
+- **Post-install selection**: After the core installation, the installer opens the Extras selection screen directly with default Extras preselected.
+- **Selection UI**: Shows bundled defaults and managed Extras first, with checkboxes, versions, descriptions, and search.
+- **Legacy Store**: Legacy Store packages are hidden behind the `Show Legacy Store` action so the main list stays focused.
 - **Batch install**: Installs selected Extras one-by-one via `php artisan extras extras <Name> *` by default and shows progress/status.
 - **Post steps**: Runs `php artisan migrate` once after all Extras, then `php artisan cache:clear-full`.
-- **Flow**: Install -> Success screen -> Prompt -> Extras selection -> Progress -> Summary
+- **Flow**: Install -> Extras selection -> Progress -> Summary
 
 ### Inspired by Docker Implementation
 

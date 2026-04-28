@@ -52,3 +52,22 @@ func TestSplitInstallArgsAllowsFlagsWithoutInstallDir(t *testing.T) {
 		}
 	}
 }
+
+func TestParseExtrasSelectionsKeepsLegacyStoreID(t *testing.T) {
+	selections, err := parseExtrasSelections("legacy-store:84@1.12.2,sSeo")
+	if err != nil {
+		t.Fatalf("parseExtrasSelections returned error: %v", err)
+	}
+	if len(selections) != 2 {
+		t.Fatalf("expected 2 selections, got %#v", selections)
+	}
+	if selections[0].ID != "legacy-store:84" {
+		t.Fatalf("expected legacy ID, got %#v", selections[0])
+	}
+	if selections[0].Version != "1.12.2" {
+		t.Fatalf("expected legacy version, got %#v", selections[0])
+	}
+	if selections[1].Name != "sSeo" {
+		t.Fatalf("expected managed name selection, got %#v", selections[1])
+	}
+}

@@ -298,7 +298,12 @@ func parseExtrasSelections(raw string) ([]domain.ExtrasSelection, error) {
 		if name == "" {
 			return nil, fmt.Errorf("invalid --extras value: %q", part)
 		}
-		out = append(out, domain.ExtrasSelection{Name: name, Version: version})
+		sel := domain.ExtrasSelection{Name: name, Version: version}
+		if strings.Contains(name, ":") {
+			sel.ID = name
+			sel.Name = ""
+		}
+		out = append(out, sel)
 	}
 	return out, nil
 }

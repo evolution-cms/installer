@@ -189,6 +189,32 @@ func TestDefaultExtrasSelectionsUseFloatingManagedConstraint(t *testing.T) {
 	}
 }
 
+func TestDedupeExtrasPackagesPrefersManagedOverLegacyDuplicate(t *testing.T) {
+	t.Parallel()
+
+	pkgs := dedupeExtrasPackages([]domain.ExtrasPackage{
+		{ID: "legacy-store:1", Name: "TinyMCE4", Source: "legacy-store"},
+		{ID: "managed:TinyMCE4", Name: "TinyMCE4", Source: "managed"},
+		{ID: "legacy-store:2", Name: "AjaxSearch", Source: "legacy-store"},
+	})
+
+	if len(pkgs) != 2 {
+		t.Fatalf("expected 2 unique packages, got %#v", pkgs)
+	}
+	foundTiny := false
+	for _, pkg := range pkgs {
+		if pkg.Name == "TinyMCE4" {
+			foundTiny = true
+			if pkg.Source != "managed" {
+				t.Fatalf("expected managed TinyMCE4 to win, got %#v", pkg)
+			}
+		}
+	}
+	if !foundTiny {
+		t.Fatalf("expected TinyMCE4 in deduped packages: %#v", pkgs)
+	}
+}
+
 func TestParseExtrasDocblockFile(t *testing.T) {
 	t.Parallel()
 
