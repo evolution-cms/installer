@@ -62,11 +62,11 @@ func TestParseLegacyStoreCatalogJSON(t *testing.T) {
 	t.Parallel()
 
 	raw := []byte(`{
-		"category":[{"id":"2","title":"Catalog"}],
+		"category":[{"id":2,"title":"Catalog"}],
 		"allcategory":{
 			"2":[
 				{
-					"id":"84",
+					"id":84,
 					"url":{"fieldValue":[
 						{"file":"https://github.com/extras-evolution/ajaxSearch/archive/1.12.2.zip","version":"1.12.2","date":"25-01-2021"},
 						{"file":"https://github.com/extras-evolution/ajaxSearch/archive/master.zip","version":"master","date":"04-11-2017"}

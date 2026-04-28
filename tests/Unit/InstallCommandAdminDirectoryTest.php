@@ -232,6 +232,21 @@ final class InstallCommandAdminDirectoryTest extends TestCase
         $this->assertFalse($cmd->shouldSkipProjectPresetPublic('evolution-cms-presets/default'));
     }
 
+    public function testProjectPresetInstallCommandKeepsLocalPresetSource(): void
+    {
+        $cmd = $this->makeCommand();
+        $presetPath = $this->makeTempProjectDir();
+
+        $local = $cmd->buildProjectPresetInstallCommandPublic('/tmp/core/artisan', $presetPath);
+        $this->assertContains('--keep', $local);
+
+        $remote = $cmd->buildProjectPresetInstallCommandPublic('/tmp/core/artisan', 'https://github.com/evolution-cms-presets/default.git', 'dev');
+        $this->assertNotContains('--keep', $remote);
+        $this->assertContains('--ref=dev', $remote);
+
+        $this->removeTempDir($presetPath);
+    }
+
     private function makeTempProjectDir(): string
     {
         $base = rtrim(sys_get_temp_dir(), '/\\');
@@ -302,5 +317,10 @@ final class TestableInstallCommand extends InstallCommand
     public function resolveProjectPresetSpecPublic(string $preset): array
     {
         return $this->resolveProjectPresetSpec($preset);
+    }
+
+    public function buildProjectPresetInstallCommandPublic(string $artisan, string $source, string $ref = ''): array
+    {
+        return $this->buildProjectPresetInstallCommand($artisan, $source, $ref);
     }
 }

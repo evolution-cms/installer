@@ -3382,17 +3382,7 @@ class InstallCommand extends Command
         [$source, $ref] = $this->resolveProjectPresetSpec((string) $preset);
         $this->tui->addLog("Installing project preset: {$source}");
 
-        $command = [
-            PHP_BINARY ?: 'php',
-            $artisan,
-            'preset:install',
-            '--from=' . $source,
-            '--force',
-        ];
-
-        if ($ref !== '') {
-            $command[] = '--ref=' . $ref;
-        }
+        $command = $this->buildProjectPresetInstallCommand($artisan, $source, $ref);
 
         $process = new Process($command, $projectPath, $this->buildProcessEnv());
         $timeout = $this->composerTimeoutSeconds();
@@ -3449,6 +3439,27 @@ class InstallCommand extends Command
         $this->steps['presets']['completed'] = true;
         $this->tui->setQuestTrack($this->steps);
         $this->tui->addLog('Project preset installed successfully.', 'success');
+    }
+
+    protected function buildProjectPresetInstallCommand(string $artisan, string $source, string $ref = ''): array
+    {
+        $command = [
+            PHP_BINARY ?: 'php',
+            $artisan,
+            'preset:install',
+            '--from=' . $source,
+            '--force',
+        ];
+
+        if ($ref !== '') {
+            $command[] = '--ref=' . $ref;
+        }
+
+        if (is_dir($source)) {
+            $command[] = '--keep';
+        }
+
+        return $command;
     }
 
     protected function runProjectPresetMigrations(string $projectPath, string $artisan): void

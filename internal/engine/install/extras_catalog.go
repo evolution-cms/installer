@@ -33,13 +33,15 @@ type legacyStoreStartResponse struct {
 	AllCategory map[string][]legacyStoreCatalogRaw `json:"allcategory"`
 }
 
+type legacyStoreScalar string
+
 type legacyStoreCategory struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+	ID    legacyStoreScalar `json:"id"`
+	Title string            `json:"title"`
 }
 
 type legacyStoreCatalogRaw struct {
-	ID           string              `json:"id"`
+	ID           legacyStoreScalar   `json:"id"`
 	URL          legacyStoreURLField `json:"url"`
 	Method       string              `json:"method"`
 	Type         string              `json:"type"`
@@ -62,6 +64,27 @@ type legacyStoreVersion struct {
 	File    string `json:"file"`
 	Version string `json:"version"`
 	Date    string `json:"date"`
+}
+
+func (s *legacyStoreScalar) UnmarshalJSON(raw []byte) error {
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return err
+	}
+
+	switch v := value.(type) {
+	case string:
+		*s = legacyStoreScalar(v)
+	case json.Number:
+		*s = legacyStoreScalar(v.String())
+	case nil:
+		*s = ""
+	default:
+		*s = legacyStoreScalar(fmt.Sprint(v))
+	}
+	return nil
 }
 
 func loadAllExtrasCatalogs(ctx context.Context, workDir, token string) ([]domain.ExtrasPackage, []domain.ExtrasSelection, []string, error) {
@@ -315,8 +338,9 @@ func parseLegacyStoreCatalogJSON(raw []byte) ([]domain.ExtrasPackage, error) {
 
 	categories := map[string]string{}
 	for _, cat := range payload.Category {
-		if cat.ID != "" {
-			categories[cat.ID] = strings.TrimSpace(cat.Title)
+		id := strings.TrimSpace(string(cat.ID))
+		if id != "" {
+			categories[id] = strings.TrimSpace(cat.Title)
 		}
 	}
 
@@ -353,7 +377,7 @@ func parseLegacyStoreCatalogJSON(raw []byte) ([]domain.ExtrasPackage, error) {
 			}
 
 			out = append(out, domain.ExtrasPackage{
-				ID:                 "legacy-store:" + strings.TrimSpace(item.ID),
+				ID:                 "legacy-store:" + strings.TrimSpace(string(item.ID)),
 				Name:               name,
 				Version:            version,
 				Versions:           versions,
