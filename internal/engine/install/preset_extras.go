@@ -17,11 +17,16 @@ type presetExtrasManifest struct {
 	} `json:"extras"`
 }
 
+type presetComposerManifest struct {
+	Require map[string]string `json:"require"`
+}
+
 type presetExtraRef struct {
-	ID      string
-	Name    string
-	Source  string
-	Version string
+	ID           string
+	Name         string
+	Source       string
+	Version      string
+	ComposerName string
 }
 
 func (r *presetExtraRef) UnmarshalJSON(raw []byte) error {
@@ -61,6 +66,10 @@ func presetExtraRefFromString(value string) presetExtraRef {
 	ref := presetExtraRef{Version: version}
 	if strings.Contains(name, ":") {
 		ref.ID = name
+	} else if strings.Contains(name, "/") {
+		ref.Name = name
+		ref.Source = "composer-require"
+		ref.ComposerName = normalizeComposerPackageName(name)
 	} else {
 		ref.Name = name
 	}
@@ -68,24 +77,31 @@ func presetExtraRefFromString(value string) presetExtraRef {
 }
 
 func loadPresetRequiredExtras(workDir string) ([]domain.ExtrasSelection, []string) {
+	var out []domain.ExtrasSelection
+	var warnings []string
+
+	composerSelections, composerWarnings := loadComposerRequiredExtras(workDir)
+	warnings = append(warnings, composerWarnings...)
+	out = mergeRequiredExtras(out, composerSelections)
+
 	for _, path := range presetManifestPaths(workDir) {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
 			}
-			return nil, []string{"Unable to read preset extras manifest: " + err.Error()}
+			warnings = append(warnings, "Unable to read preset extras manifest: "+err.Error())
+			continue
 		}
 
 		selections, err := parsePresetRequiredExtras(raw)
 		if err != nil {
-			return nil, []string{fmt.Sprintf("Invalid preset extras manifest %s: %v", filepath.ToSlash(path), err)}
+			warnings = append(warnings, fmt.Sprintf("Invalid preset extras manifest %s: %v", filepath.ToSlash(path), err))
+			continue
 		}
-		if len(selections) > 0 {
-			return selections, nil
-		}
+		out = mergeRequiredExtras(out, selections)
 	}
-	return nil, nil
+	return out, warnings
 }
 
 func presetManifestPaths(workDir string) []string {
@@ -110,11 +126,65 @@ func parsePresetRequiredExtras(raw []byte) ([]domain.ExtrasSelection, error) {
 	seen := map[string]struct{}{}
 	for _, ref := range refs {
 		sel := domain.ExtrasSelection{
-			ID:       strings.TrimSpace(ref.ID),
-			Name:     strings.TrimSpace(ref.Name),
-			Source:   strings.TrimSpace(ref.Source),
-			Version:  strings.TrimSpace(ref.Version),
-			Required: true,
+			ID:           strings.TrimSpace(ref.ID),
+			Name:         strings.TrimSpace(ref.Name),
+			Source:       strings.TrimSpace(ref.Source),
+			Version:      strings.TrimSpace(ref.Version),
+			ComposerName: normalizeComposerPackageName(ref.ComposerName),
+			Required:     true,
+		}
+		if sel.ComposerName == "" && strings.Contains(sel.Name, "/") {
+			sel.ComposerName = normalizeComposerPackageName(sel.Name)
+		}
+		key := extrasSelectionIdentity(sel)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, sel)
+	}
+	return out, nil
+}
+
+func loadComposerRequiredExtras(workDir string) ([]domain.ExtrasSelection, []string) {
+	path := filepath.Join(absDir(workDir), "core", "custom", "composer.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, []string{"Unable to read preset composer requirements: " + err.Error()}
+	}
+
+	selections, err := parseComposerRequiredExtras(raw)
+	if err != nil {
+		return nil, []string{fmt.Sprintf("Invalid preset composer requirements %s: %v", filepath.ToSlash(path), err)}
+	}
+	return selections, nil
+}
+
+func parseComposerRequiredExtras(raw []byte) ([]domain.ExtrasSelection, error) {
+	var manifest presetComposerManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return nil, err
+	}
+
+	out := make([]domain.ExtrasSelection, 0, len(manifest.Require))
+	seen := map[string]struct{}{}
+	for packageName, version := range manifest.Require {
+		composerName := normalizeComposerPackageName(packageName)
+		if composerName == "" {
+			continue
+		}
+		sel := domain.ExtrasSelection{
+			Name:         composerName,
+			Source:       "composer-require",
+			Version:      strings.TrimSpace(version),
+			ComposerName: composerName,
+			Required:     true,
 		}
 		key := extrasSelectionIdentity(sel)
 		if key == "" {

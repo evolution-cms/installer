@@ -219,18 +219,17 @@ evo install /path/to/my-site \
 
 The default preset does not install Extras. Use `--extras=sTask,sSeo` only when you intentionally want those packages in the project.
 
-Presets can declare required Extras in `core/custom/preset.json`. Required Extras are automatically selected after the preset is applied, stay locked in the TUI, and are still installed when the user chooses to skip optional Extras:
+Presets can declare required managed Composer Extras in `core/custom/composer.json`. The installer reads those Composer requirements after the preset is applied, matches them against the managed Extras catalog, then runs the Extras installer so provider discovery, asset publishing, migrations, and cache clearing still happen. Required Extras are automatically selected after the preset is applied, stay locked in the TUI, and are still installed when the user chooses to skip optional Extras:
 
 ```json
 {
-  "name": "blog-daisyui",
-  "extras": {
-    "required": ["eTinyMCE", "sSeo"]
+  "require": {
+    "evolution-cms/etinymce": "*"
   }
 }
 ```
 
-For example, `evolution-cms-presets/blog-daisyui` uses this manifest to require `eTinyMCE` and `sSeo` during installation.
+Legacy or non-Composer required Extras can still be described in `core/custom/preset.json` when needed, but Composer package dependencies should live in `core/custom/composer.json`.
 
 Accepted preset sources:
 

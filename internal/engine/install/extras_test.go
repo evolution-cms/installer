@@ -236,6 +236,123 @@ func TestNormalizeExtrasSelectionsConvertsExplicitManagedDefaultBranch(t *testin
 	}
 }
 
+func TestNormalizeExtrasSelectionsMatchesComposerPackageName(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:eTinyMCE",
+			Name:               "eTinyMCE",
+			Source:             "managed",
+			InstallMode:        "managed-artisan",
+			DefaultInstallMode: "latest-release",
+			Version:            "8.3.2",
+			ComposerName:       "evolution-cms/etinymce",
+		},
+	}
+
+	selections := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{
+			Name:         "evolution-cms/etinymce",
+			Source:       "composer-require",
+			Version:      "*",
+			ComposerName: "evolution-cms/etinymce",
+			Required:     true,
+		},
+	})
+	if len(selections) != 1 {
+		t.Fatalf("expected composer selection to resolve, got %#v", selections)
+	}
+	if selections[0].ID != "managed:eTinyMCE" || selections[0].Name != "eTinyMCE" || selections[0].Version != "*" || !selections[0].Required {
+		t.Fatalf("unexpected composer selection: %#v", selections[0])
+	}
+}
+
+func TestPresetRequiredExtrasMergeWithUserSelectedExtras(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:eTinyMCE",
+			Name:               "eTinyMCE",
+			Source:             "managed",
+			InstallMode:        "managed-artisan",
+			DefaultInstallMode: "latest-release",
+			Version:            "8.3.2",
+			ComposerName:       "evolution-cms/etinymce",
+		},
+		{
+			ID:                 "managed:ePasskeys",
+			Name:               "ePasskeys",
+			Source:             "managed",
+			InstallMode:        "managed-artisan",
+			DefaultInstallMode: "default-branch",
+			DefaultBranch:      "main",
+			ComposerName:       "evolution-cms/epasskeys",
+		},
+	}
+
+	required := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{
+			Name:         "evolution-cms/etinymce",
+			Source:       "composer-require",
+			Version:      "*",
+			ComposerName: "evolution-cms/etinymce",
+			Required:     true,
+		},
+	})
+	selected := mergeRequiredExtras([]domain.ExtrasSelection{{Name: "ePasskeys"}}, required)
+	selected = normalizeExtrasSelections(pkgs, selected)
+
+	if len(selected) != 2 {
+		t.Fatalf("expected required and user-selected extras, got %#v", selected)
+	}
+	if selected[0].Name != "ePasskeys" || selected[0].Required {
+		t.Fatalf("expected user-selected extra to stay optional, got %#v", selected[0])
+	}
+	if selected[1].Name != "eTinyMCE" || !selected[1].Required {
+		t.Fatalf("expected composer-required extra to stay required, got %#v", selected[1])
+	}
+	if selected[1].Version != "*" {
+		t.Fatalf("expected required composer version to be kept, got %q", selected[1].Version)
+	}
+}
+
+func TestPresetRequiredExtrasDedupeWhenUserAlsoSelectsRequiredExtra(t *testing.T) {
+	t.Parallel()
+
+	pkgs := []domain.ExtrasPackage{
+		{
+			ID:                 "managed:eTinyMCE",
+			Name:               "eTinyMCE",
+			Source:             "managed",
+			InstallMode:        "managed-artisan",
+			DefaultInstallMode: "latest-release",
+			Version:            "8.3.2",
+			ComposerName:       "evolution-cms/etinymce",
+		},
+	}
+
+	required := normalizeExtrasSelections(pkgs, []domain.ExtrasSelection{
+		{
+			Name:         "evolution-cms/etinymce",
+			Source:       "composer-require",
+			Version:      "*",
+			ComposerName: "evolution-cms/etinymce",
+			Required:     true,
+		},
+	})
+	selected := mergeRequiredExtras([]domain.ExtrasSelection{{ID: "managed:eTinyMCE"}}, required)
+	selected = normalizeExtrasSelections(pkgs, selected)
+
+	if len(selected) != 1 {
+		t.Fatalf("expected duplicate required extra to collapse to one install item, got %#v", selected)
+	}
+	if selected[0].Name != "eTinyMCE" || !selected[0].Required {
+		t.Fatalf("expected deduped extra to stay required, got %#v", selected[0])
+	}
+}
+
 func TestParsePresetRequiredExtrasSupportsStringsAndObjects(t *testing.T) {
 	t.Parallel()
 
@@ -257,6 +374,49 @@ func TestParsePresetRequiredExtrasSupportsStringsAndObjects(t *testing.T) {
 	}
 	if selections[2].Name != "ePasskeys" || selections[2].Version != "main" || !selections[2].Required {
 		t.Fatalf("unexpected third selection: %#v", selections[2])
+	}
+}
+
+func TestParseComposerRequiredExtrasUsesComposerRequire(t *testing.T) {
+	t.Parallel()
+
+	selections, err := parseComposerRequiredExtras([]byte(`{
+		"require": {
+			"php": "^8.3",
+			"evolution-cms/etinymce": "*"
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("parseComposerRequiredExtras returned error: %v", err)
+	}
+	if len(selections) != 1 {
+		t.Fatalf("expected one composer-backed selection, got %#v", selections)
+	}
+	if selections[0].ComposerName != "evolution-cms/etinymce" || selections[0].Version != "*" || !selections[0].Required {
+		t.Fatalf("unexpected composer selection: %#v", selections[0])
+	}
+}
+
+func TestEnrichManagedExtrasComposerNamesFromCatalogCache(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	cacheDir := filepath.Join(root, "core", "custom", "cache")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{
+		"packages": [
+			{"name": "eTinyMCE", "composer_name": "evolution-cms/etinymce"}
+		]
+	}`)
+	if err := os.WriteFile(filepath.Join(cacheDir, "extras.catalog.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	pkgs := enrichManagedExtrasComposerNames(root, []domain.ExtrasPackage{{Name: "eTinyMCE", Source: "managed"}})
+	if len(pkgs) != 1 || pkgs[0].ComposerName != "evolution-cms/etinymce" {
+		t.Fatalf("expected composer name from cache, got %#v", pkgs)
 	}
 }
 

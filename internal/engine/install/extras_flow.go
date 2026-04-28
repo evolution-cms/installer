@@ -524,6 +524,7 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 	allowed := map[string]struct{}{}
 	pkgByID := map[string]domain.ExtrasPackage{}
 	pkgByName := map[string]domain.ExtrasPackage{}
+	pkgByComposerName := map[string]domain.ExtrasPackage{}
 	for _, p := range pkgs {
 		if p.ID != "" {
 			allowed[p.ID] = struct{}{}
@@ -531,6 +532,9 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		}
 		if p.Name != "" {
 			pkgByName[strings.ToLower(p.Name)] = p
+		}
+		if composerName := normalizeComposerPackageName(p.ComposerName); composerName != "" {
+			pkgByComposerName[composerName] = p
 		}
 	}
 	out := make([]domain.ExtrasSelection, 0, len(selections))
@@ -545,9 +549,18 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		if !ok {
 			name := strings.ToLower(strings.TrimSpace(sel.Name))
 			if name == "" {
-				continue
+				name = normalizeComposerPackageName(sel.ComposerName)
 			}
 			pkg, ok = pkgByName[name]
+		}
+		if !ok {
+			composerName := normalizeComposerPackageName(sel.ComposerName)
+			if composerName == "" {
+				composerName = normalizeComposerPackageName(sel.Name)
+			}
+			if composerName != "" {
+				pkg, ok = pkgByComposerName[composerName]
+			}
 		}
 		if !ok {
 			continue
@@ -570,11 +583,12 @@ func normalizeExtrasSelections(pkgs []domain.ExtrasPackage, selections []domain.
 		}
 		seen[id] = len(out)
 		out = append(out, domain.ExtrasSelection{
-			ID:       id,
-			Name:     pkg.Name,
-			Source:   pkg.Source,
-			Version:  version,
-			Required: sel.Required || pkg.Required,
+			ID:           id,
+			Name:         pkg.Name,
+			Source:       pkg.Source,
+			Version:      version,
+			ComposerName: normalizeComposerPackageName(pkg.ComposerName),
+			Required:     sel.Required || pkg.Required,
 		})
 	}
 	return out
@@ -595,6 +609,7 @@ func mergeRequiredExtras(selections []domain.ExtrasSelection, required []domain.
 		if forceRequired {
 			sel.Required = true
 		}
+		sel.ComposerName = normalizeComposerPackageName(sel.ComposerName)
 		if idx, ok := seen[key]; ok {
 			if out[idx].Version == "" && strings.TrimSpace(sel.Version) != "" {
 				out[idx].Version = strings.TrimSpace(sel.Version)
@@ -627,11 +642,15 @@ func markRequiredExtrasPackages(pkgs []domain.ExtrasPackage, required []domain.E
 		if key := strings.ToLower(strings.TrimSpace(sel.Name)); key != "" {
 			requiredKeys[key] = struct{}{}
 		}
+		if key := normalizeComposerPackageName(sel.ComposerName); key != "" {
+			requiredKeys[key] = struct{}{}
+		}
 	}
 	for i := range pkgs {
 		_, idRequired := requiredKeys[strings.ToLower(strings.TrimSpace(pkgs[i].ID))]
 		_, nameRequired := requiredKeys[strings.ToLower(strings.TrimSpace(pkgs[i].Name))]
-		if idRequired || nameRequired {
+		_, composerRequired := requiredKeys[normalizeComposerPackageName(pkgs[i].ComposerName)]
+		if idRequired || nameRequired || composerRequired {
 			pkgs[i].Required = true
 		}
 	}
@@ -641,6 +660,9 @@ func markRequiredExtrasPackages(pkgs []domain.ExtrasPackage, required []domain.E
 func extrasSelectionIdentity(sel domain.ExtrasSelection) string {
 	if id := strings.ToLower(strings.TrimSpace(sel.ID)); id != "" {
 		return id
+	}
+	if composerName := normalizeComposerPackageName(sel.ComposerName); composerName != "" {
+		return "composer:" + composerName
 	}
 	return strings.ToLower(strings.TrimSpace(sel.Name))
 }
@@ -655,6 +677,9 @@ func isManagedExtrasPackage(pkg domain.ExtrasPackage) bool {
 
 func formatExtrasSelectionLabel(sel domain.ExtrasSelection) string {
 	name := strings.TrimSpace(sel.Name)
+	if name == "" {
+		name = strings.TrimSpace(sel.ComposerName)
+	}
 	if name == "" {
 		name = strings.TrimSpace(sel.ID)
 	}

@@ -135,7 +135,7 @@ func extrasPackagesEqual(a []domain.ExtrasPackage, b []domain.ExtrasPackage) boo
 		return false
 	}
 	for i := range a {
-		if a[i].ID != b[i].ID || a[i].Name != b[i].Name || a[i].Version != b[i].Version || a[i].Source != b[i].Source || a[i].Section != b[i].Section || a[i].Preselected != b[i].Preselected {
+		if a[i].ID != b[i].ID || a[i].Name != b[i].Name || a[i].Version != b[i].Version || a[i].Source != b[i].Source || a[i].Section != b[i].Section || a[i].Preselected != b[i].Preselected || a[i].ComposerName != b[i].ComposerName {
 			return false
 		}
 		if len(a[i].Versions) != len(b[i].Versions) {
@@ -456,6 +456,9 @@ func selectionsToValues(selections []domain.ExtrasSelection) []string {
 }
 
 func (m *Model) openExtrasVersionPicker(pkg domain.ExtrasPackage) {
+	if pkg.Required {
+		return
+	}
 	key := extrasPackageKey(pkg)
 	if key == "" {
 		return

@@ -75,6 +75,41 @@ func TestRequiredExtrasCannotBeDeselected(t *testing.T) {
 	}
 }
 
+func TestRequiredExtrasVersionPickerStaysLocked(t *testing.T) {
+	t.Parallel()
+
+	m := &Model{}
+	m.applyExtrasState(domain.ExtrasState{
+		Active: true,
+		Stage:  domain.ExtrasStageSelect,
+		Packages: []domain.ExtrasPackage{
+			{
+				ID:                 "managed:eTinyMCE",
+				Name:               "eTinyMCE",
+				Source:             "managed",
+				DefaultInstallMode: "latest-release",
+				Version:            "8.3.2",
+				Required:           true,
+			},
+		},
+		Selections: []domain.ExtrasSelection{
+			{ID: "managed:eTinyMCE", Name: "eTinyMCE", Source: "managed", Version: "*", Required: true},
+		},
+	})
+	m.extras.focus = extrasFocusList
+	m.extras.cursor = 0
+
+	m.handleExtrasSelectKey("v", "v")
+
+	if m.extras.versionPickerActive {
+		t.Fatalf("expected required extra version picker to stay closed")
+	}
+	selected := m.extrasSelectedNames()
+	if len(selected) != 1 || selected[0].Version != "*" || !selected[0].Required {
+		t.Fatalf("expected required extra version to stay locked, got %#v", selected)
+	}
+}
+
 func TestVisibleExtrasPackagesHidesLegacyUntilToggled(t *testing.T) {
 	t.Parallel()
 

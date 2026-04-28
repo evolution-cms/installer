@@ -43,17 +43,19 @@ type ExtrasPackage struct {
 	Icon               string   `json:"icon,omitempty"`
 	DownloadURL        string   `json:"downloadUrl,omitempty"`
 	Dependencies       string   `json:"dependencies,omitempty"`
+	ComposerName       string   `json:"composer_name,omitempty"`
 	Deprecated         bool     `json:"deprecated,omitempty"`
 	Method             string   `json:"method,omitempty"`
 	Required           bool     `json:"required,omitempty"`
 }
 
 type ExtrasSelection struct {
-	ID       string
-	Name     string
-	Source   string
-	Version  string
-	Required bool
+	ID           string
+	Name         string
+	Source       string
+	Version      string
+	ComposerName string
+	Required     bool
 }
 
 type ExtrasItemResult struct {

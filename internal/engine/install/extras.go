@@ -74,6 +74,7 @@ func sanitizeExtrasPackages(pkgs []domain.ExtrasPackage) []domain.ExtrasPackage 
 		p.Icon = strings.TrimSpace(p.Icon)
 		p.DownloadURL = strings.TrimSpace(p.DownloadURL)
 		p.Dependencies = strings.TrimSpace(p.Dependencies)
+		p.ComposerName = strings.ToLower(strings.TrimSpace(p.ComposerName))
 		p.Method = strings.TrimSpace(p.Method)
 		if len(p.Versions) > 0 {
 			seen := map[string]struct{}{}

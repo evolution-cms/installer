@@ -103,6 +103,7 @@ func loadAllExtrasCatalogs(ctx context.Context, workDir, token string) ([]domain
 	if err != nil {
 		warnings = append(warnings, "Managed extras unavailable: "+err.Error())
 	} else {
+		managed = enrichManagedExtrasComposerNames(workDir, managed)
 		pkgs = append(pkgs, managed...)
 	}
 
@@ -160,6 +161,93 @@ func extrasSourcePriority(source string) int {
 	default:
 		return 10
 	}
+}
+
+type extrasCatalogComposerPackage struct {
+	Name         string `json:"name"`
+	FullName     string `json:"full_name"`
+	ComposerName string `json:"composer_name"`
+}
+
+type extrasCatalogComposerCache struct {
+	Packages []extrasCatalogComposerPackage `json:"packages"`
+}
+
+func enrichManagedExtrasComposerNames(workDir string, pkgs []domain.ExtrasPackage) []domain.ExtrasPackage {
+	if len(pkgs) == 0 {
+		return pkgs
+	}
+
+	composerNames := loadExtrasComposerNameMap(workDir)
+	for i := range pkgs {
+		if strings.TrimSpace(pkgs[i].ComposerName) != "" {
+			pkgs[i].ComposerName = normalizeComposerPackageName(pkgs[i].ComposerName)
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(pkgs[i].Name))
+		if composerName := composerNames[key]; composerName != "" {
+			pkgs[i].ComposerName = composerName
+			continue
+		}
+		pkgs[i].ComposerName = inferManagedExtrasComposerName(pkgs[i].Name)
+	}
+	return pkgs
+}
+
+func loadExtrasComposerNameMap(workDir string) map[string]string {
+	path := filepath.Join(absDir(workDir), "core", "custom", "cache", "extras.catalog.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+
+	var catalog extrasCatalogComposerCache
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		return nil
+	}
+
+	out := map[string]string{}
+	for _, pkg := range catalog.Packages {
+		name := strings.ToLower(strings.TrimSpace(pkg.Name))
+		if name == "" {
+			continue
+		}
+		composerName := normalizeComposerPackageName(pkg.ComposerName)
+		if composerName == "" {
+			composerName = normalizeComposerPackageName(pkg.FullName)
+		}
+		if composerName == "" {
+			continue
+		}
+		out[name] = composerName
+	}
+	return out
+}
+
+func inferManagedExtrasComposerName(name string) string {
+	name = strings.TrimSpace(name)
+	if len(name) < 2 {
+		return ""
+	}
+	packageName := strings.ToLower(name)
+	switch name[0] {
+	case 'e', 'E':
+		return "evolution-cms/" + packageName
+	case 's', 'S':
+		return "seiger/" + packageName
+	case 'd', 'D':
+		return "dmi3yy/" + packageName
+	default:
+		return ""
+	}
+}
+
+func normalizeComposerPackageName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if !strings.Contains(name, "/") {
+		return ""
+	}
+	return name
 }
 
 func defaultExtrasSelections(pkgs []domain.ExtrasPackage) []domain.ExtrasSelection {
