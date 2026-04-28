@@ -262,16 +262,14 @@ func (m *Model) renderLogoHeader(width int) string {
 	}
 
 	versionText, versionLineStyle := m.releaseVersionLine()
-	installerText := m.installerVersionLine()
 	tagline := m.meta.Tagline
 	if tagline == "" {
 		tagline = "The world’s fastest CMS!"
 	}
 	version := versionLineStyle.Render(cutPlain(versionText, availableMetaW))
-	installer := mutedStyle.Render(cutPlain(installerText, availableMetaW))
 	tagline = taglineStyle.Render(cutPlain(tagline, availableMetaW))
 
-	metaBase := []string{version, installer, tagline}
+	metaBase := []string{version, tagline}
 	metaH := len(metaBase)
 	metaTopPad := max(0, (logoH-metaH)/2)
 	metaBottomPad := max(0, logoH-metaH-metaTopPad)
@@ -334,15 +332,14 @@ func (m *Model) renderLogoHeader(width int) string {
 		outLines = outLines[:innerH]
 	}
 
-	return panel("Evolution CMS Installer", strings.Join(outLines, "\n"), width, logoHeaderHeight)
+	return panel(m.headerTitle(), strings.Join(outLines, "\n"), width, logoHeaderHeight)
 }
 
 func (m *Model) renderCompactHeader(width int) string {
 	contentW := panelContentWidth(width)
 	versionText, versionLineStyle := m.releaseVersionLine()
-	compact := versionText + " | " + m.installerVersionLine()
-	version := versionLineStyle.Render(cutPlain(compact, contentW))
-	return panel("Evolution CMS Installer", version, width, compactHeaderHeight)
+	version := versionLineStyle.Render(cutPlain(versionText, contentW))
+	return panel(m.headerTitle(), version, width, compactHeaderHeight)
 }
 
 func (m *Model) releaseVersionLine() (string, lipgloss.Style) {
@@ -358,8 +355,8 @@ func (m *Model) releaseVersionLine() (string, lipgloss.Style) {
 	return m.appendBranch("v—"), mutedStyle
 }
 
-func (m *Model) installerVersionLine() string {
-	return "Installer " + formatVersion(m.meta.Version)
+func (m *Model) headerTitle() string {
+	return "Evolution CMS Installer " + formatVersion(m.meta.Version)
 }
 
 func (m *Model) appendBranch(versionLine string) string {
