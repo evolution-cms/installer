@@ -3,6 +3,7 @@ package install
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/evolution-cms/installer/internal/domain"
@@ -472,6 +473,23 @@ func TestDedupeExtrasPackagesPrefersManagedOverLegacyDuplicate(t *testing.T) {
 	}
 	if !foundTiny {
 		t.Fatalf("expected TinyMCE4 in deduped packages: %#v", pkgs)
+	}
+}
+
+func TestExtrasHelperUsesCoreCompatiblePathSeparators(t *testing.T) {
+	t.Parallel()
+
+	if !strings.Contains(extrasHelperPHP, "function helper_evo_path(string $path): string") {
+		t.Fatalf("expected extras helper to define EVO path normalization")
+	}
+	if !strings.Contains(extrasHelperPHP, "define('EVO_BASE_PATH', $basePath)") {
+		t.Fatalf("expected EVO_BASE_PATH to use normalized forward-slash path")
+	}
+	if !strings.Contains(extrasHelperPHP, "define('EVO_CORE_PATH', $basePath . 'core/')") {
+		t.Fatalf("expected EVO_CORE_PATH to use normalized forward-slash path")
+	}
+	if strings.Contains(extrasHelperPHP, "define('EVO_BASE_PATH', rtrim($projectPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR)") {
+		t.Fatalf("EVO_BASE_PATH must not use DIRECTORY_SEPARATOR because define.inc.php requires trailing slash")
 	}
 }
 

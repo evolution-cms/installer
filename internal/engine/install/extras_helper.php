@@ -29,14 +29,21 @@ function helper_read_json(string $path): array
     return $data;
 }
 
+function helper_evo_path(string $path): string
+{
+    return rtrim(str_replace('\\', '/', $path), '/') . '/';
+}
+
 function helper_bootstrap(string $projectPath): void
 {
+    $basePath = helper_evo_path($projectPath);
+
     defined('EVO_API_MODE') || define('EVO_API_MODE', true);
     defined('IN_INSTALL_MODE') || define('IN_INSTALL_MODE', true);
     defined('IN_MANAGER_MODE') || define('IN_MANAGER_MODE', false);
     defined('EVO_CLI') || define('EVO_CLI', true);
-    defined('EVO_BASE_PATH') || define('EVO_BASE_PATH', rtrim($projectPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
-    defined('EVO_CORE_PATH') || define('EVO_CORE_PATH', EVO_BASE_PATH . 'core' . DIRECTORY_SEPARATOR);
+    defined('EVO_BASE_PATH') || define('EVO_BASE_PATH', $basePath);
+    defined('EVO_CORE_PATH') || define('EVO_CORE_PATH', $basePath . 'core/');
     defined('EVO_BASE_URL') || define('EVO_BASE_URL', '/');
     defined('EVO_SITE_URL') || define('EVO_SITE_URL', '/');
 
@@ -897,7 +904,7 @@ if ($projectPath === '' || $mode === '' || $payloadPath === '') {
     helper_fail('Usage: php extras_helper.php <project-path> <mode> <payload.json>');
 }
 
-$projectPath = rtrim((string) realpath($projectPath), DIRECTORY_SEPARATOR);
+$projectPath = rtrim((string) realpath($projectPath), '/\\');
 if ($projectPath === '') {
     helper_fail('Project path is invalid.');
 }
