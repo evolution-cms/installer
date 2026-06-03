@@ -186,6 +186,27 @@ final class InstallCommandAdminDirectoryTest extends TestCase
         $this->removeTempDir($projectPath);
     }
 
+    public function testApplyManagerDirectoryUpdatesManagerHtaccessRewriteBase(): void
+    {
+        $cmd = $this->makeCommand();
+
+        $projectPath = $this->makeTempProjectDir();
+        @mkdir($projectPath . '/manager', 0755, true);
+        file_put_contents($projectPath . '/manager/.htaccess', "RewriteEngine On\nRewriteBase /manager/\n");
+
+        $cmd->applyManagerDirectoryPublic($projectPath, [
+            'admin' => [
+                'directory' => 'admin',
+            ],
+        ]);
+
+        $this->assertFileExists($projectPath . '/admin/.htaccess');
+        $this->assertStringContainsString('RewriteBase /admin/', (string) file_get_contents($projectPath . '/admin/.htaccess'));
+        $this->assertStringNotContainsString('RewriteBase /manager/', (string) file_get_contents($projectPath . '/admin/.htaccess'));
+
+        $this->removeTempDir($projectPath);
+    }
+
     public function testResolveProjectPresetSourceSupportsNamesReposUrlsAndLocalPaths(): void
     {
         $cmd = $this->makeCommand();
@@ -245,6 +266,29 @@ final class InstallCommandAdminDirectoryTest extends TestCase
         $this->assertContains('--ref=dev', $remote);
 
         $this->removeTempDir($presetPath);
+    }
+
+    public function testRootHtaccessUsesSelectedAdminDirectory(): void
+    {
+        $cmd = $this->makeCommand();
+
+        $projectPath = $this->makeTempProjectDir();
+        file_put_contents(
+            $projectPath . '/.htaccess',
+            "RewriteEngine On\nRewriteRule ^(manager|assets|js|css|images|img)/.*$ - [L]\n"
+        );
+
+        $cmd->updateRootHtaccessForAdminDirectoryPublic($projectPath, [
+            'admin' => [
+                'directory' => 'admin',
+            ],
+        ]);
+
+        $htaccess = (string) file_get_contents($projectPath . '/.htaccess');
+        $this->assertStringContainsString('RewriteRule ^(admin|assets|js|css|images|img)/.*$ - [L]', $htaccess);
+        $this->assertStringNotContainsString('^(manager|assets', $htaccess);
+
+        $this->removeTempDir($projectPath);
     }
 
     private function makeTempProjectDir(): string
@@ -322,5 +366,10 @@ final class TestableInstallCommand extends InstallCommand
     public function buildProjectPresetInstallCommandPublic(string $artisan, string $source, string $ref = ''): array
     {
         return $this->buildProjectPresetInstallCommand($artisan, $source, $ref);
+    }
+
+    public function updateRootHtaccessForAdminDirectoryPublic(string $projectPath, array $options): void
+    {
+        $this->updateRootHtaccessForAdminDirectory($projectPath, $options);
     }
 }
