@@ -221,6 +221,11 @@ func runInstall(ctx context.Context, args []string) int {
 	githubPat := fs.String("github-pat", "", "GitHub PAT token for API requests")
 	githubPatAlt := fs.String("github_pat", "", "GitHub PAT token for API requests")
 	extras := fs.String("extras", "", "Comma-separated extras to install (e.g., sTask@main,sSeo)")
+	skills := fs.String("skills", "", "Comma-separated EVO skills to install in CLI mode (default, none, or skill names)")
+	skillsSource := fs.String("skills-source", "", "Local path to the evo-skills source checkout")
+	skillsRef := fs.String("skills-ref", "", "Git ref/hash to record for EVO skills source")
+	skillsLink := fs.Bool("skills-link", false, "Symlink EVO skills from a local source instead of copying")
+	skillsDryRun := fs.Bool("skills-dry-run", false, "Plan EVO skills install without writing target files")
 	logToFile := fs.Bool("log", false, "Write installer log to file")
 	cliMode := fs.Bool("cli", false, "Run in non-interactive CLI mode (no TUI)")
 	quiet := fs.Bool("quiet", false, "Reduce CLI output (warnings/errors only)")
@@ -232,6 +237,10 @@ func runInstall(ctx context.Context, args []string) int {
 	}
 	if strings.TrimSpace(installDir) == "" && *cliMode {
 		installDir = "."
+	}
+	if err := validateSkillsCLIOptions(*skills, *cliMode, *skillsLink, *skillsSource, *skillsRef); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
 	}
 	pat := strings.TrimSpace(*githubPat)
 	if pat == "" {
@@ -259,6 +268,16 @@ func runInstall(ctx context.Context, args []string) int {
 		Language:           strings.ToLower(strings.TrimSpace(*language)),
 		GithubPat:          pat,
 	}
+	skillsSelection, err := parseSkillSelections(*skills)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	opt.Skills = skillsSelection
+	opt.SkillsSource = strings.TrimSpace(*skillsSource)
+	opt.SkillsRef = strings.TrimSpace(*skillsRef)
+	opt.SkillsLink = *skillsLink
+	opt.SkillsDryRun = *skillsDryRun
 	extrasSelections, err := parseExtrasSelections(*extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -272,6 +291,48 @@ func runInstall(ctx context.Context, args []string) int {
 		}
 	}
 	return runInstaller(ctx, ui.ModeInstall, &opt, *logToFile, *cliMode, *quiet)
+}
+
+func validateSkillsCLIOptions(skills string, cliMode bool, link bool, source string, ref string) error {
+	if strings.TrimSpace(skills) == "" {
+		return nil
+	}
+	if !cliMode {
+		return fmt.Errorf("--skills is currently supported only with --cli; TUI skill selection is not implemented yet")
+	}
+	if link && strings.TrimSpace(source) == "" {
+		return fmt.Errorf("--skills-link requires a local --skills-source path")
+	}
+	if link && strings.TrimSpace(ref) != "" {
+		return fmt.Errorf("--skills-ref conflicts with --skills-link; symlink mode must point at the current local checkout")
+	}
+	return nil
+}
+
+func parseSkillSelections(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		name := strings.TrimSpace(part)
+		if name == "" {
+			continue
+		}
+		if strings.ContainsAny(name, "/\\") {
+			return nil, fmt.Errorf("invalid --skills value: %q", name)
+		}
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, name)
+	}
+	return out, nil
 }
 
 func parseExtrasSelections(raw string) ([]domain.ExtrasSelection, error) {
@@ -314,7 +375,8 @@ func splitInstallArgs(args []string) (installDir string, flagArgs []string, err 
 	expectsValue := func(flag string) bool {
 		switch flag {
 		case "branch", "preset", "db-type", "db-host", "db-port", "db-name", "db-user", "db-password",
-			"admin-username", "admin-email", "admin-password", "admin-directory", "language", "github-pat", "github_pat", "extras":
+			"admin-username", "admin-email", "admin-password", "admin-directory", "language", "github-pat", "github_pat",
+			"extras", "skills", "skills-source", "skills-ref":
 			return true
 		default:
 			return false
@@ -505,5 +567,10 @@ func printUsage() {
 	fmt.Println("  --composer-clear-cache     Clear Composer cache before install")
 	fmt.Println("  --composer-update          Use composer update instead of install during setup")
 	fmt.Println("  --cli                      Run in non-interactive CLI mode (no TUI)")
+	fmt.Println("  --skills=<names>           CLI-only optional EVO skills install (default, none, or comma list)")
+	fmt.Println("  --skills-source=<path>     Local evo-skills source checkout")
+	fmt.Println("  --skills-ref=<ref>         Record source git ref/hash for copy installs")
+	fmt.Println("  --skills-link              Symlink skills from local source")
+	fmt.Println("  --skills-dry-run           Plan skills install without writing files")
 	fmt.Println("  --quiet                    Reduce CLI output (warnings/errors only)")
 }

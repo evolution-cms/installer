@@ -26,6 +26,40 @@ func TestSplitInstallArgsKeepsPresetFlags(t *testing.T) {
 	}
 }
 
+func TestSplitInstallArgsKeepsSkillsFlags(t *testing.T) {
+	installDir, flags, err := splitInstallArgs([]string{
+		"/tmp/site",
+		"--cli",
+		"--skills=evo-skill-creator",
+		"--skills-source",
+		"/tmp/evo-skills",
+		"--skills-ref=main",
+		"--skills-dry-run",
+	})
+	if err != nil {
+		t.Fatalf("splitInstallArgs returned error: %v", err)
+	}
+	if installDir != "/tmp/site" {
+		t.Fatalf("installDir = %q, want /tmp/site", installDir)
+	}
+	want := []string{
+		"--cli",
+		"--skills=evo-skill-creator",
+		"--skills-source",
+		"/tmp/evo-skills",
+		"--skills-ref=main",
+		"--skills-dry-run",
+	}
+	if len(flags) != len(want) {
+		t.Fatalf("flags = %#v, want %#v", flags, want)
+	}
+	for i := range want {
+		if flags[i] != want[i] {
+			t.Fatalf("flags[%d] = %q, want %q", i, flags[i], want[i])
+		}
+	}
+}
+
 func TestSplitInstallArgsRequiresPresetValue(t *testing.T) {
 	_, _, err := splitInstallArgs([]string{"/tmp/site", "--preset"})
 	if err == nil {
@@ -69,5 +103,45 @@ func TestParseExtrasSelectionsKeepsLegacyStoreID(t *testing.T) {
 	}
 	if selections[1].Name != "sSeo" {
 		t.Fatalf("expected managed name selection, got %#v", selections[1])
+	}
+}
+
+func TestParseSkillSelections(t *testing.T) {
+	selections, err := parseSkillSelections("default,evo-skill-creator,evo-skill-creator")
+	if err != nil {
+		t.Fatalf("parseSkillSelections returned error: %v", err)
+	}
+	want := []string{"default", "evo-skill-creator"}
+	if len(selections) != len(want) {
+		t.Fatalf("selections = %#v, want %#v", selections, want)
+	}
+	for i := range want {
+		if selections[i] != want[i] {
+			t.Fatalf("selections[%d] = %q, want %q", i, selections[i], want[i])
+		}
+	}
+}
+
+func TestParseSkillSelectionsRejectsPaths(t *testing.T) {
+	if _, err := parseSkillSelections("../bad"); err == nil {
+		t.Fatal("parseSkillSelections returned nil error for path-like skill")
+	}
+}
+
+func TestValidateSkillsRequiresCLI(t *testing.T) {
+	if err := validateSkillsCLIOptions("evo-skill-creator", false, false, "", ""); err == nil {
+		t.Fatal("validateSkillsCLIOptions returned nil error without --cli")
+	}
+}
+
+func TestValidateSkillsLinkRequiresSource(t *testing.T) {
+	if err := validateSkillsCLIOptions("evo-skill-creator", true, true, "", ""); err == nil {
+		t.Fatal("validateSkillsCLIOptions returned nil error for --skills-link without source")
+	}
+}
+
+func TestValidateSkillsLinkConflictsWithRef(t *testing.T) {
+	if err := validateSkillsCLIOptions("evo-skill-creator", true, true, "/tmp/evo-skills", "main"); err == nil {
+		t.Fatal("validateSkillsCLIOptions returned nil error for link/ref conflict")
 	}
 }
