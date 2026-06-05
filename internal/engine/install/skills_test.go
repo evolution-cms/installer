@@ -116,6 +116,78 @@ func TestApplySkillsInstallLinkCreatesSymlink(t *testing.T) {
 	}
 }
 
+func TestPlanSkillsInstallAutoloadsWorkflowWithoutAutorun(t *testing.T) {
+	t.Parallel()
+
+	sourceRoot := makeSkillsSource(t)
+	addWorkflowToSkillsSource(t, sourceRoot, false)
+	projectRoot := t.TempDir()
+
+	plan, err := planSkillsInstall(Options{
+		Skills:       []string{"evo-skill-creator"},
+		SkillsSource: sourceRoot,
+		SkillsRef:    "workflow-proof",
+	}, projectRoot)
+	if err != nil {
+		t.Fatalf("planSkillsInstall returned error: %v", err)
+	}
+	if len(plan.InstalledSkills) != 1 {
+		t.Fatalf("installed skills = %#v", plan.InstalledSkills)
+	}
+	workflow := plan.InstalledSkills[0].Workflow
+	if workflow == nil {
+		t.Fatal("expected workflow evidence")
+	}
+	if workflow.WorkflowID != "test-workflow.autoload.v1" {
+		t.Fatalf("workflow id = %q", workflow.WorkflowID)
+	}
+	if workflow.Autorun {
+		t.Fatal("workflow autorun should be false")
+	}
+	if !workflow.NoWriteActionsExecuted {
+		t.Fatal("workflow evidence must record no_write_actions_executed")
+	}
+	if strings.Join(workflow.ResolvedOrder, " -> ") != "Seed -> Gate -> Evidence" {
+		t.Fatalf("resolved order = %#v", workflow.ResolvedOrder)
+	}
+	if !hasSkillsOperation(plan.Operations, "autoload-workflow") {
+		t.Fatalf("expected autoload-workflow operation, got %#v", plan.Operations)
+	}
+
+	if err := applySkillsInstallPlan(plan); err != nil {
+		t.Fatalf("applySkillsInstallPlan returned error: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(projectRoot, "core", "custom", "skills", ".evo-skills.lock.json"))
+	if err != nil {
+		t.Fatalf("expected lockfile: %v", err)
+	}
+	var state skillsInstallState
+	if err := json.Unmarshal(raw, &state); err != nil {
+		t.Fatalf("invalid lockfile JSON: %v", err)
+	}
+	if state.InstalledSkills[0].Workflow == nil {
+		t.Fatalf("lockfile missing workflow evidence: %s", raw)
+	}
+	if state.InstalledSkills[0].Workflow.DryRunResult != "workflow_plan_only_no_actions" {
+		t.Fatalf("dry-run result = %q", state.InstalledSkills[0].Workflow.DryRunResult)
+	}
+}
+
+func TestPlanSkillsInstallWorkflowAutorunFails(t *testing.T) {
+	t.Parallel()
+
+	sourceRoot := makeSkillsSource(t)
+	addWorkflowToSkillsSource(t, sourceRoot, true)
+
+	_, err := planSkillsInstall(Options{
+		Skills:       []string{"evo-skill-creator"},
+		SkillsSource: sourceRoot,
+	}, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "autorun must be false") {
+		t.Fatalf("expected autorun error, got %v", err)
+	}
+}
+
 func TestPlanSkillsInstallMissingSkillFails(t *testing.T) {
 	t.Parallel()
 
@@ -276,4 +348,58 @@ func rewriteSkillsManifest(t *testing.T, sourceRoot string, mutate func(*skillsM
 	if err := os.WriteFile(manifestPath, append(raw, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func addWorkflowToSkillsSource(t *testing.T, sourceRoot string, autorun bool) {
+	t.Helper()
+
+	workflowDir := filepath.Join(sourceRoot, "workflows")
+	if err := os.MkdirAll(workflowDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workflow := skillsWorkflowDefinition{
+		SchemaVersion:         skillsWorkflowVersion,
+		WorkflowID:            "test-workflow.autoload.v1",
+		Name:                  "Test Workflow",
+		Version:               "0.1.0",
+		Status:                "p0-proof",
+		Autoload:              true,
+		Autorun:               autorun,
+		OwnerApprovalRequired: true,
+		PromotionAllowed:      false,
+		NoWriteActions:        true,
+		Dependencies:          []string{},
+		Stages: []skillsWorkflowStage{
+			{ID: "seed", Label: "Seed", Order: 1, Status: "visible", WriteAction: false},
+			{ID: "gate", Label: "Gate", Order: 2, Status: "visible", WriteAction: false},
+			{ID: "evidence", Label: "Evidence", Order: 3, Status: "required", WriteAction: false},
+		},
+	}
+	raw, err := json.MarshalIndent(workflow, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowPath := filepath.Join(workflowDir, "test.workflow.json")
+	if err := os.WriteFile(workflowPath, append(raw, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workflowHash, err := sha256File(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rewriteSkillsManifest(t, sourceRoot, func(manifest *skillsManifest) {
+		manifest.Skills[0].WorkflowID = "test-workflow.autoload.v1"
+		manifest.Skills[0].WorkflowFile = "workflows/test.workflow.json"
+		manifest.Skills[0].WorkflowHash = workflowHash
+	})
+}
+
+func hasSkillsOperation(ops []skillsInstallOperation, kind string) bool {
+	for _, op := range ops {
+		if op.Kind == kind {
+			return true
+		}
+	}
+	return false
 }

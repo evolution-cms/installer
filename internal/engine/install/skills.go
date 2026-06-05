@@ -21,6 +21,7 @@ const (
 	skillsManifestPath    = "manifests/evo-skills.manifest.json"
 	skillsStateSchema     = "evo.skills.install-state.v1"
 	skillsManifestVersion = "evo.skills.manifest.v1"
+	skillsWorkflowVersion = "evo.skills.workflow.v1"
 )
 
 type skillsManifest struct {
@@ -38,6 +39,9 @@ type skillsManifestEntry struct {
 	InstallTarget string            `json:"install_target"`
 	ContentHash   string            `json:"content_hash"`
 	FileHashes    map[string]string `json:"file_hashes,omitempty"`
+	WorkflowID    string            `json:"workflow_id,omitempty"`
+	WorkflowFile  string            `json:"workflow_file,omitempty"`
+	WorkflowHash  string            `json:"workflow_hash,omitempty"`
 	ModeSupport   []string          `json:"mode_support"`
 }
 
@@ -56,13 +60,63 @@ type skillsInstallPlan struct {
 }
 
 type skillsInstalledItem struct {
-	Name        string            `json:"name"`
-	SourcePath  string            `json:"source_path"`
-	TargetPath  string            `json:"target_path"`
-	ContentHash string            `json:"content_hash"`
-	FileHashes  map[string]string `json:"file_hashes,omitempty"`
-	Mode        string            `json:"mode"`
-	Status      string            `json:"status"`
+	Name        string                  `json:"name"`
+	SourcePath  string                  `json:"source_path"`
+	TargetPath  string                  `json:"target_path"`
+	ContentHash string                  `json:"content_hash"`
+	FileHashes  map[string]string       `json:"file_hashes,omitempty"`
+	Workflow    *skillsWorkflowEvidence `json:"workflow,omitempty"`
+	Mode        string                  `json:"mode"`
+	Status      string                  `json:"status"`
+}
+
+type skillsWorkflowDefinition struct {
+	SchemaVersion         string                `json:"schema_version"`
+	WorkflowID            string                `json:"workflow_id"`
+	Name                  string                `json:"name"`
+	Version               string                `json:"version"`
+	Status                string                `json:"status"`
+	Autoload              bool                  `json:"autoload"`
+	Autorun               bool                  `json:"autorun"`
+	OwnerApprovalRequired bool                  `json:"owner_approval_required"`
+	PromotionAllowed      bool                  `json:"promotion_allowed"`
+	NoWriteActions        bool                  `json:"no_write_actions"`
+	Dependencies          []string              `json:"dependencies"`
+	Stages                []skillsWorkflowStage `json:"stages"`
+}
+
+type skillsWorkflowStage struct {
+	ID          string `json:"id"`
+	Order       int    `json:"order"`
+	Label       string `json:"label"`
+	Purpose     string `json:"purpose,omitempty"`
+	WriteAction bool   `json:"write_action"`
+	Status      string `json:"status"`
+}
+
+type skillsWorkflowEvidence struct {
+	WorkflowID             string                        `json:"workflow_id"`
+	WorkflowVersion        string                        `json:"workflow_version"`
+	WorkflowHash           string                        `json:"workflow_hash"`
+	WorkflowFile           string                        `json:"workflow_file"`
+	Status                 string                        `json:"status"`
+	Autoload               bool                          `json:"autoload"`
+	Autorun                bool                          `json:"autorun"`
+	OwnerApprovalRequired  bool                          `json:"owner_approval_required"`
+	PromotionAllowed       bool                          `json:"promotion_allowed"`
+	NoWriteActionsExecuted bool                          `json:"no_write_actions_executed"`
+	DryRunResult           string                        `json:"dry_run_result"`
+	Dependencies           []string                      `json:"dependencies"`
+	ResolvedOrder          []string                      `json:"resolved_order"`
+	Stages                 []skillsWorkflowStageEvidence `json:"stages,omitempty"`
+}
+
+type skillsWorkflowStageEvidence struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Order       int    `json:"order"`
+	Status      string `json:"status"`
+	WriteAction bool   `json:"write_action"`
 }
 
 type skillsInstallOperation struct {
@@ -181,6 +235,29 @@ func (e *Engine) maybeRunSkillsInstall(ctx context.Context, emit func(domain.Eve
 			Message: fmt.Sprintf("Planned EVO skills install: %s (%s mode).", strings.Join(plan.Selected, ", "), plan.Mode),
 		},
 	})
+	for _, item := range plan.InstalledSkills {
+		if item.Workflow == nil {
+			continue
+		}
+		_ = emit(domain.Event{
+			Type:     domain.EventLog,
+			StepID:   skillsStepID,
+			Source:   "skills",
+			Severity: domain.SeverityInfo,
+			Payload: domain.LogPayload{
+				Message: fmt.Sprintf(
+					"Workflow autoload planned for %s: %s (%s).",
+					item.Name,
+					item.Workflow.WorkflowID,
+					strings.Join(item.Workflow.ResolvedOrder, " -> "),
+				),
+				Fields: map[string]string{
+					"autorun":                   "false",
+					"no_write_actions_executed": "true",
+				},
+			},
+		})
+	}
 
 	if !plan.DryRun {
 		if err := applySkillsInstallPlan(plan); err != nil {
@@ -327,6 +404,19 @@ func planSkillsInstall(opt Options, workDir string) (skillsInstallPlan, error) {
 		if err != nil {
 			return skillsInstallPlan{}, err
 		}
+		workflowEvidence, err := resolveSkillWorkflow(sourceRoot, item)
+		if err != nil {
+			return skillsInstallPlan{}, err
+		}
+		if workflowEvidence != nil {
+			plan.Operations = append(plan.Operations, skillsInstallOperation{
+				Kind:      "autoload-workflow",
+				Source:    filepath.ToSlash(item.WorkflowFile),
+				Target:    workflowEvidence.WorkflowID,
+				Ownership: "managed",
+				Status:    "planned",
+			})
+		}
 
 		ownership := "managed"
 		if _, err := os.Lstat(targetDir); err == nil {
@@ -344,6 +434,7 @@ func planSkillsInstall(opt Options, workDir string) (skillsInstallPlan, error) {
 					TargetPath:  filepath.ToSlash(item.InstallTarget),
 					ContentHash: hash,
 					FileHashes:  fileHashes,
+					Workflow:    workflowEvidence,
 					Mode:        mode,
 					Status:      "installed",
 				})
@@ -373,6 +464,7 @@ func planSkillsInstall(opt Options, workDir string) (skillsInstallPlan, error) {
 			TargetPath:  filepath.ToSlash(item.InstallTarget),
 			ContentHash: hash,
 			FileHashes:  fileHashes,
+			Workflow:    workflowEvidence,
 			Mode:        mode,
 			Status:      "installed",
 		})
@@ -559,6 +651,127 @@ func verifySkillFileHashes(sourceDir string, item skillsManifestEntry) (map[stri
 		out[filepath.ToSlash(cleanPath)] = actualHash
 	}
 	return out, nil
+}
+
+func resolveSkillWorkflow(sourceRoot string, item skillsManifestEntry) (*skillsWorkflowEvidence, error) {
+	if strings.TrimSpace(item.WorkflowID) == "" && strings.TrimSpace(item.WorkflowFile) == "" && strings.TrimSpace(item.WorkflowHash) == "" {
+		return nil, nil
+	}
+	if strings.TrimSpace(item.WorkflowID) == "" || strings.TrimSpace(item.WorkflowFile) == "" || strings.TrimSpace(item.WorkflowHash) == "" {
+		return nil, fmt.Errorf("skill %q workflow_id, workflow_file, and workflow_hash must be declared together", item.Name)
+	}
+	cleanPath := filepath.Clean(filepath.FromSlash(item.WorkflowFile))
+	if filepath.IsAbs(cleanPath) || cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("skill %q declares unsafe workflow_file %q", item.Name, item.WorkflowFile)
+	}
+	workflowPath := filepath.Join(sourceRoot, cleanPath)
+	stat, err := os.Stat(workflowPath)
+	if err != nil || stat.IsDir() {
+		return nil, fmt.Errorf("skill %q workflow_file is not readable: %s", item.Name, filepath.ToSlash(cleanPath))
+	}
+	actualHash, err := sha256File(workflowPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to hash skill %q workflow_file %q: %w", item.Name, filepath.ToSlash(cleanPath), err)
+	}
+	if expected := strings.TrimSpace(item.WorkflowHash); expected != "" && expected != actualHash {
+		return nil, fmt.Errorf("skill %q workflow hash mismatch: manifest %s, actual %s", item.Name, expected, actualHash)
+	}
+	raw, err := os.ReadFile(workflowPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read skill %q workflow_file %q: %w", item.Name, filepath.ToSlash(cleanPath), err)
+	}
+	var workflow skillsWorkflowDefinition
+	if err := json.Unmarshal(raw, &workflow); err != nil {
+		return nil, fmt.Errorf("invalid skill %q workflow JSON: %w", item.Name, err)
+	}
+	return workflowEvidence(item, filepath.ToSlash(cleanPath), actualHash, workflow)
+}
+
+func workflowEvidence(item skillsManifestEntry, workflowFile string, workflowHash string, workflow skillsWorkflowDefinition) (*skillsWorkflowEvidence, error) {
+	if strings.TrimSpace(workflow.SchemaVersion) != skillsWorkflowVersion {
+		return nil, fmt.Errorf("skill %q workflow has unsupported schema version %q", item.Name, workflow.SchemaVersion)
+	}
+	if workflow.WorkflowID != item.WorkflowID {
+		return nil, fmt.Errorf("skill %q workflow_id mismatch: manifest %q, workflow %q", item.Name, item.WorkflowID, workflow.WorkflowID)
+	}
+	if strings.TrimSpace(workflow.Version) == "" {
+		return nil, fmt.Errorf("skill %q workflow version is required", item.Name)
+	}
+	if !workflow.Autoload {
+		return nil, fmt.Errorf("skill %q workflow autoload must be true", item.Name)
+	}
+	if workflow.Autorun {
+		return nil, fmt.Errorf("skill %q workflow autorun must be false", item.Name)
+	}
+	if !workflow.OwnerApprovalRequired {
+		return nil, fmt.Errorf("skill %q workflow owner_approval_required must be true", item.Name)
+	}
+	if workflow.PromotionAllowed {
+		return nil, fmt.Errorf("skill %q workflow promotion_allowed must be false in CLI proof", item.Name)
+	}
+	if !workflow.NoWriteActions {
+		return nil, fmt.Errorf("skill %q workflow no_write_actions must be true", item.Name)
+	}
+	if len(workflow.Stages) == 0 {
+		return nil, fmt.Errorf("skill %q workflow stages are required", item.Name)
+	}
+
+	seen := map[string]struct{}{}
+	lastOrder := 0
+	resolvedOrder := make([]string, 0, len(workflow.Stages))
+	stages := make([]skillsWorkflowStageEvidence, 0, len(workflow.Stages))
+	for _, stage := range workflow.Stages {
+		if strings.TrimSpace(stage.ID) == "" {
+			return nil, fmt.Errorf("skill %q workflow stage id is required", item.Name)
+		}
+		if _, ok := seen[stage.ID]; ok {
+			return nil, fmt.Errorf("skill %q workflow stage %q is duplicated", item.Name, stage.ID)
+		}
+		seen[stage.ID] = struct{}{}
+		if stage.Order <= lastOrder {
+			return nil, fmt.Errorf("skill %q workflow stage %q order is not strictly increasing", item.Name, stage.ID)
+		}
+		lastOrder = stage.Order
+		if strings.TrimSpace(stage.Label) == "" {
+			return nil, fmt.Errorf("skill %q workflow stage %q label is required", item.Name, stage.ID)
+		}
+		if stage.WriteAction {
+			return nil, fmt.Errorf("skill %q workflow stage %q declares a write action; autoload proof forbids it", item.Name, stage.ID)
+		}
+		status := strings.TrimSpace(stage.Status)
+		if status == "" {
+			status = "visible"
+		}
+		resolvedOrder = append(resolvedOrder, stage.Label)
+		stages = append(stages, skillsWorkflowStageEvidence{
+			ID:          stage.ID,
+			Label:       stage.Label,
+			Order:       stage.Order,
+			Status:      status,
+			WriteAction: false,
+		})
+	}
+
+	dependencies := workflow.Dependencies
+	if dependencies == nil {
+		dependencies = []string{}
+	}
+	return &skillsWorkflowEvidence{
+		WorkflowID:             workflow.WorkflowID,
+		WorkflowVersion:        workflow.Version,
+		WorkflowHash:           workflowHash,
+		WorkflowFile:           workflowFile,
+		Status:                 "available",
+		Autoload:               true,
+		Autorun:                false,
+		OwnerApprovalRequired:  true,
+		PromotionAllowed:       false,
+		NoWriteActionsExecuted: true,
+		DryRunResult:           "workflow_plan_only_no_actions",
+		Dependencies:           dependencies,
+		ResolvedOrder:          resolvedOrder,
+		Stages:                 stages,
+	}, nil
 }
 
 func isManagedSkillTarget(state skillsInstallState, name string, target string) bool {
