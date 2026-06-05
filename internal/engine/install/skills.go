@@ -32,12 +32,13 @@ type skillsManifest struct {
 }
 
 type skillsManifestEntry struct {
-	Name          string   `json:"name"`
-	SourcePath    string   `json:"source_path"`
-	SkillFile     string   `json:"skill_file"`
-	InstallTarget string   `json:"install_target"`
-	ContentHash   string   `json:"content_hash"`
-	ModeSupport   []string `json:"mode_support"`
+	Name          string            `json:"name"`
+	SourcePath    string            `json:"source_path"`
+	SkillFile     string            `json:"skill_file"`
+	InstallTarget string            `json:"install_target"`
+	ContentHash   string            `json:"content_hash"`
+	FileHashes    map[string]string `json:"file_hashes,omitempty"`
+	ModeSupport   []string          `json:"mode_support"`
 }
 
 type skillsInstallPlan struct {
@@ -55,12 +56,13 @@ type skillsInstallPlan struct {
 }
 
 type skillsInstalledItem struct {
-	Name        string `json:"name"`
-	SourcePath  string `json:"source_path"`
-	TargetPath  string `json:"target_path"`
-	ContentHash string `json:"content_hash"`
-	Mode        string `json:"mode"`
-	Status      string `json:"status"`
+	Name        string            `json:"name"`
+	SourcePath  string            `json:"source_path"`
+	TargetPath  string            `json:"target_path"`
+	ContentHash string            `json:"content_hash"`
+	FileHashes  map[string]string `json:"file_hashes,omitempty"`
+	Mode        string            `json:"mode"`
+	Status      string            `json:"status"`
 }
 
 type skillsInstallOperation struct {
@@ -321,6 +323,10 @@ func planSkillsInstall(opt Options, workDir string) (skillsInstallPlan, error) {
 		if expected := strings.TrimSpace(item.ContentHash); expected != "" && expected != hash {
 			return skillsInstallPlan{}, fmt.Errorf("skill %q hash mismatch: manifest %s, actual %s", name, expected, hash)
 		}
+		fileHashes, err := verifySkillFileHashes(sourceDir, item)
+		if err != nil {
+			return skillsInstallPlan{}, err
+		}
 
 		ownership := "managed"
 		if _, err := os.Lstat(targetDir); err == nil {
@@ -337,6 +343,7 @@ func planSkillsInstall(opt Options, workDir string) (skillsInstallPlan, error) {
 					SourcePath:  filepath.ToSlash(item.SourcePath),
 					TargetPath:  filepath.ToSlash(item.InstallTarget),
 					ContentHash: hash,
+					FileHashes:  fileHashes,
 					Mode:        mode,
 					Status:      "installed",
 				})
@@ -365,6 +372,7 @@ func planSkillsInstall(opt Options, workDir string) (skillsInstallPlan, error) {
 			SourcePath:  filepath.ToSlash(item.SourcePath),
 			TargetPath:  filepath.ToSlash(item.InstallTarget),
 			ContentHash: hash,
+			FileHashes:  fileHashes,
 			Mode:        mode,
 			Status:      "installed",
 		})
@@ -520,6 +528,37 @@ func sha256File(path string) (string, error) {
 		return "", err
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func verifySkillFileHashes(sourceDir string, item skillsManifestEntry) (map[string]string, error) {
+	if len(item.FileHashes) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(item.FileHashes))
+	for relativePath, expectedHash := range item.FileHashes {
+		relativePath = strings.TrimSpace(relativePath)
+		if relativePath == "" {
+			return nil, fmt.Errorf("skill %q declares an empty file_hashes path", item.Name)
+		}
+		cleanPath := filepath.Clean(filepath.FromSlash(relativePath))
+		if filepath.IsAbs(cleanPath) || cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("skill %q declares unsafe file_hashes path %q", item.Name, relativePath)
+		}
+		filePath := filepath.Join(sourceDir, cleanPath)
+		stat, err := os.Stat(filePath)
+		if err != nil || stat.IsDir() {
+			return nil, fmt.Errorf("skill %q declared file is not readable: %s", item.Name, filepath.ToSlash(cleanPath))
+		}
+		actualHash, err := sha256File(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("unable to hash skill %q declared file %q: %w", item.Name, filepath.ToSlash(cleanPath), err)
+		}
+		if expected := strings.TrimSpace(expectedHash); expected != "" && expected != actualHash {
+			return nil, fmt.Errorf("skill %q file hash mismatch for %q: manifest %s, actual %s", item.Name, filepath.ToSlash(cleanPath), expected, actualHash)
+		}
+		out[filepath.ToSlash(cleanPath)] = actualHash
+	}
+	return out, nil
 }
 
 func isManagedSkillTarget(state skillsInstallState, name string, target string) bool {

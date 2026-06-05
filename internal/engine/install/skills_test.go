@@ -76,6 +76,13 @@ func TestApplySkillsInstallCopyWritesSkillAndLockfile(t *testing.T) {
 	if len(state.InstalledSkills) != 1 || state.InstalledSkills[0].Name != "evo-skill-creator" {
 		t.Fatalf("installed skills = %#v", state.InstalledSkills)
 	}
+	if got := state.InstalledSkills[0].FileHashes["agents/openai.yaml"]; got == "" {
+		t.Fatalf("expected file hash evidence for agents/openai.yaml, got %#v", state.InstalledSkills[0].FileHashes)
+	}
+	targetAgent := filepath.Join(projectRoot, "core", "custom", "skills", "evo-skill-creator", "agents", "openai.yaml")
+	if raw, err := os.ReadFile(targetAgent); err != nil || !strings.Contains(string(raw), "display_name") {
+		t.Fatalf("expected copied agents/openai.yaml, err=%v raw=%q", err, raw)
+	}
 }
 
 func TestApplySkillsInstallLinkCreatesSymlink(t *testing.T) {
@@ -142,6 +149,40 @@ func TestPlanSkillsInstallExistingUnmanagedTargetRequiresForce(t *testing.T) {
 	}
 }
 
+func TestPlanSkillsInstallDeclaredFileHashMismatchFails(t *testing.T) {
+	t.Parallel()
+
+	sourceRoot := makeSkillsSource(t)
+	rewriteSkillsManifest(t, sourceRoot, func(manifest *skillsManifest) {
+		manifest.Skills[0].FileHashes["agents/openai.yaml"] = "sha256:bad"
+	})
+
+	_, err := planSkillsInstall(Options{
+		Skills:       []string{"evo-skill-creator"},
+		SkillsSource: sourceRoot,
+	}, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "file hash mismatch") {
+		t.Fatalf("expected file hash mismatch error, got %v", err)
+	}
+}
+
+func TestPlanSkillsInstallDeclaredFileMissingFails(t *testing.T) {
+	t.Parallel()
+
+	sourceRoot := makeSkillsSource(t)
+	if err := os.Remove(filepath.Join(sourceRoot, "skills", "evo-skill-creator", "agents", "openai.yaml")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := planSkillsInstall(Options{
+		Skills:       []string{"evo-skill-creator"},
+		SkillsSource: sourceRoot,
+	}, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "declared file is not readable") {
+		t.Fatalf("expected missing declared file error, got %v", err)
+	}
+}
+
 func TestPlanSkillsInstallNoneIsNoop(t *testing.T) {
 	t.Parallel()
 
@@ -176,6 +217,10 @@ func makeSkillsSource(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	agentHash, err := sha256File(filepath.Join(skillDir, "agents", "openai.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	manifestDir := filepath.Join(root, "manifests")
 	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
@@ -193,7 +238,11 @@ func makeSkillsSource(t *testing.T) string {
 				SkillFile:     "skills/evo-skill-creator/SKILL.md",
 				InstallTarget: "core/custom/skills/evo-skill-creator",
 				ContentHash:   hash,
-				ModeSupport:   []string{"copy", "link"},
+				FileHashes: map[string]string{
+					"SKILL.md":           hash,
+					"agents/openai.yaml": agentHash,
+				},
+				ModeSupport: []string{"copy", "link"},
 			},
 		},
 	}
@@ -205,4 +254,26 @@ func makeSkillsSource(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+func rewriteSkillsManifest(t *testing.T, sourceRoot string, mutate func(*skillsManifest)) {
+	t.Helper()
+
+	manifestPath := filepath.Join(sourceRoot, "manifests", "evo-skills.manifest.json")
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest skillsManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	mutate(&manifest)
+	raw, err = json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, append(raw, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
