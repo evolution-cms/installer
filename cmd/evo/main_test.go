@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
 
 func TestSplitInstallArgsKeepsPresetFlags(t *testing.T) {
 	installDir, flags, err := splitInstallArgs([]string{
@@ -69,5 +73,35 @@ func TestParseExtrasSelectionsKeepsLegacyStoreID(t *testing.T) {
 	}
 	if selections[1].Name != "sSeo" {
 		t.Fatalf("expected managed name selection, got %#v", selections[1])
+	}
+}
+
+func TestPrintCLIInlineLineRedrawsSameLine(t *testing.T) {
+	var out bytes.Buffer
+	state := &cliState{}
+
+	printCLIInlineLine("-", "download", "Extracting 41% (6,400 files / 15,690 files)", &out, state)
+	printCLIInlineLine("-", "download", "Extracting 42%", &out, state)
+
+	got := out.String()
+	if !strings.Contains(got, "\r- [download] Extracting 41% (6,400 files / 15,690 files)\r- [download] Extracting 42%") {
+		t.Fatalf("inline output did not redraw with carriage returns: %q", got)
+	}
+	if bytes.Count(out.Bytes(), []byte("\n")) != 0 {
+		t.Fatalf("inline output should not contain newlines: %q", got)
+	}
+}
+
+func TestPrintCLILineFinishesInlineProgress(t *testing.T) {
+	var out bytes.Buffer
+	state := &cliState{}
+
+	printCLIInlineLine("-", "download", "Extracting 42%", &out, state)
+	printCLILine("✓", "download", "Download complete", &out, state)
+
+	got := out.String()
+	want := "\r- [download] Extracting 42%\n✓ [download] Download complete\n"
+	if got != want {
+		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
