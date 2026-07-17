@@ -51,6 +51,12 @@ type Options struct {
 
 	GithubPat string
 	Extras    []domain.ExtrasSelection
+
+	Skills       []string
+	SkillsSource string
+	SkillsRef    string
+	SkillsLink   bool
+	SkillsDryRun bool
 }
 
 type Engine struct {
@@ -1025,6 +1031,7 @@ func (e *Engine) Run(ctx context.Context, ch chan<- domain.Event, actions <-chan
 			})
 		}
 		e.maybeRunExtras(ctx, emit, actions, workDir, requiredExtras)
+		e.maybeRunSkillsInstall(ctx, emit, workDir)
 		e.cleanupExtrasRuntimeArtifacts(emit, workDir)
 	}()
 }

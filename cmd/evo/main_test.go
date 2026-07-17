@@ -30,6 +30,40 @@ func TestSplitInstallArgsKeepsPresetFlags(t *testing.T) {
 	}
 }
 
+func TestSplitInstallArgsKeepsSkillsFlags(t *testing.T) {
+	installDir, flags, err := splitInstallArgs([]string{
+		"/tmp/site",
+		"--cli",
+		"--skills=evo-skill-creator",
+		"--skills-source",
+		"/tmp/evo-skills",
+		"--skills-ref=main",
+		"--skills-dry-run",
+	})
+	if err != nil {
+		t.Fatalf("splitInstallArgs returned error: %v", err)
+	}
+	if installDir != "/tmp/site" {
+		t.Fatalf("installDir = %q, want /tmp/site", installDir)
+	}
+	want := []string{
+		"--cli",
+		"--skills=evo-skill-creator",
+		"--skills-source",
+		"/tmp/evo-skills",
+		"--skills-ref=main",
+		"--skills-dry-run",
+	}
+	if len(flags) != len(want) {
+		t.Fatalf("flags = %#v, want %#v", flags, want)
+	}
+	for i := range want {
+		if flags[i] != want[i] {
+			t.Fatalf("flags[%d] = %q, want %q", i, flags[i], want[i])
+		}
+	}
+}
+
 func TestSplitInstallArgsRequiresPresetValue(t *testing.T) {
 	_, _, err := splitInstallArgs([]string{"/tmp/site", "--preset"})
 	if err == nil {
