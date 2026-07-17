@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/mail"
 	"os"
 	"strings"
@@ -94,9 +95,11 @@ func runCLI(ctx context.Context, events <-chan domain.Event, actions chan<- doma
 	for {
 		select {
 		case <-ctx.Done():
+			finishCLIInlineOutput(state)
 			return postExec, fmt.Errorf("installation cancelled: %w", ctx.Err())
 		case ev, ok := <-events:
 			if !ok {
+				finishCLIInlineOutput(state)
 				if hadError {
 					return postExec, errors.New("installation failed")
 				}
@@ -136,7 +139,7 @@ func applyCLIEvent(ev domain.Event, stepLabels map[string]string, actions chan<-
 		}
 	case domain.EventStepStart:
 		label := stepLabel(stepLabels, ev.StepID, ev.Payload)
-		printCLILine("==>", ev.StepID, label, os.Stdout)
+		printCLILine("==>", ev.StepID, label, os.Stdout, state)
 	case domain.EventStepDone:
 		label := stepLabel(stepLabels, ev.StepID, ev.Payload)
 		ok := true
@@ -145,9 +148,9 @@ func applyCLIEvent(ev domain.Event, stepLabels map[string]string, actions chan<-
 		}
 		if !ok {
 			*hadError = true
-			printCLILine("✗", ev.StepID, label, os.Stderr)
+			printCLILine("✗", ev.StepID, label, os.Stderr, state)
 		} else {
-			printCLILine("✓", ev.StepID, label, os.Stdout)
+			printCLILine("✓", ev.StepID, label, os.Stdout, state)
 		}
 	case domain.EventProgress:
 		if quiet {
@@ -159,7 +162,7 @@ func applyCLIEvent(ev domain.Event, stepLabels map[string]string, actions chan<-
 				unit = "units"
 			}
 			msg := fmt.Sprintf("Progress: %d/%d %s", p.Current, p.Total, unit)
-			printCLILine("•", ev.StepID, msg, os.Stdout)
+			printCLIInlineLine("•", ev.StepID, msg, os.Stdout, state)
 		}
 	case domain.EventLog:
 		switch payload := ev.Payload.(type) {
@@ -174,7 +177,11 @@ func applyCLIEvent(ev domain.Event, stepLabels map[string]string, actions chan<-
 				if quiet && !shouldPrintQuiet(msg) {
 					return false
 				}
-				printCLILine("-", ev.StepID, msg, os.Stdout)
+				if isInlineCLIProgress(payload.Fields) {
+					printCLIInlineLine("-", ev.StepID, msg, os.Stdout, state)
+				} else {
+					printCLILine("-", ev.StepID, msg, os.Stdout, state)
+				}
 			}
 		}
 	case domain.EventWarning:
@@ -187,7 +194,11 @@ func applyCLIEvent(ev domain.Event, stepLabels map[string]string, actions chan<-
 				if quiet && !shouldPrintQuiet(msg) {
 					return false
 				}
-				printCLILine("!", ev.StepID, msg, os.Stderr)
+				if isInlineCLIProgress(p.Fields) {
+					printCLIInlineLine("!", ev.StepID, msg, os.Stderr, state)
+				} else {
+					printCLILine("!", ev.StepID, msg, os.Stderr, state)
+				}
 			}
 		}
 	case domain.EventError:
@@ -195,7 +206,7 @@ func applyCLIEvent(ev domain.Event, stepLabels map[string]string, actions chan<-
 		if p, ok := ev.Payload.(domain.LogPayload); ok {
 			msg := formatCLILogMessage(p)
 			if msg != "" {
-				printCLILine("✗", ev.StepID, msg, os.Stderr)
+				printCLILine("✗", ev.StepID, msg, os.Stderr, state)
 			}
 		}
 	case domain.EventExtras:
@@ -305,26 +316,89 @@ func sendAction(actions chan<- domain.Action, a domain.Action) {
 	}
 }
 
-func printCLILine(prefix, stepID, message string, out *os.File) {
+func printCLILine(prefix, stepID, message string, out io.Writer, state *cliState) {
+	finishCLIInlineLine(out, state)
+	line := formatCLILine(prefix, stepID, message)
+	if line == "" {
+		return
+	}
+	fmt.Fprintln(out, line)
+}
+
+func printCLIInlineLine(prefix, stepID, message string, out io.Writer, state *cliState) {
+	line := formatCLILine(prefix, stepID, message)
+	if line == "" {
+		return
+	}
+	key := cliStreamKey(out)
+	lastLen := 0
+	if state != nil && state.inlineLenByStream != nil {
+		lastLen = state.inlineLenByStream[key]
+	}
+	padding := ""
+	if lastLen > len(line) {
+		padding = strings.Repeat(" ", lastLen-len(line))
+	}
+	fmt.Fprintf(out, "\r%s%s", line, padding)
+	if state != nil {
+		if state.inlineLenByStream == nil {
+			state.inlineLenByStream = map[string]int{}
+		}
+		state.inlineLenByStream[key] = len(line)
+	}
+}
+
+func finishCLIInlineLine(out io.Writer, state *cliState) {
+	if state == nil || state.inlineLenByStream == nil {
+		return
+	}
+	key := cliStreamKey(out)
+	if state.inlineLenByStream[key] == 0 {
+		return
+	}
+	fmt.Fprintln(out)
+	delete(state.inlineLenByStream, key)
+}
+
+func finishCLIInlineOutput(state *cliState) {
+	finishCLIInlineLine(os.Stdout, state)
+	finishCLIInlineLine(os.Stderr, state)
+}
+
+func formatCLILine(prefix, stepID, message string) string {
 	stepID = strings.TrimSpace(stepID)
 	message = strings.TrimSpace(message)
 	if message == "" {
-		return
+		return ""
 	}
 	if stepID != "" {
-		fmt.Fprintf(out, "%s [%s] %s\n", prefix, stepID, message)
-		return
+		return fmt.Sprintf("%s [%s] %s", prefix, stepID, message)
 	}
-	fmt.Fprintf(out, "%s %s\n", prefix, message)
+	return fmt.Sprintf("%s %s", prefix, message)
+}
+
+func cliStreamKey(out io.Writer) string {
+	switch out {
+	case os.Stdout:
+		return "stdout"
+	case os.Stderr:
+		return "stderr"
+	default:
+		return fmt.Sprintf("%p", out)
+	}
 }
 
 type cliState struct {
-	lastLogByStep map[string]string
+	lastLogByStep     map[string]string
+	inlineLenByStream map[string]int
 }
 
 func shouldSkipCLILog(fields map[string]string, stepID string, message string, state *cliState) bool {
 	if state == nil || message == "" {
 		return false
+	}
+	if state.lastLogByStep == nil {
+		state.lastLogByStep = map[string]string{}
 	}
 	op := strings.ToLower(strings.TrimSpace(""))
 	if fields != nil {
@@ -337,6 +411,10 @@ func shouldSkipCLILog(fields map[string]string, stepID string, message string, s
 	last := state.lastLogByStep[stepID]
 	state.lastLogByStep[stepID] = message
 	return last == message
+}
+
+func isInlineCLIProgress(fields map[string]string) bool {
+	return fields != nil && fields["kind"] == "inline_progress"
 }
 
 func formatCLILogMessage(p domain.LogPayload) string {

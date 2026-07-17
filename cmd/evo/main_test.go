@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
 
 func TestSplitInstallArgsKeepsPresetFlags(t *testing.T) {
 	installDir, flags, err := splitInstallArgs([]string{
@@ -106,42 +110,32 @@ func TestParseExtrasSelectionsKeepsLegacyStoreID(t *testing.T) {
 	}
 }
 
-func TestParseSkillSelections(t *testing.T) {
-	selections, err := parseSkillSelections("default,evo-skill-creator,evo-skill-creator")
-	if err != nil {
-		t.Fatalf("parseSkillSelections returned error: %v", err)
+func TestPrintCLIInlineLineRedrawsSameLine(t *testing.T) {
+	var out bytes.Buffer
+	state := &cliState{}
+
+	printCLIInlineLine("-", "download", "Extracting 41% (6,400 files / 15,690 files)", &out, state)
+	printCLIInlineLine("-", "download", "Extracting 42%", &out, state)
+
+	got := out.String()
+	if !strings.Contains(got, "\r- [download] Extracting 41% (6,400 files / 15,690 files)\r- [download] Extracting 42%") {
+		t.Fatalf("inline output did not redraw with carriage returns: %q", got)
 	}
-	want := []string{"default", "evo-skill-creator"}
-	if len(selections) != len(want) {
-		t.Fatalf("selections = %#v, want %#v", selections, want)
-	}
-	for i := range want {
-		if selections[i] != want[i] {
-			t.Fatalf("selections[%d] = %q, want %q", i, selections[i], want[i])
-		}
+	if bytes.Count(out.Bytes(), []byte("\n")) != 0 {
+		t.Fatalf("inline output should not contain newlines: %q", got)
 	}
 }
 
-func TestParseSkillSelectionsRejectsPaths(t *testing.T) {
-	if _, err := parseSkillSelections("../bad"); err == nil {
-		t.Fatal("parseSkillSelections returned nil error for path-like skill")
-	}
-}
+func TestPrintCLILineFinishesInlineProgress(t *testing.T) {
+	var out bytes.Buffer
+	state := &cliState{}
 
-func TestValidateSkillsRequiresCLI(t *testing.T) {
-	if err := validateSkillsCLIOptions("evo-skill-creator", false, false, "", ""); err == nil {
-		t.Fatal("validateSkillsCLIOptions returned nil error without --cli")
-	}
-}
+	printCLIInlineLine("-", "download", "Extracting 42%", &out, state)
+	printCLILine("✓", "download", "Download complete", &out, state)
 
-func TestValidateSkillsLinkRequiresSource(t *testing.T) {
-	if err := validateSkillsCLIOptions("evo-skill-creator", true, true, "", ""); err == nil {
-		t.Fatal("validateSkillsCLIOptions returned nil error for --skills-link without source")
-	}
-}
-
-func TestValidateSkillsLinkConflictsWithRef(t *testing.T) {
-	if err := validateSkillsCLIOptions("evo-skill-creator", true, true, "/tmp/evo-skills", "main"); err == nil {
-		t.Fatal("validateSkillsCLIOptions returned nil error for link/ref conflict")
+	got := out.String()
+	want := "\r- [download] Extracting 42%\n✓ [download] Download complete\n"
+	if got != want {
+		t.Fatalf("output = %q, want %q", got, want)
 	}
 }

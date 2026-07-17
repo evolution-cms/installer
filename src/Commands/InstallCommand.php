@@ -3800,6 +3800,7 @@ class InstallCommand extends Command
                 $this->tui->addLog('Failed to rename ht.access to .htaccess.', 'warning');
             }
         }
+        $this->updateRootHtaccessForAdminDirectory($projectPath, $options);
 
         // Clean up seeders directory (remove files inside, keep directory)
         $seedersDir = $projectPath . '/core/database/seeders';
@@ -3943,10 +3944,60 @@ class InstallCommand extends Command
 
         if (@rename($source, $target)) {
             $this->tui?->addLog("Renamed manager directory to {$adminDir}.");
+            $this->updateManagerHtaccessForAdminDirectory($target, $adminDir);
             return;
         }
 
         $this->tui?->addLog("Failed to rename manager directory to {$adminDir}.", 'warning');
+    }
+
+    protected function updateManagerHtaccessForAdminDirectory(string $managerPath, string $adminDir): void
+    {
+        $htaccess = rtrim($managerPath, '/\\') . DIRECTORY_SEPARATOR . '.htaccess';
+        if (!is_file($htaccess) || !is_readable($htaccess) || !is_writable($htaccess)) {
+            return;
+        }
+
+        $contents = (string) file_get_contents($htaccess);
+        $updated = str_replace('RewriteBase /manager/', 'RewriteBase /' . $adminDir . '/', $contents);
+
+        if ($updated !== $contents && @file_put_contents($htaccess, $updated) !== false) {
+            $this->tui?->addLog("Updated admin .htaccess RewriteBase for {$adminDir}.");
+        }
+    }
+
+    protected function updateRootHtaccessForAdminDirectory(string $projectPath, array $options): void
+    {
+        $adminDir = $this->sanitizeAdminDirectory($options['admin']['directory'] ?? null);
+        if ($adminDir === 'manager') {
+            return;
+        }
+
+        $htaccess = rtrim($projectPath, '/\\') . DIRECTORY_SEPARATOR . '.htaccess';
+        if (!is_file($htaccess) || !is_readable($htaccess) || !is_writable($htaccess)) {
+            return;
+        }
+
+        $contents = (string) file_get_contents($htaccess);
+        $updated = preg_replace_callback(
+            '/RewriteRule\s+\^\(([^)]*)\)\/\.\*\$\s+-\s+\[L\]/',
+            static function (array $matches) use ($adminDir): string {
+                $directories = explode('|', $matches[1]);
+                $directories = array_map(
+                    static fn (string $directory): string => $directory === 'manager' ? $adminDir : $directory,
+                    $directories
+                );
+                $directories = array_values(array_unique($directories));
+
+                return 'RewriteRule ^(' . implode('|', $directories) . ')/.*$ - [L]';
+            },
+            $contents,
+            1
+        );
+
+        if (is_string($updated) && $updated !== $contents && @file_put_contents($htaccess, $updated) !== false) {
+            $this->tui?->addLog("Updated root .htaccess rewrite exclusions for {$adminDir}.");
+        }
     }
 
     /**
