@@ -237,6 +237,8 @@ func inferManagedExtrasComposerName(name string) string {
 		return "seiger/" + packageName
 	case 'd', 'D':
 		return "dmi3yy/" + packageName
+	case 'a', 'A':
+		return "elcreator/" + packageName
 	default:
 		return ""
 	}
