@@ -18,6 +18,9 @@ class VersionResolver
     /**
      * Get the latest compatible version of Evolution CMS for current PHP version.
      *
+     * Only published stable numeric tags are eligible for automatic installation;
+     * explicit development branches are handled by InstallCommand separately.
+     *
      * @param string|null $phpVersion PHP version (default: current version)
      * @param bool $silent If true, suppress console output
      * @return string|null Latest compatible version tag or null
@@ -36,7 +39,7 @@ class VersionResolver
             foreach ($releases as $release) {
                 $version = $release['tag_name'] ?? null;
                 
-                if (!$version) {
+                if (!$version || !empty($release['draft']) || !empty($release['prerelease'])) {
                     continue;
                 }
 
@@ -94,15 +97,17 @@ class VersionResolver
     }
 
     /**
-     * Check if version is a pre-release.
+     * Reject tags that are not stable numeric releases for automatic selection.
+     *
+     * GitHub release metadata is checked separately. This also excludes nightly
+     * tags and branch aliases when prerelease metadata is absent or incorrect.
      *
      * @param string $version
      * @return bool
      */
     protected function isPreRelease(string $version): bool
     {
-        // Skip alpha, beta, RC, dev versions
-        return preg_match('/-(alpha|beta|rc|dev)/i', $version) === 1;
+        return preg_match('/\Av?\d+\.\d+\.\d+\z/i', $version) !== 1;
     }
 
     /**
@@ -275,6 +280,9 @@ class VersionResolver
     /**
      * Get latest version (without compatibility check).
      *
+     * Apply the same stable tag and release metadata restrictions as the
+     * compatible-version resolver, without fetching PHP requirements.
+     *
      * @return string|null
      */
     public function getLatestVersion(): ?string
@@ -285,7 +293,8 @@ class VersionResolver
             foreach ($releases as $release) {
                 $version = $release['tag_name'] ?? null;
                 
-                if ($version && !$this->isPreRelease($version)) {
+                if ($version && empty($release['draft']) && empty($release['prerelease'])
+                    && !$this->isPreRelease($version)) {
                     return $version;
                 }
             }
