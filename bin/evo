@@ -3,6 +3,9 @@
 
 declare(strict_types=1);
 
+/**
+ * Bootstrap the CLI binary and coordinate PHP package and binary updates.
+ */
 final class EvoBootstrapper
 {
     private const REPO = 'evolution-cms/installer';
@@ -496,19 +499,33 @@ final class EvoBootstrapper
         return version_compare($latestNorm, $currentNorm, '>');
     }
 
+    /**
+     * Retry unrecognized answers instead of silently interpreting them as no.
+     *
+     * Empty lines and EOF preserve the caller's default; EOF must terminate
+     * the loop when the input stream closes.
+     */
     private function promptYesNo(string $question, bool $defaultYes): bool
     {
         $suffix = $defaultYes ? ' ' : '';
-        $this->out($question . $suffix);
-        $line = fgets(STDIN);
-        if ($line === false) {
-            return $defaultYes;
+        while (true) {
+            $this->out($question . $suffix);
+            $line = fgets(STDIN);
+            if ($line === false) {
+                return $defaultYes;
+            }
+            $answer = strtolower(trim($line));
+            if ($answer === '') {
+                return $defaultYes;
+            }
+            if (in_array($answer, ['y', 'yes'], true)) {
+                return true;
+            }
+            if (in_array($answer, ['n', 'no'], true)) {
+                return false;
+            }
+            $this->out('Please answer y/yes or n/no.');
         }
-        $answer = strtolower(trim($line));
-        if ($answer === '') {
-            return $defaultYes;
-        }
-        return in_array($answer, ['y', 'yes'], true);
     }
 
     private function findComposerWorkDir(): ?string
