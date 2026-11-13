@@ -131,6 +131,7 @@ class CreatesDatabaseConfig
     'engine' => env('DB_ENGINE', '{$engine}'),
     'options' => [
         PDO::ATTR_STRINGIFY_FETCHES => true,
+        PDO::ATTR_PERSISTENT => filter_var(env('DB_PERSISTENT', false), FILTER_VALIDATE_BOOLEAN),
     ]
 ];
 PHP;
