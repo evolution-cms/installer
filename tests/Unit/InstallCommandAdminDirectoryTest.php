@@ -7,6 +7,7 @@ use EvolutionCMS\Installer\Utilities\TuiRenderer;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Filesystem\Filesystem;
 
 final class InstallCommandAdminDirectoryTest extends TestCase
 {
@@ -162,28 +163,58 @@ final class InstallCommandAdminDirectoryTest extends TestCase
         $this->removeTempDir($projectPath);
     }
 
-    public function testFinalizeInstallationRemovesDevelopmentOnlyRootFiles(): void
+    public function testInstallationSkipsCmsDevelopmentFilesAndConfigExamplesAndPreservesSiteCopies(): void
     {
         $cmd = $this->makeCommand();
+        $workspace = $this->makeTempProjectDir();
+        $filesystem = new Filesystem();
+        $package = $workspace . '/package';
+        $site = $workspace . '/site';
+        $fresh = $workspace . '/fresh';
+        $excluded = [
+            '.github/workflows/ci.yml', '.dockerignore', 'AGENTS.md', 'SECURITY.md', 'docs/notes.md',
+            'phpstan.neon', 'publiccode.yml', 'tools/build-manager-icons.php', 'core/phpunit.xml',
+            'core/tests/LocalTest.php',
+            'core/custom/.env.docker.example', 'core/custom/.env.example',
+            'core/custom/define.php.example', 'core/custom/routes.php.example',
+            'core/custom/config/cms/settings/ControllerNamespace.php.example',
+            'core/custom/config/cms/settings.php.example',
+            'core/custom/composer.json.example',
+        ];
+        $included = ['core/bootstrap.php', 'assets/docs/license.txt', 'assets/AGENTS.md', 'tools/site-helper.php'];
 
-        $projectPath = $this->makeTempProjectDir();
-        @mkdir($projectPath . '/core/database/seeders', 0755, true);
+        try {
+            foreach ($excluded as $path) {
+                $filesystem->dumpFile($package . '/' . $path, 'CMS file');
+                $filesystem->dumpFile($site . '/' . $path, 'site file');
+            }
+            foreach ($included as $path) {
+                $filesystem->dumpFile($package . '/' . $path, 'CMS file');
+            }
+            $filesystem->dumpFile($package . '/docs/cms-only.md', 'CMS file');
+            $filesystem->dumpFile($site . '/core/custom/local.example', 'site-only example');
 
-        file_put_contents($projectPath . '/AGENTS.md', "dev notes\n");
-        file_put_contents($projectPath . '/publiccode.yml', "publiccode\n");
+            foreach ([$site, $fresh] as $target) {
+                $cmd->copyDirectoryWithProgressPublic($package, $target);
+                $cmd->finalizeInstallationPublic($target, ['install_in_current_dir' => true]);
+                $this->assertFileExists($target . '/core/.install');
+                foreach ($included as $path) {
+                    $this->assertSame('CMS file', file_get_contents($target . '/' . $path), $path);
+                }
+            }
 
-        $cmd->finalizeInstallationPublic($projectPath, [
-            'install_in_current_dir' => true,
-            'admin' => [
-                'directory' => 'manager',
-            ],
-        ]);
-
-        $this->assertFileDoesNotExist($projectPath . '/AGENTS.md');
-        $this->assertFileDoesNotExist($projectPath . '/publiccode.yml');
-        $this->assertFileExists($projectPath . '/core/.install');
-
-        $this->removeTempDir($projectPath);
+            foreach ($excluded as $path) {
+                $this->assertSame('site file', file_get_contents($site . '/' . $path), $path);
+                $this->assertFileDoesNotExist($fresh . '/' . $path);
+            }
+            $this->assertFileDoesNotExist($site . '/docs/cms-only.md');
+            $this->assertSame('site-only example', file_get_contents($site . '/core/custom/local.example'));
+            foreach (['.github', 'docs', 'core/tests'] as $path) {
+                $this->assertDirectoryDoesNotExist($fresh . '/' . $path);
+            }
+        } finally {
+            $filesystem->remove($workspace);
+        }
     }
 
     public function testApplyManagerDirectoryUpdatesManagerHtaccessRewriteBase(): void
@@ -346,6 +377,11 @@ final class TestableInstallCommand extends InstallCommand
     public function finalizeInstallationPublic(string $projectPath, array $options): void
     {
         $this->finalizeInstallation($projectPath, $options);
+    }
+
+    public function copyDirectoryWithProgressPublic(string $source, string $destination): void
+    {
+        $this->copyDirectoryWithProgress($source, $destination);
     }
 
     public function resolveProjectPresetSourcePublic(string $preset): string

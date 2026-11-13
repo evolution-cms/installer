@@ -926,8 +926,7 @@ class InstallCommand extends Command
     /**
      * Copy the staged CMS into the destination directory and report file progress.
      *
-     * The package's root .github belongs to Evolution CMS development. Skip it
-     * before counting or copying entries so any workflows in the destination stay intact.
+     * Skip CMS development files and configuration examples before counting or copying.
      */
     protected function copyDirectoryWithProgress(string $source, string $destination): void
     {
@@ -946,8 +945,17 @@ class InstallCommand extends Command
 
         $entries = new \RecursiveCallbackFilterIterator(
             new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS),
-            static fn ($entry, $key, $directory) => $directory->getSubPath() !== ''
-                || strcasecmp($entry->getFilename(), '.github') !== 0
+            static function ($entry, $key, $directory): bool {
+                $path = strtolower(str_replace(DIRECTORY_SEPARATOR, '/', $directory->getSubPathname()));
+                if ($entry->isFile() && str_starts_with($path, 'core/custom/') && str_ends_with($path, '.example')) {
+                    return false;
+                }
+
+                return !in_array($path, [
+                    '.dockerignore', '.github', 'agents.md', 'security.md', 'docs', 'phpstan.neon', 'publiccode.yml',
+                    'tools/build-manager-icons.php', 'core/phpunit.xml', 'core/tests',
+                ], true);
+            }
         );
         $it = new \RecursiveIteratorIterator($entries, \RecursiveIteratorIterator::SELF_FIRST);
         $totalFiles = 0;
@@ -3726,7 +3734,6 @@ class InstallCommand extends Command
         $projectPath = $isCurrentDir ? $name : (getcwd() . '/' . $name);
 
         $this->removeInstallerAdminEnvVars($projectPath);
-        $this->removeCoreCustomExampleFiles($projectPath);
         $this->applyManagerDirectory($projectPath, $options);
         $this->preserveExtrasRuntimeArtifacts($projectPath);
 
@@ -3753,13 +3760,10 @@ class InstallCommand extends Command
 
         // Remove repository-only files from project root
         foreach ([
-            'AGENTS.md',
             '.gitattributes',
             'LICENSE',
             'ng.inx',
-            'publiccode.yml',
             'README.md',
-            'phpstan.neon',
         ] as $file) {
             $path = $projectPath . '/' . $file;
             if (file_exists($path) && !is_dir($path)) {
@@ -3997,42 +4001,6 @@ class InstallCommand extends Command
 
         if (is_string($updated) && $updated !== $contents && @file_put_contents($htaccess, $updated) !== false) {
             $this->tui?->addLog("Updated root .htaccess rewrite exclusions for {$adminDir}.");
-        }
-    }
-
-    /**
-     * Removes all `*.example` files from `core/custom` (best-effort).
-     *
-     * Installer may place example configs in `core/custom`. These files should not remain in production.
-     */
-    protected function removeCoreCustomExampleFiles(string $projectPath): void
-    {
-        $customDir = rtrim($projectPath, '/') . '/core/custom';
-        if (!is_dir($customDir)) {
-            return;
-        }
-
-        $removed = 0;
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($customDir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::SELF_FIRST
-        );
-
-        foreach ($iterator as $item) {
-            /** @var \SplFileInfo $item */
-            if (!$item->isFile()) {
-                continue;
-            }
-            $path = $item->getPathname();
-            if (str_ends_with($path, '.example')) {
-                if (@unlink($path)) {
-                    $removed++;
-                }
-            }
-        }
-
-        if ($removed > 0) {
-            $this->tui?->addLog("Removed {$removed} .example file(s) from core/custom.", 'info');
         }
     }
 
