@@ -2,10 +2,11 @@
 
 CLI tool for creating new Evolution CMS projects.
 
-## Requirements
-
-- PHP 8.3+
-- Composer 2.x
+[![Latest release](https://img.shields.io/github/v/release/evolution-cms/installer?logo=github)](https://github.com/evolution-cms/installer/releases/latest)
+[![Release workflow](https://github.com/evolution-cms/installer/actions/workflows/release.yml/badge.svg)](https://github.com/evolution-cms/installer/actions/workflows/release.yml)
+[![PHP 8.3, 8.4 and 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.4_%7C_8.5-777BB4?logo=php&logoColor=white)](#requirements)
+[![Packagist installs](https://img.shields.io/packagist/dt/evolution-cms/installer?label=Packagist%20installs)](https://packagist.org/packages/evolution-cms/installer)
+[![GPL-3.0-or-later](https://img.shields.io/packagist/l/evolution-cms/installer)](https://www.gnu.org/licenses/gpl-3.0.html)
 
 ## Install
 

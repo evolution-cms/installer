@@ -924,7 +924,10 @@ class InstallCommand extends Command
     }
 
     /**
-     * Copy package files into the destination directory.
+     * Copy the staged CMS into the destination directory and report file progress.
+     *
+     * The package's root .github belongs to Evolution CMS development. Skip it
+     * before counting or copying entries so any workflows in the destination stay intact.
      */
     protected function copyDirectoryWithProgress(string $source, string $destination): void
     {
@@ -941,11 +944,13 @@ class InstallCommand extends Command
             }
         }
 
-        $totalFiles = 0;
-        $it = new \RecursiveIteratorIterator(
+        $entries = new \RecursiveCallbackFilterIterator(
             new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::SELF_FIRST
+            static fn ($entry, $key, $directory) => $directory->getSubPath() !== ''
+                || strcasecmp($entry->getFilename(), '.github') !== 0
         );
+        $it = new \RecursiveIteratorIterator($entries, \RecursiveIteratorIterator::SELF_FIRST);
+        $totalFiles = 0;
         foreach ($it as $item) {
             $rel = substr($item->getPathname(), strlen($source) + 1);
             if ($rel === false || $rel === '') {
@@ -961,11 +966,6 @@ class InstallCommand extends Command
         }
 
         $copiedFiles = 0;
-
-        $it = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::SELF_FIRST
-        );
         foreach ($it as $item) {
             $srcPath = $item->getPathname();
             $rel = substr($srcPath, strlen($source) + 1);
